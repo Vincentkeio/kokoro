@@ -342,6 +342,14 @@ func benchFieldLabel(k string) string {
 
 // benchFieldValue 把值渲染成人类可读的字符串。
 func benchFieldValue(k string, v any) string {
+	// CPU 型号统一洗一遍 —— 卡片和详情页显示的应该是同一个东西，
+	// 详情页却还是 "Intel(R) Xeon(R) Platinum 8272CL CPU @ 2.60GHz" 那种长格式
+	// （卡片用了 shortCPUModel、详情页没用，两处不一致）。
+	if k == "cpu" {
+		if s, ok := v.(string); ok {
+			return shortCPUModel(s)
+		}
+	}
 	switch x := v.(type) {
 	case bool:
 		if x {

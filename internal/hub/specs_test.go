@@ -255,3 +255,48 @@ func TestShortCPUModel(t *testing.T) {
 		}
 	}
 }
+
+// TestNodeTasksKeepsOnlyLatestPerKind 详情页每种测试只能留最新一份。
+//
+// boss 看到的：两份「IP 质量与解锁」+ 两份失败的「线路与三网质量」摞在一起。
+// 列表是倒序的，所以「第一次见到的那个 kind」就是最新的。
+func TestNodeTasksKeepsOnlyLatestPerKind(t *testing.T) {
+	h, st := newTestHub(t)
+	n := mkNode(t, st, "东京 zouter", "JP", "日本 · 东京", "")
+
+	// 同一台机器跑两轮 IP 质量 + 两轮失败的三网
+	mk := func(kind, title, out string) {
+		task := &model.NodeTask{NodeID: n.ID, Kind: kind, Title: title,
+			Cmd: "bash /tmp/kb.sh", Status: model.TaskQueued}
+		if err := st.CreateTask(task); err != nil {
+			t.Fatal(err)
+		}
+		h.pendingCommands(n.ID)
+		if out == "" {
+			h.finishTaskFromResult(model.CommandResult{
+				ID: task.ID, OK: false, ExitCode: 1, Stderr: "挂了"})
+			return
+		}
+		h.finishTaskFromResult(model.CommandResult{ID: task.ID, OK: true, Stdout: out})
+	}
+	ipOut := `{"event":"result","test":"ip","ok":true,"data":{"ip_type":"广播IP","risk_scamalytics":0,"unlock_total":7,"unlocked":["Netflix"]}}
+{"event":"done","ok":true,"elapsed_ms":1000,"failed":[]}`
+	mk("ipquality", "IP 质量与解锁", ipOut)
+	mk("netquality", "线路与三网质量", "")    // 失败
+	mk("ipquality", "IP 质量与解锁", ipOut) // 再跑一轮
+	mk("netquality", "线路与三网质量", "")    // 又失败
+
+	got := h.nodeTasks(n.ID, 20)
+	kinds := map[string]int{}
+	for _, v := range got {
+		kinds[v.Kind]++
+	}
+	for k, c := range kinds {
+		if c != 1 {
+			t.Errorf("kind %s 出现了 %d 次，应该只有 1 次", k, c)
+		}
+	}
+	if len(got) != 2 {
+		t.Errorf("应只剩 2 条（每个 kind 一条），实际 %d", len(got))
+	}
+}

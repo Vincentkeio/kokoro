@@ -186,7 +186,18 @@ func (h *Hub) nodeTasks(nodeID string, limit int) []nodeTaskView {
 		return nil
 	}
 	out := make([]nodeTaskView, 0, len(ts))
+	// 每种测试**只留最新的一份**。
+	//
+	// 列表是按时间倒序的，所以第一次见到的就是最新的。
+	// 不筛的话，跑过几次就会出现一模一样的卡片摞在一起
+	// （boss 看到过两份「IP 质量与解锁」+ 两份失败的「线路与三网质量」）。
+	seenKind := map[string]bool{}
 	for _, t := range ts {
+		if seenKind[t.Kind] {
+			continue
+		}
+		seenKind[t.Kind] = true
+
 		v := nodeTaskView{
 			Title:    t.Title,
 			Kind:     t.Kind,
