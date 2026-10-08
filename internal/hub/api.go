@@ -102,10 +102,15 @@ func (h *Hub) handleRegister(w http.ResponseWriter, r *http.Request) {
 		CPUCores:   req.CPUCores,
 		MemTotal:   req.MemTotal,
 		DiskTotal:  req.DiskTotal,
-		AgentVer:   req.AgentVersion,
-		Online:     true,
-		LastSeen:   now,
-		CreatedAt:  now,
+		TCPCC:      req.TCPCC,
+		TCPQdisc:   req.TCPQdisc,
+		// NAT 判定：Hub 看到的来源 IP 不在机器自己的网卡上 → 在 NAT 后面。
+		// 只留布尔值，地址本身不落库。
+		NAT:       isBehindNAT(req.LocalIPs, h.clientIP(r)),
+		AgentVer:  req.AgentVersion,
+		Online:    true,
+		LastSeen:  now,
+		CreatedAt: now,
 	}
 	if node.Name == "" {
 		node.Name = node.ID
@@ -182,6 +187,18 @@ func (h *Hub) handleReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := h.clientIP(r)
+
+	// 静态信息（虚拟化/CPU/加速/NAT）在**启动后的第一条上报**里带一次。
+	// 收到就更新 —— 老 agent 升级后靠这条补齐，不用重新注册。
+	factsOK := false
+	if m.Facts != nil {
+		if err := h.store.UpdateNodeFacts(node.ID, m.Facts, isBehindNAT(m.Facts.LocalIPs, ip)); err != nil {
+			log.Printf("[hub] 更新节点静态信息失败 %s: %v", node.ID, err)
+		} else {
+			factsOK = true
+		}
+	}
+
 	wasOffline := !node.Online
 	if err := h.store.TouchNode(node.ID, m.Ts, ip); err != nil {
 		log.Printf("[hub] 更新节点状态失败 %s: %v", node.ID, err)
@@ -197,10 +214,32 @@ func (h *Hub) handleReport(w http.ResponseWriter, r *http.Request) {
 		// 把后台下发的测试任务带回去。agent 每次上报都会拉一次，
 		// 所以不需要推送通道 —— 最长等一个上报周期就能拿到命令。
 		Commands: h.pendingCommands(node.ID),
+		// 告诉 agent「静态信息收到了」—— 它收到才会停发。
+		// 写库失败时不回 true，让它下一条继续带。
+		FactsOK: factsOK,
 	})
 }
 
 // clientIP 取真实客户端 IP，兼容 Nginx 反代。
+// isBehindNAT 判断这台机器是不是在 NAT 后面。
+//
+// 判据：**Hub 看到的来源 IP 不在机器自己的网卡上**。
+// NAT 小鸡（共享公网 IP 那种）网卡上是 10.x/172.x 私网地址，
+// 出口公网 IP 属于宿主机，所以对不上。
+//
+// 只返回布尔值 —— 两边比对完就把地址丢掉，不落库、不展示。
+func isBehindNAT(localIPs []string, seenIP string) bool {
+	if seenIP == "" || len(localIPs) == 0 {
+		return false // 判不了就当没有，别瞎猜
+	}
+	for _, ip := range localIPs {
+		if ip == seenIP {
+			return false // 公网 IP 就在自己网卡上 → 直连
+		}
+	}
+	return true
+}
+
 func (h *Hub) clientIP(r *http.Request) string {
 	if h.cfg.BehindProxy {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {

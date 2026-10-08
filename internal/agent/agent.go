@@ -19,6 +19,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -108,6 +109,7 @@ type Agent struct {
 	interval   time.Duration
 	seq        int64
 	buf        []*model.Metrics // 断线缓冲，按时间顺序，最多 replayBufferSize 条
+	factsSent  bool             // Hub 确认收到静态信息前，每条上报都带着它
 	lastRTTms  float64
 	cmdCh      chan model.Command
 	cmdDone    chan struct{}
@@ -438,6 +440,15 @@ func (a *Agent) collectOnce() {
 	a.mu.Lock()
 	a.seq++
 	m.Seq = a.seq
+	// 静态信息（虚拟化/CPU/加速）一直带在每条上报里，**直到 Hub 确认收到**。
+	//
+	// 不只在注册时发：已经注册过的机器不会重新注册，新字段永远填不上。
+	// 也不只发第一条：那一条可能撞上"Hub 还没升级"或网络抖动 ——
+	// 那就再也补不上了。等 Hub 在响应里回了 facts_ok 才停。
+	// 体积很小（一百来字节），多带几条无所谓。
+	if !a.factsSent {
+		m.Facts = hostFactsOf()
+	}
 	if m.NetQ == nil && a.lastRTTms > 0 {
 		m.NetQ = &model.NetQStat{HubLatencyMS: a.lastRTTms}
 	}
@@ -464,6 +475,9 @@ func (a *Agent) flush(ctx context.Context) error {
 			return err
 		}
 		a.mu.Lock()
+		if resp != nil && resp.FactsOK {
+			a.factsSent = true // Hub 认了，之后不用再带
+		}
 		if len(a.buf) > 0 && a.buf[0] == m {
 			a.buf = a.buf[1:]
 		}
@@ -548,6 +562,9 @@ func (a *Agent) buildRegisterRequest(installToken string) *model.RegisterRequest
 		AgentVersion: Version,
 		CPUModel:     info.cpuModel,
 		CPUCores:     info.cpuCores,
+		TCPCC:        info.tcpCC,
+		TCPQdisc:     info.tcpQdisc,
+		LocalIPs:     info.localIPs,
 		MemTotal:     info.memTotal,
 		DiskTotal:    info.diskTotal,
 	}
@@ -555,6 +572,8 @@ func (a *Agent) buildRegisterRequest(installToken string) *model.RegisterRequest
 
 type hostFacts struct {
 	hostname, os, kernel, arch, virt, cpuModel string
+	tcpCC, tcpQdisc                            string
+	localIPs                                   []string
 	cpuCores                                   int
 	memTotal, diskTotal                        int64
 }
@@ -578,7 +597,80 @@ func hostInfo() hostFacts {
 	f.cpuModel = detectCPUModel()
 	f.memTotal = detectMemTotal()
 	f.diskTotal = detectDiskTotal()
+	f.tcpCC = detectTCPCC()
+	f.tcpQdisc = detectTCPQdisc()
+	f.localIPs = localIPv4s()
 	return f
+}
+
+// hostFactsOf 把 hostInfo 的结果收成上报用的静态信息。
+//
+// 只在启动时调一次（主机名/CPU/虚拟化这些开机后不会变）。
+func hostFactsOf() *model.HostFacts {
+	f := hostInfo()
+	return &model.HostFacts{
+		Virt:     f.virt,
+		CPUModel: f.cpuModel,
+		CPUCores: f.cpuCores,
+		TCPCC:    f.tcpCC,
+		TCPQdisc: f.tcpQdisc,
+		LocalIPs: f.localIPs,
+	}
+}
+
+// detectTCPCC 读当前生效的 TCP 拥塞控制算法（bbr / cubic / …）。
+//
+// 直接读 /proc 而不是跑 sysctl：少一次 fork，而且 /proc 到处都有。
+// BBR 是 VPS 圈最常被问的一项 —— 开了 BBR 的机器丢包时吞吐明显更稳。
+func detectTCPCC() string {
+	return readProcLine("/proc/sys/net/ipv4/tcp_congestion_control")
+}
+
+// detectTCPQdisc 读默认队列规则（fq / fq_codel / pfifo_fast…）。
+//
+// BBR 官方建议配 fq，所以这两个要一起看：光有 bbr 没配 fq 效果会打折。
+func detectTCPQdisc() string {
+	return readProcLine("/proc/sys/net/core/default_qdisc")
+}
+
+// readProcLine 读 /proc 下的一行小文件，读不到返回空串。
+func readProcLine(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// localIPv4s 取本机网卡上的 IPv4。
+//
+// **只用来判 NAT**：Hub 那边把这份列表和它看到的来源 IP 比一下，
+// 对不上就说明机器在 NAT 后面。Hub 不存这些地址、也不展示。
+func localIPv4s() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, ifc := range ifaces {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			if v4 := ipnet.IP.To4(); v4 != nil {
+				out = append(out, v4.String())
+			}
+		}
+	}
+	return out
 }
 
 // detectDistro 读 /etc/os-release 取发行版名。
@@ -660,13 +752,21 @@ func detectVirt() string {
 // detectCPUModel 读取 CPU 型号。
 func detectCPUModel() string {
 	if b, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+		// ⚠️ /proc/cpuinfo 长这样：`model name\t: Intel(R) Xeon(...)`
+		// —— 键和冒号之间**有一个制表符**。
+		// 以前搜 "model name:" 是搜不到的，所以 CPU 型号一直是空的。
+		// 正确做法是按冒号切、把左边的键 TrimSpace 再比。
 		for _, line := range strings.Split(string(b), "\n") {
-			for _, key := range []string{"model name", "Hardware", "Processor"} {
-				if i := strings.Index(line, key+":"); i >= 0 {
-					if v := strings.TrimSpace(line[i+len(key)+1:]); v != "" {
-						return v
-					}
-				}
+			i := strings.Index(line, ":")
+			if i < 0 {
+				continue
+			}
+			key := strings.TrimSpace(line[:i])
+			if key != "model name" && key != "Hardware" && key != "Processor" {
+				continue
+			}
+			if v := strings.TrimSpace(line[i+1:]); v != "" {
+				return v
 			}
 		}
 	}

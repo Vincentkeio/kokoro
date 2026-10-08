@@ -265,6 +265,8 @@ type nodeCard struct {
 	TaskItems []nodeTaskItem
 	// Uptime 是状态时间轴（近 30 天，一天一格）
 	Uptime *uptimeSummary
+	// Specs 是卡片上那行静态规格（CPU 型号/内存/Swap/虚拟化/加速）
+	Specs []specItem
 }
 
 // RegionLabel 给卡片上的地区文案兜底，避免模板里写三层 if。
@@ -293,6 +295,140 @@ type commentView struct {
 	model.Comment
 	Votes   model.VoteCount
 	ReplyTo string
+}
+
+// specItem 是卡片上「规格」行的一格：标签 + 值 + 可选的状态色。
+type specItem struct {
+	Label string
+	Value string
+	Level string // "" | ok | warn | bad —— 给加速/NAT 这类可好可坏的项上色
+}
+
+// nodeSpecs 组装卡片上那行静态规格。
+//
+// 这些是**注册时上报一次**的信息，不会每秒变 —— 和下面的实时指标
+// （CPU/内存/磁盘条）性质不同，所以单独一行、样式也不同。
+//
+// 只显示拿得到的：老 agent 没上报的字段（tcp_cc 等）直接不显示，
+// 不摆一个空值占位置。
+func nodeSpecs(n model.Node, m *model.Metrics) []specItem {
+	var out []specItem
+	add := func(label, value, level string) {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, specItem{Label: label, Value: value, Level: level})
+		}
+	}
+
+	// CPU 型号 + 核心数**合成一行** —— 拆成两行既占地方又没意义，
+	// "1 核" 单看说明不了性能，配型号才是完整信息。
+	cpu := shortCPUModel(n.CPUModel)
+	if n.CPUCores > 0 {
+		if cpu != "" {
+			cpu = fmt.Sprintf("%s（%d 核）", cpu, n.CPUCores)
+		} else {
+			cpu = fmt.Sprintf("%d 核", n.CPUCores)
+		}
+	}
+	add("CPU", cpu, "")
+	if n.MemTotal > 0 {
+		add("内存", humanBytes(float64(n.MemTotal)), "")
+	}
+	// Swap：小鸡上 swap 大小很关键 —— 内存爆了有没有 swap 是两回事
+	if m != nil && m.Mem.SwapTotal > 0 {
+		used := float64(m.Mem.SwapUsed) / float64(m.Mem.SwapTotal) * 100
+		lv := ""
+		if used >= 50 {
+			lv = "warn"
+		}
+		add("Swap", fmt.Sprintf("%s / %s（%.0f%%）",
+			humanBytes(float64(m.Mem.SwapUsed)), humanBytes(float64(m.Mem.SwapTotal)), used), lv)
+	} else if m != nil {
+		add("Swap", "无", "")
+	}
+
+	// 虚拟化：KVM 和 OpenVZ/LXC 的可用性差别很大
+	if n.Virt != "" {
+		add("虚拟化", virtLabel(n.Virt), "")
+	}
+	if n.DiskTotal > 0 {
+		add("磁盘", humanBytes(float64(n.DiskTotal)), "")
+	}
+	if n.OS != "" {
+		add("系统", n.OS, "")
+	}
+	if n.NAT {
+		add("网络", "NAT（共享公网 IP）", "warn")
+	}
+
+	// TCP 加速：BBR 是 VPS 圈最常被问的一项
+	if n.TCPCC != "" {
+		lv := ""
+		switch strings.ToLower(n.TCPCC) {
+		case "bbr":
+			lv = "ok"
+		case "cubic":
+			lv = "warn" // 内核默认值，没优化过
+		}
+		v := strings.ToUpper(n.TCPCC)
+		// BBR 建议配 fq；光有 bbr 没配 fq 效果打折扣，所以一起显示
+		if n.TCPQdisc != "" {
+			v += " + " + n.TCPQdisc
+		}
+		add("加速", v, lv)
+	}
+
+	// 运行时长和负载来自实时指标 —— 在这行里比单独一块更省地方
+	if m != nil {
+		if m.Host.Uptime > 0 {
+			add("运行", FmtDuration(m.Host.Uptime), "")
+		}
+		lv := ""
+		if m.CPU.Load1 >= 2 {
+			lv = "bad"
+		} else if m.CPU.Load1 >= 1 {
+			lv = "warn"
+		}
+		add("负载", fmt.Sprintf("%.2f", m.CPU.Load1), lv)
+	}
+	return out
+}
+
+// shortCPUModel 把 CPU 型号洗成人能一眼扫完的样子。
+//
+// 原始值长这样：`Intel(R) Xeon(R) Platinum 8272CL CPU @ 2.60GHz`
+// —— 卡片只有 300px 宽，原样放要占三行还全是噪音。
+// 去掉 (R)/(TM) 这类商标噪音和尾部的"CPU @ 2.60GHz"（主频卡上别处也有意义）。
+func shortCPUModel(m string) string {
+	if m == "" {
+		return ""
+	}
+	m = strings.NewReplacer("(R)", "", "(TM)", "", "(tm)", "").Replace(m)
+	// 砍掉 " CPU @ 2.60GHz" 这一段
+	if i := strings.Index(m, " CPU @"); i > 0 {
+		m = m[:i]
+	}
+	// AMD 的写法是 " @ 2.9GHz"，同理砍掉
+	if i := strings.Index(m, " @ "); i > 0 {
+		m = m[:i]
+	}
+	return strings.Join(strings.Fields(m), " ")
+}
+
+// virtLabel 把虚拟化类型说成人话。
+func virtLabel(v string) string {
+	switch strings.ToLower(v) {
+	case "kvm":
+		return "KVM"
+	case "openvz":
+		return "OpenVZ"
+	case "lxc":
+		return "LXC"
+	case "docker":
+		return "Docker"
+	case "none":
+		return "独服（无虚拟化）"
+	}
+	return v
 }
 
 // nodeTaskView 是详情页上一条测试记录。
@@ -554,6 +690,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 				}
 			}
 		}
+		c.Specs = nodeSpecs(n, m)
 		c.Uptime = h.loadUptime(n.ID)
 		c.Lat, c.Lon, c.HasCoord = resolveCoord(n.Country, n.Region, n.City)
 		if n.Online {

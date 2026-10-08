@@ -11,6 +11,8 @@ package store
 
 import (
 	"fmt"
+
+	"github.com/Vincentkeio/kokoro/internal/model"
 	"time"
 )
 
@@ -173,4 +175,44 @@ func dayPct(dateKey string, samples int64, perBucket, tzOffsetMin int, sinceMS i
 		pct = 0
 	}
 	return pct
+}
+
+// UpdateNodeFacts 更新节点的静态信息（虚拟化 / CPU / 加速 / NAT）。
+//
+// 为什么单独一个方法而不是走 UpdateNode：UpdateNode 会覆盖一大堆字段
+// （名字、坐标、标签…），而上报里只有静态信息 —— 用整条更新会把
+// 站长在后台改过的东西冲掉。
+//
+// 只在**值真的变了**的时候才写库：上报是每 2 秒一次，无脑写会把
+// SQLite 写爆（这些字段开机后基本不变）。
+func (s *Store) UpdateNodeFacts(nodeID string, f *model.HostFacts, nat bool) error {
+	if f == nil {
+		return nil
+	}
+	// 先读当前值，一样就不写
+	var cur struct {
+		virt, cc, qdisc, cpu string
+		cores                int
+		nat                  int
+	}
+	err := s.db.QueryRow(
+		`SELECT virt, IFNULL(tcp_cc,''), IFNULL(tcp_qdisc,''), IFNULL(cpu_model,''),
+		        IFNULL(cpu_cores,0), IFNULL(nat,0) FROM nodes WHERE id = ?`, nodeID).
+		Scan(&cur.virt, &cur.cc, &cur.qdisc, &cur.cpu, &cur.cores, &cur.nat)
+	if err != nil {
+		return err // 节点不存在就算了
+	}
+	natInt := 0
+	if nat {
+		natInt = 1
+	}
+	if cur.virt == f.Virt && cur.cc == f.TCPCC && cur.qdisc == f.TCPQdisc &&
+		cur.cpu == f.CPUModel && cur.cores == f.CPUCores && cur.nat == natInt {
+		return nil // 一模一样，不写
+	}
+	_, err = s.db.Exec(`UPDATE nodes SET
+virt = ?, tcp_cc = ?, tcp_qdisc = ?, cpu_model = ?, cpu_cores = ?, nat = ?
+WHERE id = ?`,
+		f.Virt, f.TCPCC, f.TCPQdisc, f.CPUModel, f.CPUCores, natInt, nodeID)
+	return err
 }

@@ -142,6 +142,19 @@
 
       {{if .Tags}}<div class="tags">{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</div>{{end}}
 
+      {{/* 机器规格：CPU 型号 / 内存 / Swap / 磁盘 / 系统 / 虚拟化 / 加速 / 运行 / 负载。
+           放在指标条**上面** —— 先看清是什么机器，再看它现在忙不忙。
+           ⚠️ 这里是**唯一**一块规格，不要再在下面加第二块（曾经加重复过）。 */}}
+      {{if .Specs}}
+      <dl class="specs">
+        {{range .Specs}}
+        <div{{if .Level}} class="lv-{{.Level}}"{{end}}>
+          <dt>{{.Label}}</dt><dd>{{.Value}}</dd>
+        </div>
+        {{end}}
+      </dl>
+      {{end}}
+
       {{if .Latest}}
       <div class="gauges">
         <div class="g"><span class="gl">CPU</span>
@@ -192,15 +205,6 @@
         </div>
       </div>
 
-      <dl class="specs">
-        <div><dt>CPU</dt><dd>{{specCPU .CPUCores}}</dd></div>
-        <div><dt>内存</dt><dd>{{specMem .MemTotal}}</dd></div>
-        <div><dt>磁盘</dt><dd>{{specDisk .DiskTotal}}</dd></div>
-        <div><dt>系统</dt><dd>{{if .OS}}{{.OS}}{{else}}—{{end}}</dd></div>
-        <div><dt>运行</dt><dd>{{fmtDur .Latest.Host.Uptime}}</dd></div>
-        <div><dt>负载</dt><dd>{{printf "%.2f" .Latest.CPU.Load1}}
-          <i class="bar mini"><i class="mem lv-{{.LoadLv}}" style="width:{{printf "%.0f" .LoadPct}}%"></i></i></dd></div>
-      </dl>
       {{else}}
       <p class="empty">还没有收到数据</p>
       {{end}}
@@ -274,7 +278,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=30"></script>
+<script src="/static/app.js?v=33"></script>
 </body>
 </html>
 {{end}}

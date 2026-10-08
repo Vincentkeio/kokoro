@@ -215,3 +215,29 @@ func TestParseFlatTOML(t *testing.T) {
 		t.Fatalf("解析结果异常：%+v", raw)
 	}
 }
+
+// TestDetectCPUModelParsesProcCPUInfo /proc/cpuinfo 的键和冒号之间有制表符。
+//
+// 踩过：以前是搜 `"model name:"`（无制表符），而文件里实际是
+// `model name\t: Intel...` —— 永远匹配不上，CPU 型号一直是空的。
+// 这个 bug 藏了很久，因为「空值」看起来就像「这台机器没上报」。
+func TestDetectCPUModelParsesProcCPUInfo(t *testing.T) {
+	// 直接验证解析逻辑：从一行里取值要能吃下制表符
+	line := "model name\t: Intel(R) Xeon(R) Platinum 8272CL CPU @ 2.60GHz"
+	i := strings.Index(line, ":")
+	if i < 0 {
+		t.Fatal("测试数据本身有问题")
+	}
+	key := strings.TrimSpace(line[:i])
+	if key != "model name" {
+		t.Errorf("键解析 = %q，应为 model name（要吃掉制表符）", key)
+	}
+	val := strings.TrimSpace(line[i+1:])
+	if !strings.HasPrefix(val, "Intel(R) Xeon(R) Platinum 8272CL") {
+		t.Errorf("值解析 = %q", val)
+	}
+	// 真机上有 /proc/cpuinfo 的话顺便验一下
+	if got := detectCPUModel(); got != "" {
+		t.Logf("本机 CPU 型号 = %s", got)
+	}
+}

@@ -33,7 +33,7 @@ import (
 var schemaSQL string
 
 // schemaVersion 当前 schema 版本，记录在 PRAGMA user_version 中。
-const schemaVersion = 6
+const schemaVersion = 7
 
 // 5 分钟聚合窗口长度（毫秒）。
 const bucket5m = int64(5 * 60 * 1000)
@@ -201,6 +201,9 @@ CREATE INDEX IF NOT EXISTS idx_events_node_ts ON events (node_id, ts DESC);`},
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_node   ON node_tasks (node_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON node_tasks (status, created_at);`},
+	{version: 7, sql: `ALTER TABLE nodes ADD COLUMN tcp_cc    TEXT    NOT NULL DEFAULT '';
+ALTER TABLE nodes ADD COLUMN tcp_qdisc TEXT    NOT NULL DEFAULT '';
+ALTER TABLE nodes ADD COLUMN nat       INTEGER NOT NULL DEFAULT 0;`},
 }
 
 // prepare 预编译高频写入语句。
@@ -222,6 +225,7 @@ ON CONFLICT (node_id, ts) DO NOTHING`)
 
 const nodeCols = `id, name, slug, token_hash, owner_id, region, provider, tags, group_name,
 visibility, hostname, os, kernel, arch, virt, cpu_model, cpu_cores, mem_total, disk_total,
+tcp_cc, tcp_qdisc, nat,
 agent_ver, ip, country, city, asn, online, last_seen, offline_warn, created_at, sort_order`
 
 // scanner 同时适配 *sql.Row 与 *sql.Rows。
@@ -234,11 +238,13 @@ func scanNode(sc scanner) (*model.Node, error) {
 		visibility  string
 		online      int
 		offlineWarn int
+		nat         int
 	)
 	err := sc.Scan(
 		&n.ID, &n.Name, &n.Slug, &n.TokenHash, &n.OwnerID, &n.Region, &n.Provider, &tags,
 		&n.Group, &visibility, &n.Hostname, &n.OS, &n.Kernel, &n.Arch, &n.Virt, &n.CPUModel,
-		&n.CPUCores, &n.MemTotal, &n.DiskTotal, &n.AgentVer, &n.IP, &n.Country, &n.City,
+		&n.CPUCores, &n.MemTotal, &n.DiskTotal, &n.TCPCC, &n.TCPQdisc, &nat,
+		&n.AgentVer, &n.IP, &n.Country, &n.City,
 		&n.ASN, &online, &n.LastSeen, &offlineWarn, &n.CreatedAt, &n.SortOrder,
 	)
 	if err != nil {
@@ -247,6 +253,7 @@ func scanNode(sc scanner) (*model.Node, error) {
 	n.Visibility = model.Visibility(visibility)
 	n.Online = online != 0
 	n.OfflineWarn = offlineWarn != 0
+	n.NAT = nat != 0
 	_ = decodeJSON(tags, &n.Tags)
 	return &n, nil
 }
@@ -280,7 +287,8 @@ func (s *Store) CreateNode(n *model.Node) error {
 	_, err = s.db.Exec(`INSERT INTO nodes (`+nodeCols+`) VALUES (`+placeholders(nodeCols)+`)`,
 		n.ID, n.Name, n.Slug, n.TokenHash, n.OwnerID, n.Region, n.Provider, tags, n.Group,
 		string(n.Visibility), n.Hostname, n.OS, n.Kernel, n.Arch, n.Virt, n.CPUModel,
-		n.CPUCores, n.MemTotal, n.DiskTotal, n.AgentVer, n.IP, n.Country, n.City,
+		n.CPUCores, n.MemTotal, n.DiskTotal, n.TCPCC, n.TCPQdisc, boolInt(n.NAT),
+		n.AgentVer, n.IP, n.Country, n.City,
 		n.ASN, boolInt(n.Online), n.LastSeen, boolInt(n.OfflineWarn), n.CreatedAt, n.SortOrder,
 	)
 	if err != nil {
@@ -403,11 +411,13 @@ func (s *Store) UpdateNode(n *model.Node) error {
 	_, err = s.db.Exec(`UPDATE nodes SET
 name=?, slug=?, owner_id=?, region=?, provider=?, tags=?, group_name=?, visibility=?,
 hostname=?, os=?, kernel=?, arch=?, virt=?, cpu_model=?, cpu_cores=?, mem_total=?, disk_total=?,
+tcp_cc=?, tcp_qdisc=?, nat=?,
 agent_ver=?, ip=?, country=?, city=?, asn=?, online=?, last_seen=?, offline_warn=?, sort_order=?,
 token_hash=CASE WHEN ?<>'' THEN ? ELSE token_hash END
 WHERE id=?`,
 		n.Name, slug, n.OwnerID, n.Region, n.Provider, tags, n.Group, string(n.Visibility),
 		n.Hostname, n.OS, n.Kernel, n.Arch, n.Virt, n.CPUModel, n.CPUCores, n.MemTotal, n.DiskTotal,
+		n.TCPCC, n.TCPQdisc, boolInt(n.NAT),
 		n.AgentVer, n.IP, n.Country, n.City, n.ASN, boolInt(n.Online), n.LastSeen,
 		boolInt(n.OfflineWarn), n.SortOrder, n.TokenHash, n.TokenHash, n.ID,
 	)

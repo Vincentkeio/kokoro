@@ -29,6 +29,11 @@ CREATE TABLE IF NOT EXISTS nodes (
     virt         TEXT    NOT NULL DEFAULT '',
     cpu_model    TEXT    NOT NULL DEFAULT '',
     cpu_cores    INTEGER NOT NULL DEFAULT 0,
+    -- TCP 加速：拥塞控制算法（bbr/cubic…）与队列规则（fq/fq_codel…）
+    tcp_cc       TEXT    NOT NULL DEFAULT '',
+    tcp_qdisc    TEXT    NOT NULL DEFAULT '',
+    -- 是否在 NAT 后面（公网 IP 不在自己网卡上）。0/1 布尔，**不存 IP**
+    nat          INTEGER NOT NULL DEFAULT 0,
     mem_total    INTEGER NOT NULL DEFAULT 0,
     disk_total   INTEGER NOT NULL DEFAULT 0,
     agent_ver    TEXT    NOT NULL DEFAULT '',

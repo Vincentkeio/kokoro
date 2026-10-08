@@ -27,6 +27,26 @@ type Metrics struct {
 	GPU   []GPUStat  `json:"gpu,omitempty"`
 	NetQ  *NetQStat  `json:"netq,omitempty"`
 	Parts []PartStat `json:"parts,omitempty"`
+
+	// Facts 是**启动时上报一次**的静态信息（虚拟化/CPU/加速…）。
+	//
+	// 为什么不塞进注册流程：agent 已经注册过的机器不会重新注册，
+	// 新加的字段就永远填不上。放进第一次上报里，老机器升级后也能补齐。
+	Facts *HostFacts `json:"facts,omitempty"`
+}
+
+// HostFacts 是不随时间变的机器信息。
+//
+// 注册时（RegisterRequest）和启动后第一次上报（Metrics.Facts）
+// 都带这份数据，Hub 收到就更新节点 —— 幂等，重复收到没关系。
+type HostFacts struct {
+	Virt     string `json:"virt,omitempty"`
+	CPUModel string `json:"cpu_model,omitempty"`
+	CPUCores int    `json:"cpu_cores,omitempty"`
+	TCPCC    string `json:"tcp_cc,omitempty"`
+	TCPQdisc string `json:"tcp_qdisc,omitempty"`
+	// LocalIPs 只用于判 NAT，Hub 侧不存、不显示。
+	LocalIPs []string `json:"local_ips,omitempty"`
 }
 
 type HostStat struct {
@@ -120,6 +140,14 @@ type RegisterRequest struct {
 	CPUCores     int    `json:"cpu_cores"`
 	MemTotal     int64  `json:"mem_total"`
 	DiskTotal    int64  `json:"disk_total"`
+
+	// TCP 加速：拥塞控制算法 + 队列规则。都是静态信息，注册时上报一次。
+	TCPCC    string `json:"tcp_cc,omitempty"`    // bbr / cubic / ...
+	TCPQdisc string `json:"tcp_qdisc,omitempty"` // fq / fq_codel / ...
+
+	// LocalIPs 是本机网卡上的 IPv4。
+	// **只用来判 NAT**（和 Hub 看到的来源 IP 比对），Hub 侧不存、不显示。
+	LocalIPs []string `json:"local_ips,omitempty"`
 }
 
 type RegisterResponse struct {
@@ -133,6 +161,13 @@ type RegisterResponse struct {
 // ---- 上报响应与命令 ----
 
 type ReportResponse struct {
+	// FactsOK 表示 Hub 已经收到并保存了这台机器的静态信息。
+	//
+	// 为什么要这个：静态信息只在启动后第一次上报里带一次，
+	// 而「第一次」可能撞上"Hub 还没升级到认识 facts 的版本"、
+	// 或者那一次请求正好失败 —— 那就永远补不上了。
+	// agent 看到 true 才停发，稳一点。
+	FactsOK    bool      `json:"facts_ok,omitempty"`
 	OK         bool      `json:"ok"`
 	IntervalMS int       `json:"interval_ms"`
 	ServerTime int64     `json:"server_time"`
@@ -166,35 +201,40 @@ const (
 )
 
 type Node struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Slug        string     `json:"slug"`
-	TokenHash   string     `json:"-"`
-	OwnerID     string     `json:"owner_id"`
-	Region      string     `json:"region"`
-	Provider    string     `json:"provider,omitempty"`
-	Tags        []string   `json:"tags,omitempty"`
-	Group       string     `json:"group,omitempty"`
-	Visibility  Visibility `json:"visibility"`
-	Hostname    string     `json:"hostname"`
-	OS          string     `json:"os"`
-	Kernel      string     `json:"kernel"`
-	Arch        string     `json:"arch"`
-	Virt        string     `json:"virt,omitempty"`
-	CPUModel    string     `json:"cpu_model,omitempty"`
-	CPUCores    int        `json:"cpu_cores"`
-	MemTotal    int64      `json:"mem_total"`
-	DiskTotal   int64      `json:"disk_total"`
-	AgentVer    string     `json:"agent_version"`
-	IP          string     `json:"ip,omitempty"`
-	Country     string     `json:"country,omitempty"`
-	City        string     `json:"city,omitempty"`
-	ASN         int        `json:"asn,omitempty"`
-	Online      bool       `json:"online"`
-	LastSeen    int64      `json:"last_seen"`
-	OfflineWarn bool       `json:"offline_warn"`
-	CreatedAt   int64      `json:"created_at"`
-	SortOrder   int        `json:"sort_order"`
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Slug       string     `json:"slug"`
+	TokenHash  string     `json:"-"`
+	OwnerID    string     `json:"owner_id"`
+	Region     string     `json:"region"`
+	Provider   string     `json:"provider,omitempty"`
+	Tags       []string   `json:"tags,omitempty"`
+	Group      string     `json:"group,omitempty"`
+	Visibility Visibility `json:"visibility"`
+	Hostname   string     `json:"hostname"`
+	OS         string     `json:"os"`
+	Kernel     string     `json:"kernel"`
+	Arch       string     `json:"arch"`
+	Virt       string     `json:"virt,omitempty"`
+	CPUModel   string     `json:"cpu_model,omitempty"`
+	CPUCores   int        `json:"cpu_cores"`
+	TCPCC      string     `json:"tcp_cc,omitempty"`
+	TCPQdisc   string     `json:"tcp_qdisc,omitempty"`
+	// NAT 表示这台机器在 NAT 后面（公网 IP 不在自己网卡上）。
+	// 只存布尔值 —— 具体 IP 不落库、不展示。
+	NAT         bool   `json:"nat,omitempty"`
+	MemTotal    int64  `json:"mem_total"`
+	DiskTotal   int64  `json:"disk_total"`
+	AgentVer    string `json:"agent_version"`
+	IP          string `json:"ip,omitempty"`
+	Country     string `json:"country,omitempty"`
+	City        string `json:"city,omitempty"`
+	ASN         int    `json:"asn,omitempty"`
+	Online      bool   `json:"online"`
+	LastSeen    int64  `json:"last_seen"`
+	OfflineWarn bool   `json:"offline_warn"`
+	CreatedAt   int64  `json:"created_at"`
+	SortOrder   int    `json:"sort_order"`
 }
 
 // NodeView 是页面渲染用的结构：节点静态信息 + 最新指标 + 内容。
