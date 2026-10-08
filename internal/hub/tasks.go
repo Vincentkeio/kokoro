@@ -230,21 +230,23 @@ func (h *Hub) finishTaskFromResult(res model.CommandResult) {
 
 // summarizeTask 从脚本输出里抽一句话，显示在卡片上。
 //
-// 三个脚本都输出 JSON，所以先按 JSON 抽字段；抽不到再退回纯文本启发式。
-// **不追求完美**：抽不出来就留空，卡片上不显示这一行，
-// 比硬凑一句错误的话要好。
+// 现在脚本输出的是 **NDJSON**（每行一个事件），直接逐行解析即可。
+// 老任务存的是第三方脚本那种「彩色输出里夹一个 JSON」，留着兼容分支 ——
+// 历史任务的摘要是算好存库的，不用重算，但手动重跑时还能用。
 func summarizeTask(kind, stdout string) string {
 	out := strings.TrimSpace(stdout)
 	if out == "" {
 		return ""
 	}
-	// 脚本会在 JSON 前后打印进度，先把 JSON 主体切出来
+	// 新格式：第一行就是 {"event":"start",...}
+	if strings.HasPrefix(out, "{") && strings.Contains(out, `"event"`) {
+		return summarizeBench(parseBenchNDJSON(out))
+	}
+	// 老格式：在混合输出里找最外层 JSON
 	if js := extractJSON(out); js != "" {
 		var doc map[string]any
 		if err := json.Unmarshal([]byte(js), &doc); err == nil {
-			if s := summarizeJSON(kind, doc); s != "" {
-				return s
-			}
+			return summarizeJSON(kind, doc)
 		}
 	}
 	return ""

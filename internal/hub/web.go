@@ -177,6 +177,53 @@ func (h *Hub) homeFeed(nodes []model.Node, limit int) []feedItem {
 	return items
 }
 
+// nodeTasks 取某台机器最近的测试记录，把 NDJSON 解析成模板能直接渲染的结构。
+//
+// 只展示最近几条：跑一次测试动辄几分钟，历史堆多了页面会长得没法看。
+func (h *Hub) nodeTasks(nodeID string, limit int) []nodeTaskView {
+	ts, err := h.store.ListTasks(nodeID, limit)
+	if err != nil {
+		return nil
+	}
+	out := make([]nodeTaskView, 0, len(ts))
+	for _, t := range ts {
+		v := nodeTaskView{
+			Title:    t.Title,
+			Kind:     t.Kind,
+			Status:   string(t.Status),
+			When:     relativeTime(t.CreatedAt),
+			Summary:  t.Summary,
+			Error:    t.Error,
+			ElapsedS: (t.FinishedAt - t.StartedAt) / 1000,
+		}
+		if t.Status == model.TaskDone && t.Detail != "" {
+			rep := parseBenchNDJSON(t.Detail)
+			// 摘要在老任务里是空的（那时解析器还不认 NDJSON）。
+			// 与其写迁移脚本回填，不如渲染时现算 —— 自愈，而且
+			// 以后解析规则改进了，历史任务也会跟着受益。
+			if v.Summary == "" {
+				v.Summary = summarizeBench(rep)
+			}
+			if len(rep.Items) > 0 {
+				v.HasResult = true
+				if rep.ElapsedM > 0 {
+					v.ElapsedS = rep.ElapsedM / 1000
+				}
+				for _, it := range rep.Items {
+					v.Items = append(v.Items, nodeTaskItem{
+						Label:  benchLabel(it.Test),
+						OK:     it.OK,
+						Err:    it.Err,
+						Fields: benchFields(it.Test, it.Data),
+					})
+				}
+			}
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
 // heroView 是首页顶部那块横幅的数据，由主题 layout.home.hero 决定要不要。
 type heroView struct {
 	Enabled   bool
@@ -211,6 +258,11 @@ type nodeCard struct {
 	// 卡片上显示成一行；没跑过测试就是空串。
 	TaskSummary string
 	TaskRunning bool
+	// 鼠标悬停在摘要上时弹出的详情。卡片上只放得下一行，
+	// 但解锁了哪些服务、是不是机房 IP 这些恰恰是访客最想看的。
+	TaskTitle string
+	TaskWhen  string
+	TaskItems []nodeTaskItem
 }
 
 // RegionLabel 给卡片上的地区文案兜底，避免模板里写三层 if。
@@ -241,6 +293,27 @@ type commentView struct {
 	ReplyTo string
 }
 
+// nodeTaskView 是详情页上一条测试记录。
+type nodeTaskView struct {
+	Title     string
+	Kind      string
+	Status    string // queued | running | done | failed
+	When      string
+	Summary   string
+	Error     string
+	ElapsedS  int64 // 秒。模板里的 fmtDur 收的就是秒，别传毫秒
+	Items     []nodeTaskItem
+	HasResult bool
+}
+
+// nodeTaskItem 是测试里的一项（磁盘 / CPU / IP…）。
+type nodeTaskItem struct {
+	Label  string
+	OK     bool
+	Err    string
+	Fields [][2]string
+}
+
 type nodePageData struct {
 	Theme    themeView
 	SiteName string
@@ -263,6 +336,10 @@ type nodePageData struct {
 	IsAdmin    bool   // 主人视角：能看到联系方式并审核
 
 	NetQ *NetQSummary // 网络质量（三网分省探测），还没有数据时为 nil
+
+	// Tasks 是最近跑过的测试（硬件/磁盘/CPU/IP/线路…），按时间倒序。
+	// 卡片上只显示一行摘要，完整结果在这里展开看。
+	Tasks []nodeTaskView
 
 	FlagCode string // 详情页标题上的国旗
 
@@ -431,12 +508,45 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		// 测试摘要：一次查最近几条就能同时得出「最新结果」和「有没有在跑」，
 		// 不用为每台机器发两条 SQL。
 		if ts, err := h.store.ListTasks(n.ID, 5); err == nil {
+			// 同一个测试项只保留最新一次的结果
+			seenTest := map[string]bool{}
 			for _, t := range ts {
 				if t.Status == model.TaskRunning || t.Status == model.TaskQueued {
 					c.TaskRunning = true
 				}
-				if c.TaskSummary == "" && t.Status == model.TaskDone && t.Summary != "" {
+				if t.Status != model.TaskDone {
+					continue
+				}
+				// ⚠️ 摘要只取**最新一条**（列表是倒序，所以先到的就是最新的），
+				// 但浮窗里的**每一项都要收** —— 这里以前写成
+				// `if c.TaskSummary != "" { continue }`，结果第二个任务起
+				// 整段都被跳过了，浮窗里只剩最新那一次的两项。
+				if c.TaskSummary == "" {
+					// 落库的摘要优先；空的（老任务）就现算一遍
 					c.TaskSummary = t.Summary
+					if c.TaskSummary == "" && t.Detail != "" {
+						c.TaskSummary = summarizeTask(t.Kind, t.Detail)
+					}
+					c.TaskWhen = relativeTime(t.CreatedAt)
+				}
+				// 把最近几项测试**合并**成一个浮窗。
+				// 只看最新一条的话，跑完 netquality 就看不到 IP 解锁了 ——
+				// 而"这台机器怎么样"是一整幅画面，不是最后跑的那一项。
+				// 列表按时间倒序，所以同一个测试项**先到的更新**，跳过旧的。
+				if t.Detail != "" {
+					rep := parseBenchNDJSON(t.Detail)
+					for _, it := range rep.Items {
+						if seenTest[it.Test] {
+							continue
+						}
+						seenTest[it.Test] = true
+						c.TaskItems = append(c.TaskItems, nodeTaskItem{
+							Label:  benchLabel(it.Test),
+							OK:     it.OK,
+							Err:    it.Err,
+							Fields: benchFields(it.Test, it.Data),
+						})
+					}
 				}
 			}
 		}
@@ -817,6 +927,7 @@ func (h *Hub) renderNodePage(w http.ResponseWriter, r *http.Request, slug, comme
 	}
 	data.CommentN = len(comments)
 	data.NetQ = h.LoadNetQ(node.ID)
+	data.Tasks = h.nodeTasks(node.ID, 6)
 
 	// 访问统计（粗粒度：PV 每次 +1）
 	profile.PV++

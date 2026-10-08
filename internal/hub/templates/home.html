@@ -205,12 +205,36 @@
       <p class="empty">还没有收到数据</p>
       {{end}}
 
-      {{/* 测试摘要：跑过跑分/解锁/线路检测就在这里显示一行。
-           正在跑的时候给个"测试中"，让站长知道要等。 */}}
+      {{/* 测试摘要：卡片上只放得下一行，所以完整结果放进悬浮浮窗 ——
+           解锁了哪些服务、是不是机房 IP，这些恰恰是访客最想看的。
+           用 :hover / :focus-within 触发，纯 CSS，不引 JS。 */}}
       {{if .TaskRunning}}
       <p class="task-line running"><span class="spin"></span>测试进行中…</p>
       {{else if .TaskSummary}}
-      <p class="task-line">🔧 {{.TaskSummary}}</p>
+      <div class="task-hover">
+        <p class="task-line" tabindex="0">🔧 {{.TaskSummary}}</p>
+        {{if .TaskItems}}
+        <div class="task-pop" role="tooltip">
+          <div class="tp-head">
+            <b>最近测试结果</b>
+            <span>{{.TaskWhen}}</span>
+          </div>
+          {{range .TaskItems}}
+          <div class="tp-item">
+            <h5>{{.Label}}{{if not .OK}} <span class="bad">失败</span>{{end}}</h5>
+            {{if .Err}}<p class="tp-err">{{.Err}}</p>{{end}}
+            {{if .Fields}}
+            <dl class="tp-fields">
+              {{range .Fields}}
+              <div><dt>{{index . 0}}</dt><dd>{{index . 1}}</dd></div>
+              {{end}}
+            </dl>
+            {{end}}
+          </div>
+          {{end}}
+        </div>
+        {{end}}
+      </div>
       {{end}}
 
       <div class="foot">
@@ -248,7 +272,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=24"></script>
+<script src="/static/app.js?v=28"></script>
 </body>
 </html>
 {{end}}

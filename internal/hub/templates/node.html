@@ -94,6 +94,46 @@
 
   {{if .NetQ}}{{template "netq.html" .NetQ}}{{end}}
 
+  {{/* 测试结果：从面板下发跑出来的硬件/磁盘/CPU/IP/线路结果。
+       卡片上只有一行摘要，完整数据在这里展开。 */}}
+  {{if .Tasks}}
+  <section class="panel" id="bench">
+    <h3>测试结果</h3>
+    <div class="bench-list">
+      {{range .Tasks}}
+      <details class="bench-card"{{if eq .Status "done"}} open{{end}}>
+        <summary class="bench-head">
+          <span class="st st-{{.Status}}">{{if eq .Status "queued"}}排队中{{else if eq .Status "running"}}执行中{{else if eq .Status "done"}}已完成{{else}}失败{{end}}</span>
+          <b>{{.Title}}</b>
+          {{if .Summary}}<span class="bench-sum">{{.Summary}}</span>{{end}}
+          <time class="bench-when">{{.When}}{{if .ElapsedS}} · 耗时 {{fmtDur .ElapsedS}}{{end}}</time>
+        </summary>
+
+        {{if .Error}}<p class="bench-err">{{.Error}}</p>{{end}}
+
+        {{if .HasResult}}
+        {{range .Items}}
+        <div class="bench-item">
+          <h4>{{.Label}}{{if not .OK}} <span class="bad">失败</span>{{end}}</h4>
+          {{if .Err}}<p class="bench-err">{{.Err}}</p>{{end}}
+          {{if .Fields}}
+          <dl class="bench-fields">
+            {{range .Fields}}
+            <div><dt>{{index . 0}}</dt><dd>{{index . 1}}</dd></div>
+            {{end}}
+          </dl>
+          {{end}}
+        </div>
+        {{end}}
+        {{else if eq .Status "done"}}
+        <p class="empty">这次没有可展示的结构化结果。</p>
+        {{end}}
+      </details>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+
   <section class="panel" id="comments">
     <h3>留言 <small class="muted">{{.CommentN}} 条</small></h3>
 
@@ -174,7 +214,7 @@
 window.__POINTS__ = [{{range .Points}}{"t":{{.Ts}},"cpu":{{.CPU}},"mu":{{.MemUsed}},"up":{{.NetUp}},"down":{{.NetDown}}},{{end}}];
 window.__SLUG__ = {{.Node.Slug | js}};
 </script>
-<script src="/static/app.js?v=24"></script>
+<script src="/static/app.js?v=28"></script>
 </body>
 </html>
 {{end}}

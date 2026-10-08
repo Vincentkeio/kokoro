@@ -100,6 +100,10 @@ def main():
     # 本机无头默认是 1，而 boss 的 Windows 常是 1.25/1.5 ——
     # 差的就是这个，好多"高分屏才有"的 bug 在默认视口下根本复现不出来。
     dpr = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0
+    # 第 5 个参数（可选）：截图前先跑一段 JS。
+    # 用途：触发纯 CSS 的悬浮浮窗（:hover / :focus-within）——
+    # 无头浏览器没法真的"把鼠标移上去"，只能靠 focus 触发。
+    pre_js = sys.argv[5] if len(sys.argv) > 5 else ""
 
     import websocket  # websocket-client
 
@@ -223,6 +227,14 @@ def main():
 
   return JSON.stringify(o);
 })()"""
+        # 先跑调用方给的 JS（比如 focus 出浮窗），再做自检和截图
+        if pre_js:
+            try:
+                s.send("Runtime.evaluate", {"expression": pre_js, "returnByValue": True})
+                time.sleep(0.6)  # 等 CSS transition 走完
+            except Exception as e:
+                print("预执行 JS 失败:", e)
+
         r = s.send("Runtime.evaluate", {"expression": js, "returnByValue": True})
         print("页面自检:", r["result"]["value"])
 
