@@ -33,7 +33,7 @@ import (
 var schemaSQL string
 
 // schemaVersion 当前 schema 版本，记录在 PRAGMA user_version 中。
-const schemaVersion = 7
+const schemaVersion = 8
 
 // 5 分钟聚合窗口长度（毫秒）。
 const bucket5m = int64(5 * 60 * 1000)
@@ -204,6 +204,22 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON node_tasks (status, created_at);`
 	{version: 7, sql: `ALTER TABLE nodes ADD COLUMN tcp_cc    TEXT    NOT NULL DEFAULT '';
 ALTER TABLE nodes ADD COLUMN tcp_qdisc TEXT    NOT NULL DEFAULT '';
 ALTER TABLE nodes ADD COLUMN nat       INTEGER NOT NULL DEFAULT 0;`},
+	{version: 8, sql: `CREATE TABLE IF NOT EXISTS node_articles (
+    id         TEXT    PRIMARY KEY,
+    node_id    TEXT    NOT NULL,
+    title      TEXT    NOT NULL DEFAULT '',
+    summary    TEXT    NOT NULL DEFAULT '',
+    content_md TEXT    NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_node_articles_node
+    ON node_articles (node_id, sort_order, created_at);
+-- 把老的"一台一篇"搬过来，不能丢
+INSERT INTO node_articles (id, node_id, title, summary, content_md, created_at, updated_at)
+SELECT 'art_' || node_id, node_id, '', summary, content_md, updated_at, updated_at
+FROM node_profile WHERE TRIM(content_md) <> '';`},
 }
 
 // prepare 预编译高频写入语句。

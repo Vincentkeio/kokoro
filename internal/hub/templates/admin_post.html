@@ -67,6 +67,11 @@
     <input type="hidden" name="id" value="{{.Node.ID}}">
     <input type="hidden" name="back" value="post">
 
+    <div class="field">
+      <label for="p-title">标题</label>
+      <input id="p-title" type="text" name="title" value="{{.Article.Title}}"
+             placeholder="例如：上手体验 · 东京 zouter" maxlength="120">
+    </div>
     <div>
       <label for="p-summary">摘要（列表页和分享卡片上的一句话）</label>
       <input id="p-summary" type="text" name="summary" value="{{.Profile.Summary}}"
@@ -101,7 +106,7 @@
 
 </main>
 
-<script src="/static/app.js?v=33"></script>
+<script src="/static/app.js?v=39"></script>
 </body>
 </html>
 {{end}}

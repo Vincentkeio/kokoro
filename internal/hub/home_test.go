@@ -99,8 +99,10 @@ func TestHomeRichCard(t *testing.T) {
 			t.Errorf("卡片缺少 %s", want)
 		}
 	}
-	// 规格拆成独立行后，CPU / 内存 / 磁盘 各自成项，不再拼成 "2C / 4G / 40G"
-	for _, want := range []string{"<dt>CPU</dt>", "<dt>内存</dt>", "<dt>磁盘</dt>", ">2 核<"} {
+	// 规格拆成独立行后各自成项，不再拼成 "2C / 4G / 40G"。
+	// 标签是「核心数」而不是「CPU」—— CPU 那一行留给型号（独占整行）。
+	// 这个测试节点没有 cpu_model，所以那行不渲染。
+	for _, want := range []string{"<dt>核心数</dt>", "<dt>内存</dt>", "<dt>磁盘</dt>", ">2 核<"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("规格表缺少 %s", want)
 		}

@@ -348,3 +348,22 @@ CREATE TABLE IF NOT EXISTS node_tasks (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_node    ON node_tasks (node_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status  ON node_tasks (status, created_at);
+
+-- 每台机器可以有多篇文章。
+--
+-- 为什么另起一张表而不是复用 node_profile：那张表是"一台一条"的
+-- 展示位（封面/价格/规格/浏览量），文章是"一台多篇"，生命周期也不同
+-- （站长会一篇篇加，不会为了加文章去改名片）。
+CREATE TABLE IF NOT EXISTS node_articles (
+    id         TEXT    PRIMARY KEY,
+    node_id    TEXT    NOT NULL,
+    title      TEXT    NOT NULL DEFAULT '',
+    summary    TEXT    NOT NULL DEFAULT '',   -- 列表页只显示这个，不渲染全文
+    content_md TEXT    NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (node_id) REFERENCES nodes (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_node_articles_node
+    ON node_articles (node_id, sort_order, created_at);

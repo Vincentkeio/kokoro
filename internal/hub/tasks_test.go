@@ -202,14 +202,22 @@ func TestHomeFeedMergesSources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
-	for _, want := range []string{"feed-item", "上线了", "阿宝", "东京小鸡"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("动态流里缺少 %s", want)
+	// ⚠️ 动态流**不再渲染在首页上**（boss 要求撤掉那张卡片，
+	// 位置换成了"全网速率"）。所以这里直接测函数本身，
+	// 而不是去首页的 HTML 里找 —— 这样万一以后又把流接回某个页面，
+	// 合流逻辑仍然是受测的。
+	feed := h.homeFeed([]model.Node{*n}, 10)
+	joined := ""
+	for _, it := range feed {
+		joined += it.Text + "\n"
+	}
+	for _, want := range []string{"上线了", "阿宝", "东京小鸡"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("动态流里缺少 %s，实际:\n%s", want, joined)
 		}
 	}
-	// 留言必须**原文**出现（不是被截断或转义坏掉）
-	if !strings.Contains(body, "这台延迟真稳") {
+	// 留言必须**原文**出现（不是被截断）
+	if !strings.Contains(joined, "这台延迟真稳") {
 		t.Error("留言内容没进动态流")
 	}
 	// 未审核的留言不该出现

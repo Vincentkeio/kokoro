@@ -14,7 +14,11 @@
   {{/* 只要 Hero 或时钟有一个要显示，这一行就渲染——
        把时钟塞进 {{if .Hero.Enabled}} 里的话，主题一关 Hero 时钟就跟着消失了。 */}}
   {{if or .Hero.Enabled .Clocks}}
-  <section class="hero">
+  {{/* 主题没开 Hero 时用 slim 版：否则会留一个空的深框，
+       看起来像加载失败。
+       ⚠️ 判据是 Hero.Enabled 而不是 Title —— Title 永远等于站点名（非空），
+       用它判的话永远走不到 slim 分支。 */}}
+  <section class="hero{{if not .Hero.Enabled}} hero-slim{{end}}">
     {{if .Hero.Enabled}}{{if or .Hero.Title .Hero.Subtitle}}
     <div class="hero-txt">
       <h1>{{if .Hero.Title}}{{.Hero.Title}}{{else}}{{.SiteName}}{{end}}</h1>
@@ -23,8 +27,9 @@
          同一屏出现两次同样的数字，只会让人犹豫哪个才是准的。 */}}
     </div>
     {{end}}{{end}}
-    {{/* 时钟只留**主机自己的时间**：原来铺五格（本地/UTC/东京/洛杉矶/法兰克福）
-         占一整行却没什么信息量，站长真正要看的是"面板这台机器现在几点"。 */}}
+    {{/* 时钟：贴在 Hero 右侧，**不再独占一行**。
+         原来它自己占一行，把标题和下面的内容推得很远，
+         而信息量只有"面板这台机器现在几点"。 */}}
     {{if .Clocks}}{{range .Clocks}}
     <div class="hub-clock"{{if .HasOffset}} data-offset="{{.OffsetMin}}"{{else if .TZ}} data-tz="{{.TZ}}"{{end}}>
       <span class="tz">{{.Label}}{{if .Note}} <em>{{.Note}}</em>{{end}}</span>
@@ -34,6 +39,10 @@
     {{end}}{{end}}
   </section>
   {{end}}
+
+  {{/* 「人 + 机器总览」一行：左边"这是谁"，右边"他有多少机器"。
+       本来就是一组信息，分两行反而要眼睛跳一下才拼得起来。 */}}
+  <div class="home-top">
 
   {{/* 站长名片：名字 / 头像 / 签名是**公开**的，游客和站长看到的是同一份。
        数据来自后台「站长名片」，只有三项都空时才不显示。 */}}
@@ -59,6 +68,28 @@
   </section>
   {{end}}
 
+  {{/* 「总览」：原来只存在于 /dashboard，访客得点进去才看得到。
+       并到首页后和站长名片同一行 —— 左边"这是谁"，右边"他有多少机器"，
+       本来就是一组信息。 */}}
+  {{if .Total}}
+  <section class="panel overview">
+    <h3>总览</h3>
+    <div class="ov-grid">
+      <div class="ov"><span>节点总数</span><b>{{.Dash.Total}}</b></div>
+      <div class="ov ok"><span>在线</span><b>{{.Dash.Online}}</b></div>
+      <div class="ov{{if .Dash.Offline}} bad{{end}}"><span>离线</span><b>{{.Dash.Offline}}</b></div>
+      <div class="ov"><span>地区</span><b>{{len .Regions}}</b></div>
+      {{if .Dash.AlertRules}}<div class="ov{{if .Dash.AlertFiring}} bad{{end}}"><span>告警规则</span><b>{{.Dash.AlertRules}}</b>{{if .Dash.AlertFiring}}<small>未恢复 {{.Dash.AlertFiring}}</small>{{end}}</div>{{end}}
+    </div>
+    <div class="ov-cap">
+      <span>合计 {{.Dash.CPUCores}} 核 · {{fmtBytes .Dash.MemTotal}} 内存 · {{fmtBytes .Dash.DiskTotal}} 磁盘</span>
+      <a class="btn ghost small" href="/dashboard">完整仪表盘 →</a>
+    </div>
+  </section>
+  {{end}}
+
+  </div>{{/* /.home-top */}}
+
   {{if .Stats}}
   <section class="stats">
     {{range .Stats}}
@@ -78,28 +109,42 @@
   {{/* 全球节点这一行：右侧是点阵地球，左侧空出来的区域放"动态/榜单"这类
        信息密度高的内容。窄屏时自动叠成一列。 */}}
   <div class="home-band">
-    {{/* 实时动态流：上下线 / 告警 / 留言 / 文章 / 测试完成，合成一条时间线。
-         选它而不是静态表格的理由：它跟旁边的地球一样是"活的"，
-         两块一起动才有监控大屏的感觉。 */}}
-    <section class="panel home-side-new" id="live">
+    {{/* 全网速率：从仪表盘搬过来的。
+         取代了原来的「实时动态」卡片 —— 动态流是"发生了什么"，
+         速率是"现在怎么样"，后者跟旁边的地球更配（都是实时状态）。
+
+         动态流没有删掉，只是首页不显示了；内容仍在 events 表里，
+         后台和节点页还能看到历史。 */}}
+    <section class="panel home-side-new" id="speed">
       <div class="live-head">
-        <h3>实时动态</h3>
+        <h3>全网速率</h3>
         <span class="live-pulse" aria-hidden="true"></span>
       </div>
-      {{if .Feed}}
-      <ol class="feed">
-        {{range .Feed}}
-        <li class="feed-item k-{{.Kind}}">
-          <span class="feed-icon" aria-hidden="true">{{.Icon}}</span>
-          <div class="feed-body">
-            <p class="feed-text">{{.Text}}</p>
-            <time class="feed-time">{{.When}}</time>
-          </div>
-        </li>
-        {{end}}
-      </ol>
+      {{if .Online}}
+      <div class="rate-row">
+        <div class="rate">
+          <span class="rl">↑ 上行</span>
+          <b class="rv">{{fmtRate .Dash.NetUp}}</b>
+        </div>
+        <div class="rate">
+          <span class="rl">↓ 下行</span>
+          <b class="rv">{{fmtRate .Dash.NetDown}}</b>
+        </div>
+      </div>
+      {{if .Dash.TrafficOK}}
+      <div class="rate-row traf">
+        <div class="rate">
+          <span class="rl">24h 上行</span>
+          <b class="rv sm">{{fmtBytes .Dash.TrafficUp}}</b>
+        </div>
+        <div class="rate">
+          <span class="rl">24h 下行</span>
+          <b class="rv sm">{{fmtBytes .Dash.TrafficDown}}</b>
+        </div>
+      </div>
+      {{end}}
       {{else}}
-      <p class="hint">还没有动态。小鸡上线、有人留言、站长更新文章，都会出现在这里。</p>
+      <p class="hint">没有在线节点。</p>
       {{end}}
     </section>
 
@@ -142,13 +187,15 @@
 
       {{if .Tags}}<div class="tags">{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</div>{{end}}
 
-      {{/* 机器规格：CPU 型号 / 内存 / Swap / 磁盘 / 系统 / 虚拟化 / 加速 / 运行 / 负载。
+      {{/* 机器规格：CPU 型号（独占一行）/ 核心数 / 内存 / Swap / 磁盘 /
+           系统 / 虚拟化 / 加速 / 运行。
            放在指标条**上面** —— 先看清是什么机器，再看它现在忙不忙。
-           ⚠️ 这里是**唯一**一块规格，不要再在下面加第二块（曾经加重复过）。 */}}
+           ⚠️ 这里是**唯一**一块规格，不要再在下面加第二块（曾经加重复过）。
+           ⚠️ CPU 型号必须独占一行：它比别的字段长得多，塞半栏会被裁掉。 */}}
       {{if .Specs}}
       <dl class="specs">
         {{range .Specs}}
-        <div{{if .Level}} class="lv-{{.Level}}"{{end}}>
+        <div class="{{if .Full}}full {{end}}{{if .Wide}}wide {{end}}{{if .Level}}lv-{{.Level}}{{end}}">
           <dt>{{.Label}}</dt><dd>{{.Value}}</dd>
         </div>
         {{end}}
@@ -278,7 +325,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=33"></script>
+<script src="/static/app.js?v=39"></script>
 </body>
 </html>
 {{end}}

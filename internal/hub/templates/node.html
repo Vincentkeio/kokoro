@@ -83,14 +83,43 @@
   <section class="panel"><p class="empty">这台小鸡还没有上报数据。</p></section>
   {{end}}
 
-  <section class="panel prose">
-    <h3>关于这台机器</h3>
-    {{if .Profile.ContentMD}}
-    <div class="md">{{md .Profile.ContentMD}}</div>
+  {{/* 文章区：列表里**只显示标题 + 摘要**，全文点开弹窗看。
+       理由：一篇几千字、五篇就是几万字，全铺在页面上会又长又难滚，
+       而且访客绝大多数只想扫一眼标题。
+       列表最多显示 5 条的高度，多了出滚动条。 */}}
+  <section class="panel articles" id="articles">
+    <h3>文章{{if .Articles}}<span class="art-count">{{len .Articles}} 篇</span>{{end}}</h3>
+    {{if .Articles}}
+    <ul class="art-list">
+      {{range .Articles}}
+      <li>
+        <button type="button" class="art-item" data-art="{{.ID}}">
+          <b class="art-title">{{.Title}}</b>
+          {{if .Summary}}<span class="art-sum">{{.Summary}}</span>{{end}}
+          <time class="art-when">{{.When}}</time>
+        </button>
+      </li>
+      {{end}}
+    </ul>
     {{else}}
-    <p class="empty">主人还没写介绍。</p>
+    <p class="empty">主人还没写文章。</p>
     {{end}}
   </section>
+
+  {{/* 弹窗：每篇一个 <dialog>。用原生 dialog 而不是自己造遮罩 ——
+       焦点圈定、ESC 关闭、滚动锁定浏览器都帮我们处理好了。 */}}
+  {{range .Articles}}
+  <dialog class="art-dlg" id="art-{{.ID}}">
+    <article class="art-body">
+      <header class="art-head">
+        <h3>{{.Title}}</h3>
+        <time>{{.When}}</time>
+        <button type="button" class="art-close" aria-label="关闭">✕</button>
+      </header>
+      <div class="md">{{.HTML}}</div>
+    </article>
+  </dialog>
+  {{end}}
 
   {{if .Uptime}}<section class="panel">{{template "uptime.html" .Uptime}}</section>{{end}}
 
@@ -216,7 +245,7 @@
 window.__POINTS__ = [{{range .Points}}{"t":{{.Ts}},"cpu":{{.CPU}},"mu":{{.MemUsed}},"up":{{.NetUp}},"down":{{.NetDown}}},{{end}}];
 window.__SLUG__ = {{.Node.Slug | js}};
 </script>
-<script src="/static/app.js?v=33"></script>
+<script src="/static/app.js?v=39"></script>
 </body>
 </html>
 {{end}}

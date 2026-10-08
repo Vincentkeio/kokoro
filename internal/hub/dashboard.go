@@ -99,80 +99,7 @@ func (h *Hub) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := dashboardData{SiteName: h.cfg.SiteName, Year: time.Now().Year()}
-
-	// 仪表盘对访客可见，所以只统计公开节点，隐藏机器不出现在任何一块里。
-	nodes, err := h.store.ListNodes(false)
-	if err != nil {
-		log.Printf("[hub] 仪表盘读取节点失败: %v", err)
-	}
-	snap, err := h.store.LatestSnapshot()
-	if err != nil {
-		log.Printf("[hub] 仪表盘读取最新指标失败: %v", err)
-	}
-
-	ids := make([]string, 0, len(nodes))
-	data.Total = len(nodes)
-	for _, n := range nodes {
-		ids = append(ids, n.ID)
-		if n.Online {
-			data.Online++
-		}
-		data.CPUCores += n.CPUCores
-
-		// 容量取上报值，取不到才退回注册时记的静态值。
-		mem, disk := n.MemTotal, n.DiskTotal
-		if m := snap[n.ID]; m != nil {
-			if m.Mem.Total > 0 {
-				mem = m.Mem.Total
-			}
-			if m.Disk.Total > 0 {
-				disk = m.Disk.Total
-			}
-			if n.Online {
-				data.NetUp += m.Net.Up
-				data.NetDown += m.Net.Down
-			}
-		}
-		data.MemTotal += mem
-		data.DiskTotal += disk
-	}
-	data.Offline = data.Total - data.Online
-
-	if rules, err := h.store.ListAlertRules(); err != nil {
-		log.Printf("[hub] 仪表盘读取告警规则失败: %v", err)
-	} else {
-		for _, r := range rules {
-			if !r.Silenced {
-				data.AlertRules++
-			}
-		}
-	}
-	if err := h.store.DB().QueryRow("SELECT COUNT(*) FROM alert_events WHERE resolved = 0").
-		Scan(&data.AlertFiring); err != nil {
-		log.Printf("[hub] 仪表盘统计未恢复告警失败: %v", err)
-	}
-
-	data.TrafficUp, data.TrafficDown, data.TrafficOK = h.dashTraffic24h(ids)
-
-	data.Points = h.dashNetPoints(ids)
-	for _, p := range data.Points {
-		if p.Up > data.PeakUp {
-			data.PeakUp = p.Up
-		}
-		if p.Down > data.PeakDown {
-			data.PeakDown = p.Down
-		}
-	}
-
-	data.TopLoad = h.dashTopLoad(nodes, snap)
-	data.Events = h.dashAlertEvents(ids)
-
-	data.Host, data.HostNote = h.collectHostSelf()
-	if data.Host != nil {
-		data.HostMemPct = Pct(float64(data.Host.Mem.Used), float64(data.Host.Mem.Total))
-		data.HostDiskPct = Pct(float64(data.Host.Disk.Used), float64(data.Host.Disk.Total))
-	}
+	data := h.buildDashboard()
 
 	h.render(w, "dashboard.html", &data, r)
 }
@@ -439,4 +366,87 @@ func dashPlaceholders(n int) string {
 		return ""
 	}
 	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
+
+// buildDashboard 组装仪表盘要用的全部数据。
+//
+// 抽成独立函数是因为**首页也要用** —— 仪表盘的内容要并到首页上，
+// 两边调同一个函数算同一份数据，才不会出现「首页说 3 台在线、
+// 仪表盘说 4 台」这种自相矛盾。
+func (h *Hub) buildDashboard() dashboardData {
+	data := dashboardData{SiteName: h.cfg.SiteName, Year: time.Now().Year()}
+	// 仪表盘对访客可见，所以只统计公开节点，隐藏机器不出现在任何一块里。
+	nodes, err := h.store.ListNodes(false)
+	if err != nil {
+		log.Printf("[hub] 仪表盘读取节点失败: %v", err)
+	}
+	snap, err := h.store.LatestSnapshot()
+	if err != nil {
+		log.Printf("[hub] 仪表盘读取最新指标失败: %v", err)
+	}
+
+	ids := make([]string, 0, len(nodes))
+	data.Total = len(nodes)
+	for _, n := range nodes {
+		ids = append(ids, n.ID)
+		if n.Online {
+			data.Online++
+		}
+		data.CPUCores += n.CPUCores
+
+		// 容量取上报值，取不到才退回注册时记的静态值。
+		mem, disk := n.MemTotal, n.DiskTotal
+		if m := snap[n.ID]; m != nil {
+			if m.Mem.Total > 0 {
+				mem = m.Mem.Total
+			}
+			if m.Disk.Total > 0 {
+				disk = m.Disk.Total
+			}
+			if n.Online {
+				data.NetUp += m.Net.Up
+				data.NetDown += m.Net.Down
+			}
+		}
+		data.MemTotal += mem
+		data.DiskTotal += disk
+	}
+	data.Offline = data.Total - data.Online
+
+	if rules, err := h.store.ListAlertRules(); err != nil {
+		log.Printf("[hub] 仪表盘读取告警规则失败: %v", err)
+	} else {
+		for _, r := range rules {
+			if !r.Silenced {
+				data.AlertRules++
+			}
+		}
+	}
+	if err := h.store.DB().QueryRow("SELECT COUNT(*) FROM alert_events WHERE resolved = 0").
+		Scan(&data.AlertFiring); err != nil {
+		log.Printf("[hub] 仪表盘统计未恢复告警失败: %v", err)
+	}
+
+	data.TrafficUp, data.TrafficDown, data.TrafficOK = h.dashTraffic24h(ids)
+
+	data.Points = h.dashNetPoints(ids)
+	for _, p := range data.Points {
+		if p.Up > data.PeakUp {
+			data.PeakUp = p.Up
+		}
+		if p.Down > data.PeakDown {
+			data.PeakDown = p.Down
+		}
+	}
+
+	data.TopLoad = h.dashTopLoad(nodes, snap)
+	data.Events = h.dashAlertEvents(ids)
+
+	data.Host, data.HostNote = h.collectHostSelf()
+	if data.Host != nil {
+		data.HostMemPct = Pct(float64(data.Host.Mem.Used), float64(data.Host.Mem.Total))
+		data.HostDiskPct = Pct(float64(data.Host.Disk.Used), float64(data.Host.Disk.Total))
+	}
+
+	return data
 }

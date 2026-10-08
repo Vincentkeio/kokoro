@@ -157,7 +157,7 @@ body[data-k-align="left"] > main.wrap { margin-left: 0; margin-right: 0; }
 /* ---- 卡片 ---- */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--k-card-min, 300px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--k-card-min, 340px), 1fr));
   gap: var(--gap);
   padding: var(--gap) 0;
 }
@@ -1231,18 +1231,200 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 .uptime-legend .cell:first-child { margin-left: 0; }
 
 /* ---- 卡片上的静态规格 ----
-   CPU 型号 / 内存 / Swap / 虚拟化 / TCP 加速。
-   这些不随时间变，所以做得比实时指标条更"安静"。 */
+   排版思路：把"这台机器是什么"和"它现在忙不忙"分开 ——
+   规格在上、指标条在下，访客先认机器再看状态。
+
+   规格内部再分两层：
+     1) CPU 型号独占一行（它最长，塞半栏就会被裁）
+     2) 其余字段两列对齐
+   ⚠️ 不要给值加 line-clamp / text-overflow —— Swap 和 CPU 型号
+   必须**完整显示**，宁可换行。 */
 .card .specs {
-  margin: var(--s2) 0 0; padding: 0;
-  display: grid; gap: 2px var(--s3);
+  margin: var(--s3) 0 0; padding: 0;
+  display: grid; gap: 4px var(--s4);
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
-.card .specs > div { display: flex; gap: var(--s2); font-size: 12px; min-width: 0; }
-.card .specs dt { color: var(--muted); flex: none; min-width: 3.2rem; }
-/* dd 必须 min-width:0，否则 flex 项不会收缩，长型号会被裁掉半截 */
-.card .specs dd { margin: 0; color: var(--fg); overflow-wrap: anywhere; min-width: 0; }
-/* 可好可坏的项上色：bbr=绿、cubic=黄、NAT=黄 */
+
+/* 每一项：标签固定宽度、值占剩下的。align-items 用 baseline，
+   这样两列的基线是对齐的，扫起来不费劲。 */
+.card .specs > div {
+  display: flex; gap: var(--s2); align-items: baseline; min-width: 0;
+}
+.card .specs dt {
+  color: var(--muted); flex: none;
+  font-size: 11.5px; line-height: 1.5;
+  /* 标签宽度固定，值才能对齐成一列 */
+  min-width: 3.6rem;
+}
+.card .specs dd {
+  margin: 0; color: var(--fg); min-width: 0;
+  font-size: 12.5px; line-height: 1.5;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+
+/* CPU 型号独占整行：加一层浅底 + 下分隔线，让它像"小标题"。
+   访客第一眼看的就是 CPU 型号。 */
+.card .specs > div.full {
+  grid-column: 1 / -1;
+  flex-direction: column; gap: 1px;
+  padding: var(--s2) var(--s3);
+  margin-bottom: var(--s1);
+  background: var(--sunken);
+  border-radius: var(--r-sm);
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.card .specs > div.full dt { min-width: 0; font-size: 10px; letter-spacing: .06em; }
+.card .specs > div.full dd {
+  font-size: 13px; font-weight: 600; color: var(--fg-strong);
+  line-height: 1.4;
+}
+
+/* 可好可坏的项上色：bbr=绿、cubic=黄、NAT=黄、负载高=红 */
 .card .specs .lv-ok dd   { color: var(--ok); }
 .card .specs .lv-warn dd { color: var(--warn, #bf8700); }
 .card .specs .lv-bad dd  { color: var(--bad); }
+
+/* ---- 详情页：文章列表 + 弹窗 ----
+   列表只显示标题和摘要，全文在 <dialog> 里。
+   最多显示 5 条的高度，再多就出滚动条。 */
+.articles h3 { display: flex; align-items: baseline; gap: var(--s2); }
+.art-count { font-size: 11px; color: var(--faint); font-weight: 400; }
+
+.art-list {
+  list-style: none; margin: 0; padding: 0;
+  /* 5 条的高度：每条约 68px（标题+一行摘要+时间） */
+  max-height: 21.5rem;
+  overflow-y: auto;
+  /* 滚动条别贴着文字 */
+  padding-right: 2px;
+}
+.art-list > li + li { border-top: var(--kokoro-border-width, 1px) solid var(--line); }
+
+.art-item {
+  display: block; width: 100%; text-align: left;
+  background: none; border: 0; cursor: pointer;
+  padding: var(--s3) var(--s2);
+  font: inherit; color: inherit;
+  border-radius: var(--r-sm);
+  transition: background var(--t-fast) var(--ease);
+}
+.art-item:hover { background: var(--sunken); }
+.art-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.art-title { display: block; font-size: 13.5px; color: var(--fg-strong); }
+.art-sum {
+  display: block; margin-top: 2px;
+  font-size: 12px; color: var(--muted);
+  /* 摘要最多两行，超了省略 */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.art-when { display: block; margin-top: 3px; font-size: 10.5px; color: var(--faint); font-family: var(--mono); }
+
+/* ---- 弹窗 ---- */
+.art-dlg {
+  width: min(46rem, 92vw); max-height: 84vh;
+  padding: 0; border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); background: var(--panel); color: var(--fg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .3);
+  overflow: hidden;
+}
+.art-dlg::backdrop { background: rgba(0, 0, 0, .45); }
+.art-body { display: flex; flex-direction: column; max-height: 84vh; }
+.art-head {
+  display: flex; align-items: baseline; gap: var(--s3);
+  padding: var(--s4) var(--s4) var(--s3);
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.art-head h3 { margin: 0; font-size: 15px; flex: 1; }
+.art-head time { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+.art-close {
+  flex: none; background: none; border: 0; cursor: pointer;
+  font-size: 15px; line-height: 1; color: var(--muted); padding: 2px 4px;
+  border-radius: var(--r-sm);
+}
+.art-close:hover { background: var(--sunken); color: var(--fg); }
+/* 正文自己滚，标题栏固定 */
+.art-body > .md { overflow-y: auto; padding: var(--s4); }
+
+/* ---- 首页改版排版 ----
+   目标：把 /dashboard 的内容并进来，同时别让首页变成一堵墙。
+   三条规则：
+     1) 时钟贴 Hero 右侧，不占独立行
+     2) 「站长名片 + 总览」一行 —— 人是谁、有多少机器，本来就该一起看
+     3) 「全网速率 + 地球」一行 —— 都是实时状态，放一起才像监控大屏 */
+
+/* Hero 改成左右两栏：标题在左、时钟在右 */
+.hero {
+  display: flex; align-items: center; gap: var(--s5);
+  flex-wrap: wrap;
+  text-align: left;   /* 原来居中，加了右侧时钟后居中会打架 */
+}
+/* 只有标题没有时钟时，还是居中好看 */
+.hero:not(:has(.hub-clock)) { justify-content: center; text-align: center; }
+.hero .hub-clock { margin-left: auto; }
+
+/* 站长名片 + 总览 */
+.home-top {
+  display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: stretch;
+  margin-top: var(--gap);
+}
+/* 两块的 margin-top 由容器统一给，自己不要再加，否则会错位 */
+.home-top > .owner,
+.home-top > .owner-empty,
+.home-top > .overview { margin-top: 0; }
+.home-top > .owner-empty,
+.home-top > .overview { grid-column: auto; }
+
+/* 总览：四个数字一格，下面一行容量合计 */
+.overview { display: flex; flex-direction: column; }
+.overview h3 { margin: 0 0 var(--s3); font-size: 13px; color: var(--muted); font-weight: 600; }
+.ov-grid {
+  display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  flex: 1;
+}
+.ov { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ov span { font-size: 11px; color: var(--muted); }
+.ov b { font-size: 20px; font-family: var(--mono); line-height: 1.1; color: var(--fg-strong); }
+.ov small { font-size: 10px; color: var(--faint); }
+.ov.ok b  { color: var(--ok); }
+.ov.bad b { color: var(--bad); }
+.ov-cap {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s3); flex-wrap: wrap;
+  margin-top: var(--s3); padding-top: var(--s3);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  font-size: 11.5px; color: var(--faint);
+}
+
+/* 全网速率（取代了原来的实时动态卡） */
+#speed { display: flex; flex-direction: column; }
+.rate-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3);
+  margin-top: var(--s3);
+}
+.rate-row.traf { margin-top: var(--s2); padding-top: var(--s3);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line); }
+.rate { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rate .rl { font-size: 11px; color: var(--muted); }
+.rate .rv { font-size: 20px; font-family: var(--mono); color: var(--fg-strong); line-height: 1.15; }
+.rate .rv.sm { font-size: 15px; color: var(--fg); }
+
+/* 独占整行但不高亮 —— Swap 用它（值天生很长，塞半栏会被截断）。 */
+.card .specs > div.wide { grid-column: 1 / -1; }
+
+/* 主题没开 Hero 时**整个框都不要**，只把时钟推到右边。
+   留着框的话左边一大片空白，看起来像加载失败。 */
+.hero-slim {
+  padding: 0; border: 0; background: none;
+  justify-content: flex-end;
+  margin: var(--s4) 0 0;
+}
+.hero-slim .hub-clock { border: 0; background: none; padding: 0; }
+
+/* 速率卡不要跟地球等高 —— 里面只有四个数字，拉高后下面一大片空白，
+   看着像没加载出来。.home-side-new 上有固定 height，必须显式覆盖，
+   光靠 align-self 是盖不住的（height 不是对齐属性）。 */
+.home-band > #speed { height: auto; align-self: start; }

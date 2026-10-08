@@ -354,3 +354,35 @@
   tick();
   setInterval(tick, 1000);
 })();
+
+/* ---- 文章弹窗 ----
+   列表里只有标题+摘要，点开才显示全文。
+   用原生 <dialog>：焦点圈定、ESC 关闭、背景滚动锁定都是浏览器给的，
+   比自己搭遮罩层稳。 */
+(function () {
+  var list = document.querySelector('.art-list');
+  if (!list) return;
+
+  list.addEventListener('click', function (e) {
+    var btn = e.target.closest('.art-item');
+    if (!btn) return;
+    var dlg = document.getElementById('art-' + btn.dataset.art);
+    if (!dlg) return;
+    if (typeof dlg.showModal === 'function') {
+      dlg.showModal();
+    } else {
+      dlg.setAttribute('open', '');  // 老浏览器兜底
+    }
+  });
+
+  // 关闭按钮 + 点遮罩关闭。
+  // 点遮罩：<dialog> 本身占满整个对话框区域，所以 e.target === dlg
+  // 就说明点的是空白处（内容都在子元素里）。
+  document.querySelectorAll('.art-dlg').forEach(function (dlg) {
+    dlg.addEventListener('click', function (e) {
+      if (e.target === dlg) dlg.close();
+    });
+    var x = dlg.querySelector('.art-close');
+    if (x) x.addEventListener('click', function () { dlg.close(); });
+  });
+})();

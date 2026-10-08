@@ -128,6 +128,21 @@ type NetQStat struct {
 
 // ---- 注册 ----
 
+// Article 是某台机器的一篇文章。
+//
+// 一台可以有多篇（站长会一篇篇加：上手体验、测评、续费记…）——
+// 所以单独一张表，而不是塞在"一台一条"的 node_profile 里。
+type Article struct {
+	ID        string `json:"id"`
+	NodeID    string `json:"node_id"`
+	Title     string `json:"title"`
+	Summary   string `json:"summary"`    // 列表页只显示这个
+	ContentMD string `json:"content_md"` // 全文只在弹窗里渲染
+	SortOrder int    `json:"sort_order"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
 type RegisterRequest struct {
 	InstallToken string `json:"install_token"`
 	Hostname     string `json:"hostname"`

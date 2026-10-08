@@ -45,17 +45,28 @@ func TestNodeSpecsIncludesSwapAndCPU(t *testing.T) {
 	for _, s := range nodeSpecs(n, m) {
 		got[s.Label] = s.Value
 	}
-	for _, want := range []string{"CPU", "内存", "Swap", "磁盘", "系统", "虚拟化", "网络", "加速"} {
+	for _, want := range []string{"CPU", "核心数", "内存", "Swap", "磁盘", "系统", "虚拟化", "网络", "加速"} {
 		if _, ok := got[want]; !ok {
 			t.Errorf("规格里缺少 %q，现有: %v", want, got)
 		}
 	}
-	// CPU 型号和核心数合成一行 —— 拆两行既占地方，"1 核"单看也没意义
-	if !strings.Contains(got["CPU"], "EPYC") || !strings.Contains(got["CPU"], "2 核") {
-		t.Errorf("CPU 行应同时有型号和核心数：%q", got["CPU"])
-	}
+	// CPU 型号单独一行（独占整行），核心数是**另一行**。
+	// 型号太长，和核心挤一行会被裁 —— boss 反馈过两次。
 	if !strings.Contains(got["CPU"], "EPYC") {
-		t.Errorf("CPU 应带型号：%q", got["CPU"])
+		t.Errorf("CPU 行应是型号：%q", got["CPU"])
+	}
+	if got["核心数"] != "2 核" {
+		t.Errorf("核心数行 = %q，应为 2 核", got["核心数"])
+	}
+	// 型号那行必须是 Full（独占整行）
+	var cpuFull bool
+	for _, it := range nodeSpecs(n, m) {
+		if it.Label == "CPU" {
+			cpuFull = it.Full
+		}
+	}
+	if !cpuFull {
+		t.Error("CPU 型号行必须独占整行，否则会被裁掉")
 	}
 	if !strings.Contains(got["加速"], "BBR") || !strings.Contains(got["加速"], "fq") {
 		t.Errorf("加速应同时显示算法和队列规则：%q", got["加速"])

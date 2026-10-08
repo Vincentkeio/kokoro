@@ -59,11 +59,20 @@ type homeData struct {
 	GlobeJSON template.JS
 	// GlobeLandURL 带版本号，改了掩码能立刻生效（浏览器缓存按 URL 区分）
 	GlobeLandURL string
-	// Feed 是首页「实时动态流」的内容（上下线 / 告警 / 留言 / 文章 / 测试）。
+	// Feed 是「实时动态流」的内容（上下线 / 告警 / 留言 / 文章 / 测试）。
+	//
+	// ⚠️ 首页**不再渲染**它了 —— boss 要求撤掉"实时动态"卡片，
+	// 位置让给"全网速率"。所以首页也不再调用 homeFeed()：
+	// 那会白跑 4 次数据库查询（events/comments/articles/tasks）。
+	// 函数保留着，后台或详情页想用随时可以接。
 	Feed []feedItem
 	// OwnerEmptyHint：当前访客是管理员、但站长名片还是空的。
 	// 只在管理员自己看的时候为真——访客不该看到"这里缺东西"的提示。
 	OwnerEmptyHint bool
+
+	// Dash 是仪表盘那份数据。并到首页之后两边共用，
+	// 不会出现"首页说 3 台在线、仪表盘说 4 台"。
+	Dash dashboardData
 }
 
 // feedItem 是首页「实时动态流」里的一条。
@@ -308,11 +317,29 @@ type commentView struct {
 	ReplyTo string
 }
 
+// articleView 是详情页上的一篇文章。
+//
+// 列表里**只放标题和摘要** —— 全文渲染成 HTML 塞进弹窗。
+// 不把全文直接铺在页面上：一篇几千字，五篇就是几万字，
+// 打开详情页要等半天、滚动条长得没法用。
+type articleView struct {
+	ID      string
+	Title   string
+	Summary string
+	HTML    template.HTML // 渲染好的正文，只给弹窗用（已消毒，见 RenderMarkdown）
+	When    string
+}
+
 // specItem 是卡片上「规格」行的一格：标签 + 值 + 可选的状态色。
 type specItem struct {
 	Label string
 	Value string
 	Level string // "" | ok | warn | bad —— 给加速/NAT 这类可好可坏的项上色
+	// Full 表示独占整行**并且高亮**（浅底 + 加粗）—— 只给 CPU 型号用。
+	Full bool
+	// Wide 表示独占整行但**不高亮**。给 Swap 这种"不算标题、但太长"的值用：
+	// "104.0 MB / 1024.0 MB（10%）"塞半栏只会显示成"104.0 MB / 1024"。
+	Wide bool
 }
 
 // nodeSpecs 组装卡片上那行静态规格。
@@ -330,36 +357,39 @@ func nodeSpecs(n model.Node, m *model.Metrics) []specItem {
 		}
 	}
 
-	// CPU 型号 + 核心数**合成一行** —— 拆成两行既占地方又没意义，
-	// "1 核" 单看说明不了性能，配型号才是完整信息。
-	cpu := shortCPUModel(n.CPUModel)
-	if n.CPUCores > 0 {
-		if cpu != "" {
-			cpu = fmt.Sprintf("%s（%d 核）", cpu, n.CPUCores)
-		} else {
-			cpu = fmt.Sprintf("%d 核", n.CPUCores)
-		}
+	// CPU 型号单独占一整行、放最前面。
+	//
+	// 它比其它字段长得多（"Intel Xeon Platinum 8272CL"），塞在双栏里
+	// 只会显示半截 —— boss 反馈过两次。独占一行才排得开。
+	if m := shortCPUModel(n.CPUModel); m != "" {
+		out = append(out, specItem{Label: "CPU", Value: m, Full: true})
 	}
-	add("CPU", cpu, "")
+	// 原来的"CPU"行改成核心数：型号已经单独一行了，
+	// 这里再写一遍 CPU 只会让人以为有两块 CPU。
+	if n.CPUCores > 0 {
+		add("核心数", fmt.Sprintf("%d 核", n.CPUCores), "")
+	}
 	if n.MemTotal > 0 {
 		add("内存", humanBytes(float64(n.MemTotal)), "")
 	}
-	// Swap：小鸡上 swap 大小很关键 —— 内存爆了有没有 swap 是两回事
+	// Swap：小鸡上有没有 swap 很关键 —— 内存爆了是靠它兜底的。
+	// **必须显示完整**（用量/总量/百分比），这是 boss 明确提的。
 	if m != nil && m.Mem.SwapTotal > 0 {
 		used := float64(m.Mem.SwapUsed) / float64(m.Mem.SwapTotal) * 100
 		lv := ""
 		if used >= 50 {
 			lv = "warn"
 		}
-		add("Swap", fmt.Sprintf("%s / %s（%.0f%%）",
-			humanBytes(float64(m.Mem.SwapUsed)), humanBytes(float64(m.Mem.SwapTotal)), used), lv)
+		// Swap 要**独占整行**：这个值天生就长（用量/总量/百分比），
+		// 塞半栏会被截成 "104.0 MB / 1024" —— boss 反馈过两次。
+		out = append(out, specItem{
+			Label: "Swap", Level: lv, Wide: true,
+			Value: fmt.Sprintf("%s / %s（%.0f%%）",
+				humanBytes(float64(m.Mem.SwapUsed)),
+				humanBytes(float64(m.Mem.SwapTotal)), used),
+		})
 	} else if m != nil {
 		add("Swap", "无", "")
-	}
-
-	// 虚拟化：KVM 和 OpenVZ/LXC 的可用性差别很大
-	if n.Virt != "" {
-		add("虚拟化", virtLabel(n.Virt), "")
 	}
 	if n.DiskTotal > 0 {
 		add("磁盘", humanBytes(float64(n.DiskTotal)), "")
@@ -367,10 +397,12 @@ func nodeSpecs(n model.Node, m *model.Metrics) []specItem {
 	if n.OS != "" {
 		add("系统", n.OS, "")
 	}
+	if n.Virt != "" {
+		add("虚拟化", virtLabel(n.Virt), "")
+	}
 	if n.NAT {
 		add("网络", "NAT（共享公网 IP）", "warn")
 	}
-
 	// TCP 加速：BBR 是 VPS 圈最常被问的一项
 	if n.TCPCC != "" {
 		lv := ""
@@ -387,16 +419,21 @@ func nodeSpecs(n model.Node, m *model.Metrics) []specItem {
 		}
 		add("加速", v, lv)
 	}
-
-	// 运行时长和负载来自实时指标 —— 在这行里比单独一块更省地方
 	if m != nil {
 		if m.Host.Uptime > 0 {
 			add("运行", FmtDuration(m.Host.Uptime), "")
 		}
+		// 负载 = 1 分钟平均负载（/proc/loadavg），统计"在跑 + 排队等 CPU"的进程数。
+		// 1 核机器上超过 1 就是在排队了，所以分档线按核数换算。
 		lv := ""
-		if m.CPU.Load1 >= 2 {
+		cores := float64(n.CPUCores)
+		if cores < 1 {
+			cores = 1
+		}
+		switch per := m.CPU.Load1 / cores; {
+		case per >= 1:
 			lv = "bad"
-		} else if m.CPU.Load1 >= 1 {
+		case per >= 0.7:
 			lv = "warn"
 		}
 		add("负载", fmt.Sprintf("%.2f", m.CPU.Load1), lv)
@@ -493,6 +530,11 @@ type nodePageData struct {
 	Uptime *uptimeSummary
 
 	FlagCode string // 详情页标题上的国旗
+
+	// Articles 是这台机器的文章列表。
+	// 列表里只显示标题+摘要，全文在弹窗里 —— 不把全文铺在页面上，
+	// 几篇几千字的文章会让详情页变得又长又难滚。
+	Articles []articleView
 
 	// Owner 是站长名片。挂在详情页底部，让"这台小鸡是谁在卖"有归属——
 	// 后台那句提示一直写着"会显示在首页顶部与每台小鸡的页面底部"，
@@ -730,13 +772,14 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		Owner:          h.owner(),
 		Hero:           h.buildHero(r, len(nodes), online),
 		Regions:        regions,
-		Feed:           h.homeFeed(nodes, 10),
 		OwnerEmptyHint: h.adminAuthed(r) && !h.owner().Has,
 		Clocks:         homeClocks(),
 		Stats:          h.buildStats(len(nodes), online, len(regions)),
 		Globe:          globe,
 		GlobeJSON:      template.JS(globeJSON),
 		GlobeLandURL:   staticAssetURL("land.bin"),
+		// 仪表盘数据并在首页上用 —— 两边同一个函数，数字永远一致
+		Dash: h.buildDashboard(),
 	}, r)
 }
 
@@ -1082,6 +1125,17 @@ func (h *Hub) renderNodePage(w http.ResponseWriter, r *http.Request, slug, comme
 	data.NetQ = h.LoadNetQ(node.ID)
 	data.Tasks = h.nodeTasks(node.ID, 6)
 	data.Uptime = h.loadUptime(node.ID)
+	if arts, err := h.store.ListArticles(node.ID); err == nil {
+		for _, a := range arts {
+			data.Articles = append(data.Articles, articleView{
+				ID:      a.ID,
+				Title:   firstNonEmpty(a.Title, "无标题"),
+				Summary: a.Summary,
+				HTML:    RenderMarkdown(a.ContentMD),
+				When:    relativeTime(a.CreatedAt),
+			})
+		}
+	}
 
 	// 访问统计（粗粒度：PV 每次 +1）
 	profile.PV++
