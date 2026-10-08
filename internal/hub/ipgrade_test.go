@@ -186,3 +186,28 @@ func TestIPFieldsIncludeBlacklist(t *testing.T) {
 		}
 	}
 }
+
+// TestRouteLineMarksPremium 精品线路要打标，普通线路也要说清楚。
+//
+// 起因：boss 看到"电信 CN2 GT"问"这真是 CN2 吗，用着很卡"。
+// 一查发现 AS4812 根本不是 CN2 —— 是"中国电信"的普通 ASN。
+// 而且 CN2 GIA 和 GT **共用 AS4809**，靠单个 ASN 分不出来。
+// 结论：必须把"精品/普通"明确标出来，否则会被误读成好线路。
+func TestRouteLineMarksPremium(t *testing.T) {
+	premium := map[string]any{"line": "CN2 GIA", "quality": "精品", "latency_ms": float64(45.0)}
+	if got := routeLine(premium); !strings.Contains(got, "精品") {
+		t.Errorf("精品线路要标出来：%q", got)
+	}
+	normal := map[string]any{"line": "163 骨干", "quality": "普通", "latency_ms": float64(64.6)}
+	got := routeLine(normal)
+	if strings.Contains(got, "精品") {
+		t.Errorf("普通线路不该标成精品：%q", got)
+	}
+	if !strings.Contains(got, "163 骨干") {
+		t.Errorf("应保留线路名：%q", got)
+	}
+	// 详情页要能看出这条是普通线路
+	if note := routeQualityNote(normal); note != "普通线路" {
+		t.Errorf("普通线路的说明 = %q", note)
+	}
+}

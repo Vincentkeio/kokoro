@@ -174,7 +174,16 @@ func routeLine(d map[string]any) string {
 		return ""
 	}
 	line := strings.TrimSpace(strOf(d, "line"))
+	quality := strings.TrimSpace(strOf(d, "quality"))
 	ms, hasMS := numOf(d, "latency_ms")
+
+	// 精品线路打个标：CN2 GIA / 9929 / CMIN2 才是精品，
+	// 163 / 169 / CMI / 中国电信 这些是普通线路 —— 高峰期会堵。
+	// 不标出来的话，买家看到"163 骨干"和"CN2 GIA"会以为是一回事。
+	if quality == "精品" {
+		line += "（精品）"
+	}
+
 	switch {
 	case line != "" && hasMS && ms > 0:
 		return fmt.Sprintf("%s · %.0fms", line, ms)
@@ -182,6 +191,20 @@ func routeLine(d map[string]any) string {
 		return line
 	case hasMS && ms > 0:
 		return fmt.Sprintf("%.0fms", ms)
+	}
+	return ""
+}
+
+// routeQualityNote 给详情页一句人话，说明这条线路意味着什么。
+func routeQualityNote(d map[string]any) string {
+	if d == nil {
+		return ""
+	}
+	switch strings.TrimSpace(strOf(d, "quality")) {
+	case "精品":
+		return "精品线路"
+	case "普通":
+		return "普通线路"
 	}
 	return ""
 }

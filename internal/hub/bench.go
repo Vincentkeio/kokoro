@@ -375,7 +375,13 @@ func benchFieldValue(k string, v any) string {
 		// 只显示「线路 · 延迟」——**不显示跳数**（没人关心过了几个路由器），
 		// 更不显示任何 IP（那是服务器隐私）。
 		if line := strOf(x, "line"); line != "" || x["latency_ms"] != nil {
-			return routeLine(x)
+			out := routeLine(x)
+			// 普通线路明确写出来 —— "163 骨干 · 64ms" 看着还行，
+			// 但它是普通线路，高峰期会堵，不说明会误导买家。
+			if q := routeQualityNote(x); q != "" && !strings.Contains(out, "（精品）") {
+				out += "（" + q + "）"
+			}
+			return out
 		}
 		keys := sortedKeysOf(x)
 		parts := make([]string, 0, len(keys))
