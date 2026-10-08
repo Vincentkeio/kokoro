@@ -263,6 +263,8 @@ type nodeCard struct {
 	TaskTitle string
 	TaskWhen  string
 	TaskItems []nodeTaskItem
+	// Uptime 是状态时间轴（近 30 天，一天一格）
+	Uptime *uptimeSummary
 }
 
 // RegionLabel 给卡片上的地区文案兜底，避免模板里写三层 if。
@@ -340,6 +342,8 @@ type nodePageData struct {
 	// Tasks 是最近跑过的测试（硬件/磁盘/CPU/IP/线路…），按时间倒序。
 	// 卡片上只显示一行摘要，完整结果在这里展开看。
 	Tasks []nodeTaskView
+	// Uptime 是状态时间轴（近 30 天，一天一格）
+	Uptime *uptimeSummary
 
 	FlagCode string // 详情页标题上的国旗
 
@@ -550,6 +554,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 				}
 			}
 		}
+		c.Uptime = h.loadUptime(n.ID)
 		c.Lat, c.Lon, c.HasCoord = resolveCoord(n.Country, n.Region, n.City)
 		if n.Online {
 			online++
@@ -928,6 +933,7 @@ func (h *Hub) renderNodePage(w http.ResponseWriter, r *http.Request, slug, comme
 	data.CommentN = len(comments)
 	data.NetQ = h.LoadNetQ(node.ID)
 	data.Tasks = h.nodeTasks(node.ID, 6)
+	data.Uptime = h.loadUptime(node.ID)
 
 	// 访问统计（粗粒度：PV 每次 +1）
 	profile.PV++

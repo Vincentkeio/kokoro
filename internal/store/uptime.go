@@ -1,0 +1,176 @@
+package store
+
+// 每日在线率统计 —— 「状态时间轴」（一天一格）的数据来源。
+//
+// 为什么用 metrics_5m 而不是 events：events 表是今天才建的，没有历史；
+// 而 metrics_5m 从装机那天就在攒，而且**它本身就是"这台机器有没有在报"
+// 的直接证据** —— 某一格有数据，说明那 5 分钟机器是活的。
+//
+// 为什么不是简单数格子：装机当天和今天都是**半天**，按整天算会显示成
+// 50% 在线，是假的。所以每天按**实际覆盖到的时间跨度**折算期望值。
+
+import (
+	"fmt"
+	"time"
+)
+
+// DayUptime 是某一天的在线率。
+type DayUptime struct {
+	Date    string  // 2026-10-06
+	Label   string  // 10-06，给格子上显示
+	Pct     float64 // 0~100
+	Buckets int     // 有数据的 5 分钟格数
+	Samples int     // 累计上报次数
+	Partial bool    // 这一天只覆盖了一部分（装机当天 / 今天）
+	HasData bool
+}
+
+// DailyUptime 取最近 days 天的在线率。
+//
+// tzOffsetMin 是相对 UTC 的分钟数（东八区 = 480）—— 用面板所在时区切天，
+// 跟首页那个主机时钟保持一致。
+func (s *Store) DailyUptime(nodeID string, days int, tzOffsetMin int) ([]DayUptime, error) {
+	// 这台机器是从什么时候开始存在的。用来决定"这一天从几点开始
+	// 就应该有数据"—— 装机当天之前的时间不该算进分母。
+	var since int64
+	_ = s.db.QueryRow(`SELECT COALESCE(created_at, 0) FROM nodes WHERE id = ?`, nodeID).Scan(&since)
+	if days <= 0 {
+		days = 30
+	}
+	if days > 90 {
+		days = 90 // 格子上放不下更多了
+	}
+
+	// perBucket 是"满格"应该有多少次上报 —— 整个算法的分母基准。
+	//
+	// ⚠️ 用**80 分位**而不是 MAX：实测满格是 142 次，最大值偶有 143，
+	// 拿 MAX 当基准的话，一个完全正常的日子会被算成 99.4%，
+	// 然后被分档判成"抖动"—— 那是在制造假警报。
+	// 用分位数当基准，正常的日子就是 100%，真掉线才掉下来。
+	//
+	// 不写死数字（比如 150）：上报间隔是可以配的，写死会算出一堆假的百分比。
+	var total int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM metrics_5m WHERE node_id = ?`, nodeID).Scan(&total); err != nil {
+		return nil, fmt.Errorf("统计上报失败: %w", err)
+	}
+	if total == 0 {
+		return nil, nil // 这台机器还没上报过
+	}
+	var perBucket int
+	if err := s.db.QueryRow(
+		`SELECT samples FROM metrics_5m WHERE node_id = ? ORDER BY samples LIMIT 1 OFFSET ?`,
+		nodeID, total*4/5).Scan(&perBucket); err != nil {
+		return nil, fmt.Errorf("取上报基准失败: %w", err)
+	}
+	if perBucket <= 0 {
+		return nil, nil
+	}
+
+	// 时区偏移用 SQLite 的修饰符传进去（'+480 minutes'）
+	mod := fmt.Sprintf("%+d minutes", tzOffsetMin)
+	cutoff := time.Now().AddDate(0, 0, -(days - 1)).Truncate(24 * time.Hour).UnixMilli()
+
+	rows, err := s.db.Query(`
+SELECT date(bucket/1000, 'unixepoch', ?) AS d,
+       COUNT(*)              AS buckets,
+       COALESCE(SUM(samples), 0) AS samples,
+       MIN(bucket)           AS min_b,
+       MAX(bucket)           AS max_b
+FROM metrics_5m
+WHERE node_id = ? AND bucket >= ?
+GROUP BY d
+ORDER BY d`, mod, nodeID, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("查每日在线率失败: %w", err)
+	}
+	defer rows.Close()
+
+	got := map[string]DayUptime{}
+	for rows.Next() {
+		var d string
+		var buckets, samples int
+		var minB, maxB int64
+		if err := rows.Scan(&d, &buckets, &samples, &minB, &maxB); err != nil {
+			return nil, err
+		}
+		_ = minB
+		got[d] = DayUptime{
+			Date: d, Buckets: buckets, Samples: samples,
+			Pct: dayPct(d, int64(samples), perBucket, tzOffsetMin, since),
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 补齐没有数据的天 —— 空格子本身也是信息（那天机器是挂的）
+	out := make([]DayUptime, 0, days)
+	now := time.Now()
+	for i := days - 1; i >= 0; i-- {
+		t := now.AddDate(0, 0, -i)
+		key := t.Format("2006-01-02")
+		du, ok := got[key]
+		if !ok {
+			du = DayUptime{Date: key, Pct: 0, HasData: false}
+		} else {
+			du.HasData = true
+		}
+		du.Label = key[5:] // 10-06
+		// 装机当天和今天都只覆盖半天，标出来免得被误读成"那天挂了一半"
+		du.Partial = i == 0 || du.Buckets > 0 && du.Buckets < 280
+		out = append(out, du)
+	}
+	return out, nil
+}
+
+// dayPct 算某一天的在线率。
+//
+// 分母是「这一天**从几点开始就应该有数据**」，不是「数据覆盖到哪」——
+// 这两个差得很远，而且差的正是最关键的那种情况：
+//
+//	机器中午挂了再没起来 → 数据只覆盖 00:00~12:00
+//	按"覆盖跨度"折算 = 12 小时里满了 = 100%（把掉线藏起来了，绝对不行）
+//	按"应该有的跨度"折算 = 该有 24 小时，实际 12 小时 = 50% ✓
+//
+// 所以窗口取 [max(当天零点, 机器创建时间), min(当天结束, 现在)]：
+// 装机当天之前的时间不算分母，今天之后的时间也不算。
+func dayPct(dateKey string, samples int64, perBucket, tzOffsetMin int, sinceMS int64) float64 {
+	if perBucket <= 0 {
+		return 0
+	}
+	loc := time.FixedZone("hub", tzOffsetMin*60)
+	dayStart, err := time.ParseInLocation("2006-01-02", dateKey, loc)
+	if err != nil {
+		return 0
+	}
+	dayEnd := dayStart.AddDate(0, 0, 1)
+
+	start := dayStart
+	if sinceMS > 0 {
+		if t := time.UnixMilli(sinceMS).In(loc); t.After(start) {
+			start = t
+		}
+	}
+	end := dayEnd
+	if now := time.Now().In(loc); now.Before(end) {
+		end = now // 今天只算到此刻
+	}
+	if !end.After(start) {
+		return 0 // 机器还没创建，或者这一天还没开始
+	}
+
+	const bucketMS = int64(5 * 60 * 1000)
+	expectedBuckets := (end.UnixMilli() - start.UnixMilli() + bucketMS - 1) / bucketMS
+	if expectedBuckets <= 0 {
+		return 0
+	}
+	pct := float64(samples) / float64(expectedBuckets*int64(perBucket)) * 100
+	if pct > 100 {
+		pct = 100 // 补报会让 samples 超出，别显示 102%
+	}
+	if pct < 0 {
+		pct = 0
+	}
+	return pct
+}

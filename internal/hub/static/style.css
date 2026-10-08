@@ -1187,3 +1187,45 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 .tp-fields dt { color: var(--muted); flex: none; min-width: 6rem; }
 .tp-fields dd { margin: 0; color: var(--fg); overflow-wrap: anywhere; }
 .tp-err { margin: 0 0 var(--s1); font-size: 12px; color: var(--bad); }
+
+/* ---- 状态时间轴（一天一格）----
+   探针圈最经典的"可信度背书"：30 个格子摆出来，稳不稳一眼就知道。 */
+.uptime { margin-top: var(--s3); }
+.uptime-head {
+  display: flex; align-items: baseline; gap: var(--s2);
+  margin-bottom: var(--s2); flex-wrap: wrap;
+}
+.uptime-head h4 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+.uptime-pct { font-size: 15px; font-family: var(--mono); }
+.uptime-pct.lv-ok   { color: var(--ok); }
+.uptime-pct.lv-warn { color: var(--warn, #bf8700); }
+.uptime-pct.lv-bad  { color: var(--bad); }
+.uptime-pct.lv-none { color: var(--muted); }
+.uptime-sub { font-size: 11px; color: var(--faint); }
+
+.uptime-bar { display: flex; gap: 2px; align-items: stretch; height: 26px; }
+.uptime-bar .cell {
+  flex: 1 1 0; min-width: 3px; border-radius: 2px;
+  background: var(--line);
+  transition: transform .12s ease;
+}
+.uptime-bar .cell:hover { transform: scaleY(1.18); }
+/* 半天的格子（装机当天/今天）淡一点，提示"这天数据不全" */
+.uptime-bar .cell.partial { opacity: .55; }
+
+.cell.lv-ok   { background: var(--ok); }
+.cell.lv-warn { background: var(--warn, #bf8700); }
+.cell.lv-bad  { background: var(--bad); }
+.cell.lv-none { background: color-mix(in srgb, var(--fg) 12%, transparent); }
+
+.uptime-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s2); margin-top: 4px;
+  font-size: 10.5px; color: var(--faint); font-family: var(--mono);
+}
+.uptime-legend { display: flex; align-items: center; gap: 4px; font-family: var(--sans, inherit); }
+.uptime-legend .cell {
+  display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+  margin-left: 6px;
+}
+.uptime-legend .cell:first-child { margin-left: 0; }

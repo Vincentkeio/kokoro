@@ -1,0 +1,27 @@
+{{define "uptime.html"}}
+{{/* 状态时间轴：近 N 天，一天一格。
+     格子颜色分四档，鼠标悬停看当天具体在线率。
+     空格子（无数据）本身也是信息 —— 那天机器是挂的。 */}}
+<section class="uptime">
+  <div class="uptime-head">
+    <h4>在线率</h4>
+    <b class="uptime-pct lv-{{.Level}}">{{.Pct}}</b>
+    <span class="uptime-sub">近 {{.Days}} 天</span>
+  </div>
+  <div class="uptime-bar" role="img" aria-label="近 {{.Days}} 天在线率 {{.Pct}}">
+    {{range .Cells}}
+    <i class="cell lv-{{.Level}}{{if .Partial}} partial{{end}}" title="{{.Tip}}"></i>
+    {{end}}
+  </div>
+  <div class="uptime-foot">
+    <span>{{.First}}</span>
+    <span class="uptime-legend">
+      <i class="cell lv-ok"></i>正常
+      <i class="cell lv-warn"></i>抖动
+      <i class="cell lv-bad"></i>掉线
+      <i class="cell lv-none"></i>无数据
+    </span>
+    <span>{{.Last}}</span>
+  </div>
+</section>
+{{end}}

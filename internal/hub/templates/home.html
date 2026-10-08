@@ -205,6 +205,8 @@
       <p class="empty">还没有收到数据</p>
       {{end}}
 
+      {{if .Uptime}}{{template "uptime.html" .Uptime}}{{end}}
+
       {{/* 测试摘要：卡片上只放得下一行，所以完整结果放进悬浮浮窗 ——
            解锁了哪些服务、是不是机房 IP，这些恰恰是访客最想看的。
            用 :hover / :focus-within 触发，纯 CSS，不引 JS。 */}}
@@ -272,7 +274,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=28"></script>
+<script src="/static/app.js?v=29"></script>
 </body>
 </html>
 {{end}}
