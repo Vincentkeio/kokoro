@@ -38,6 +38,9 @@ type dashboardData struct {
 	Total   int // 节点总数
 	Online  int // 在线
 	Offline int // 离线
+	// AvailPct 是可用率，**在 Go 里算好**而不是丢给模板 ——
+	// 模板里的 pct 收 float64，而这里是 int，直接传会报类型错。
+	AvailPct string
 
 	AlertRules  int // 生效中的告警规则数（未静默）
 	AlertFiring int // 未恢复的告警事件数
@@ -412,6 +415,9 @@ func (h *Hub) buildDashboard() dashboardData {
 		data.DiskTotal += disk
 	}
 	data.Offline = data.Total - data.Online
+	if data.Total > 0 {
+		data.AvailPct = fmt.Sprintf("%.0f%%", float64(data.Online)*100/float64(data.Total))
+	}
 
 	if rules, err := h.store.ListAlertRules(); err != nil {
 		log.Printf("[hub] 仪表盘读取告警规则失败: %v", err)
@@ -449,4 +455,20 @@ func (h *Hub) buildDashboard() dashboardData {
 	}
 
 	return data
+}
+
+// ratePointJSON 是喂给前端画波动图的点（字段名压到最短）。
+type ratePointJSON struct {
+	Ts   int64 `json:"t"`
+	Up   int64 `json:"up"`
+	Down int64 `json:"down"`
+}
+
+// ratePointsJSON 把仪表盘的点转成前端格式。
+func ratePointsJSON(pts []dashPoint) []ratePointJSON {
+	out := make([]ratePointJSON, 0, len(pts))
+	for _, p := range pts {
+		out = append(out, ratePointJSON{Ts: p.Ts, Up: p.Up, Down: p.Down})
+	}
+	return out
 }

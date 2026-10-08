@@ -73,6 +73,10 @@ type homeData struct {
 	// Dash 是仪表盘那份数据。并到首页之后两边共用，
 	// 不会出现"首页说 3 台在线、仪表盘说 4 台"。
 	Dash dashboardData
+	// DashJSON 是给前端画波动图的数据（已序列化）。
+	// 用 template.JS 是为了不被 HTML 转义成 &quot; —— 它要塞进
+	// <script type="application/json">。
+	DashJSON template.JS
 }
 
 // feedItem 是首页「实时动态流」里的一条。
@@ -761,6 +765,14 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		globe = globeData{}
 		globeJSON = []byte(`{"places":[]}`)
 	}
+	dash := h.buildDashboard()
+	// 波动图数据：字段名压到最短（1 分钟一个点、60 个点，
+	// 全写成 {timestamp, up_bytes_per_sec} 会让 HTML 白胖一圈）
+	dashJSON, err := json.Marshal(ratePointsJSON(dash.Points))
+	if err != nil {
+		dashJSON = []byte("[]")
+	}
+
 	h.render(w, "home.html", &homeData{
 		Theme:          h.themeFor(r),
 		SiteName:       h.cfg.SiteName,
@@ -779,7 +791,8 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		GlobeJSON:      template.JS(globeJSON),
 		GlobeLandURL:   staticAssetURL("land.bin"),
 		// 仪表盘数据并在首页上用 —— 两边同一个函数，数字永远一致
-		Dash: h.buildDashboard(),
+		Dash:     dash,
+		DashJSON: template.JS(dashJSON),
 	}, r)
 }
 

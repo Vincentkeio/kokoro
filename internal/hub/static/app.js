@@ -386,3 +386,58 @@
     if (x) x.addEventListener('click', function () { dlg.close(); });
   });
 })();
+
+/* ---- 全网上下行速率折线 ----
+   仪表盘和首页共用（首页的「全网速率」卡片下面也要一张波动图）。
+   数据是 [{"t":ts,"up":B/s,"down":B/s}, ...]，1 分钟一个点。
+
+   用 SVG 手画而不是引图表库：全站零依赖、无 CDN，一个折线不值得
+   为此加 100KB 的库。viewBox 固定 600x180，靠 preserveAspectRatio
+   拉伸适配 —— 所以坐标算完不用管实际像素宽。 */
+function renderRateChart(svg, pts) {
+  if (!svg || !pts || pts.length < 2) return;
+
+  var W = 600, H = 180, pad = 8, i, x, y;
+  var max = 0;
+  for (i = 0; i < pts.length; i++) {
+    if (pts[i].up > max) max = pts[i].up;
+    if (pts[i].down > max) max = pts[i].down;
+  }
+  if (max <= 0) max = 1;
+
+  function pathOf(key) {
+    var d = '', step = (W - pad * 2) / (pts.length - 1);
+    for (var k = 0; k < pts.length; k++) {
+      x = (pad + k * step).toFixed(1);
+      y = (H - pad - (pts[k][key] / max) * (H - pad * 2)).toFixed(1);
+      d += (k === 0 ? 'M' : 'L') + x + ' ' + y + ' ';
+    }
+    return d;
+  }
+  var up = pathOf('up'), down = pathOf('down');
+
+  // 三条等距横线当刻度：1/4 / 1/2 / 3/4 高度
+  var grid = '';
+  for (i = 1; i <= 3; i++) {
+    y = (H - pad - (H - pad * 2) * i / 4).toFixed(1);
+    grid += '<line class="dash-grid-line" x1="' + pad + '" y1="' + y +
+            '" x2="' + (W - pad) + '" y2="' + y + '"/>';
+  }
+  svg.innerHTML = grid +
+    '<path class="dash-area-up" d="M' + pad + ' ' + (H - pad) + ' L' + up.slice(1) +
+      ' L' + (W - pad) + ' ' + (H - pad) + ' Z"/>' +
+    '<path class="dash-line-up" d="' + up + '"/>' +
+    '<path class="dash-line-down" d="' + down + '"/>';
+}
+
+/* 页面上所有 [data-rate-chart] 用同一份数据画 ——
+   数据放在 <script id="rate-data" type="application/json"> 里。 */
+(function () {
+  var el = document.getElementById('rate-data');
+  if (!el) return;
+  var pts;
+  try { pts = JSON.parse(el.textContent); } catch (e) { return; }
+  document.querySelectorAll('[data-rate-chart]').forEach(function (svg) {
+    renderRateChart(svg, pts);
+  });
+})();

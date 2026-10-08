@@ -1428,3 +1428,73 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
    看着像没加载出来。.home-side-new 上有固定 height，必须显式覆盖，
    光靠 align-self 是盖不住的（height 不是对齐属性）。 */
 .home-band > #speed { height: auto; align-self: start; }
+
+/* ---- 首页「全网速率」卡里的波动图 ----
+   和仪表盘那张用同一套 class（.dash-line-up 等），只是尺寸不同。 */
+.rate-chart {
+  display: block; width: 100%; height: 110px;
+  margin-top: var(--s3);
+  /* 折线用 non-scaling-stroke 之外的办法不行（SVG 会被拉伸），
+     所以给整张图一点描边补偿在下面的 path 规则里。 */
+}
+.rate-legend {
+  display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4);
+  margin-top: var(--s2);
+  font-size: 11px; color: var(--muted);
+}
+.rate-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.rate-legend i { width: 9px; height: 3px; border-radius: 2px; display: inline-block; }
+
+/* ---- 后台测试页：三次测试铺成三块 ----
+   （这三块之前没有任何样式，是裸 div 堆在一起） */
+.all-bar {
+  display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap;
+  padding: var(--s4) var(--s5);
+  background: var(--bg-soft);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r);
+  margin: var(--s4) 0 0;
+}
+.all-bar .btn { flex: none; }
+
+.script-grid {
+  display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin-top: var(--s4);
+  align-items: stretch;
+}
+.script-card {
+  display: flex; flex-direction: column;
+  padding: var(--s4) var(--s5);
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r);
+}
+.script-card h3 { margin: 0 0 var(--s2); font-size: 14px; }
+.script-card .note { margin: 0 0 var(--s3); font-size: 12px; color: var(--muted); flex: 1; }
+.script-card code {
+  display: block; overflow-x: auto;
+  padding: var(--s2) var(--s3); margin-bottom: var(--s3);
+  background: var(--sunken); border-radius: var(--r-sm);
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  white-space: nowrap;
+}
+.script-card .go { margin: 0; }
+.script-card .go .btn { width: 100%; }
+
+/* ---- 全网速率折线（仪表盘 + 首页共用）----
+   ⚠️ 这些 class 以前只写在 dashboard.html 的内联 <style> 里，
+   首页引不到 —— 折线没有 stroke 会回退成纯黑，整张图糊成一团黑块。
+   所以搬到这里。 */
+.dash-grid-line { stroke: var(--line); stroke-width: 1; }
+.dash-area-up   { fill: var(--accent-soft); stroke: none; }
+.dash-line-up   { fill: none; stroke: var(--cpu); stroke-width: 2; stroke-linejoin: round; }
+.dash-line-down { fill: none; stroke: var(--mem); stroke-width: 2; stroke-linejoin: round; }
+.dash-legend {
+  display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px;
+  font-size: 12px; color: var(--muted);
+}
+.dash-legend i {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  margin-right: 6px; vertical-align: -1px;
+}
