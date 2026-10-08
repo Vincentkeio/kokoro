@@ -42,6 +42,12 @@ type dashboardData struct {
 	// 模板里的 pct 收 float64，而这里是 int，直接传会报类型错。
 	AvailPct string
 
+	// 今日 / 本月流量。首页的「全网速率」卡要用 —— 那里的数字全在这里
+	// 算好传过去，模板里不再各自调 TrafficSince（同一份数据算两遍容易不一致）。
+	TodayUp, TodayDown     int64
+	MonthUp, MonthDown     int64
+	TodayTotal, MonthTotal int64
+
 	AlertRules  int // 生效中的告警规则数（未静默）
 	AlertFiring int // 未恢复的告警事件数
 
@@ -418,6 +424,13 @@ func (h *Hub) buildDashboard() dashboardData {
 	if data.Total > 0 {
 		data.AvailPct = fmt.Sprintf("%.0f%%", float64(data.Online)*100/float64(data.Total))
 	}
+
+	// 今日 / 本月流量。原来算在首页的 buildStats 里，现在并到这儿 ——
+	// 首页的「全网速率」卡和仪表盘都从这一份取，不会两处算出不同的数。
+	data.TodayUp, data.TodayDown, _ = h.store.TrafficSince(startOfDay())
+	data.MonthUp, data.MonthDown, _ = h.store.TrafficSince(startOfMonth())
+	data.TodayTotal = data.TodayUp + data.TodayDown
+	data.MonthTotal = data.MonthUp + data.MonthDown
 
 	if rules, err := h.store.ListAlertRules(); err != nil {
 		log.Printf("[hub] 仪表盘读取告警规则失败: %v", err)

@@ -27,16 +27,16 @@
          同一屏出现两次同样的数字，只会让人犹豫哪个才是准的。 */}}
     </div>
     {{end}}{{end}}
-    {{/* 时钟：贴在 Hero 右侧，**不再独占一行**。
-         原来它自己占一行，把标题和下面的内容推得很远，
-         而信息量只有"面板这台机器现在几点"。 */}}
-    {{if .Clocks}}{{range .Clocks}}
+    {{/* 时钟挪到下面的站长名片里了 —— 它跟"这台机器现在几点"一样
+         都是"关于本站"的信息，跟名片放一起比单独浮着更合理。
+         名片不存在时才退回这里（否则没地方放）。 */}}
+    {{if not .Owner.Has}}{{if .Clocks}}{{range .Clocks}}
     <div class="hub-clock"{{if .HasOffset}} data-offset="{{.OffsetMin}}"{{else if .TZ}} data-tz="{{.TZ}}"{{end}}>
       <span class="tz">{{.Label}}{{if .Note}} <em>{{.Note}}</em>{{end}}</span>
       <b class="t">--:--:--</b>
       <span class="d">----</span>
     </div>
-    {{end}}{{end}}
+    {{end}}{{end}}{{end}}
   </section>
   {{end}}
 
@@ -57,6 +57,15 @@
       <b>{{.Owner.Name}}</b>
       {{if .Owner.Bio}}<p class="bio">{{.Owner.Bio}}</p>{{end}}
     </div>
+    {{/* 时钟并进名片：它和"这是谁的地盘"是同一类"关于本站"的信息，
+         单独浮在页头反而像块没人认领的装饰。 */}}
+    {{if .Clocks}}{{range .Clocks}}
+    <div class="hub-clock"{{if .HasOffset}} data-offset="{{.OffsetMin}}"{{else if .TZ}} data-tz="{{.TZ}}"{{end}}>
+      <span class="tz">{{.Label}}{{if .Note}} <em>{{.Note}}</em>{{end}}</span>
+      <b class="t">--:--:--</b>
+      <span class="d">----</span>
+    </div>
+    {{end}}{{end}}
   </section>
   {{else if .OwnerEmptyHint}}
   {{/* 只有管理员自己登录时才看到这条 —— 访客看不到"这里缺东西"。
@@ -74,30 +83,24 @@
   {{if .Total}}
   <section class="panel overview">
     <h3>总览</h3>
-    {{/* ⚠️ 这里**只放统计卡里没有的**。
-           节点总数 / 在线 / 覆盖地区 都在下面那排统计卡里，
-           同一屏出现两次同样的数字，只会让人犹豫哪个才是准的。
-
-           所以这块定位成"健康度"：离线几台、可用率多少、有没有在报警 ——
-           统计卡那边是"有多少、跑了多少"，各说各的。 */}}
+    {{/* 节点盘子 + 健康度：都在这里。
+           原来这些数字散在"总览"和下面那排统计卡两处，同一屏看两遍。
+           boss 要求全部收进总览 —— 这块就是"这台站现在什么状况"。 */}}
+    {{/* 每个数字下面原来还有一行小字（"台已接入""可用 100%""全部在线"
+           "个区域"）—— boss 要求删掉：这些字不提供新信息，
+           却各自占一行高度，四张卡摞起来白胖一圈。 */}}
     <div class="ov-grid">
-      <div class="ov{{if .Dash.Offline}} bad{{end}}">
-        <span>离线</span><b>{{.Dash.Offline}}</b>
-      </div>
-      {{if .Dash.Total}}
-      <div class="ov{{if lt .Dash.Online .Dash.Total}} warn{{end}}">
-        <span>可用率</span><b>{{.Dash.AvailPct}}</b>
-      </div>
+      <div class="ov"><span>节点总数</span><b>{{.Dash.Total}}</b></div>
+      <div class="ov ok"><span>在线</span><b>{{.Dash.Online}}</b></div>
+      <div class="ov{{if .Dash.Offline}} bad{{end}}"><span>离线</span><b>{{.Dash.Offline}}</b></div>
+      <div class="ov"><span>覆盖地区</span><b>{{len .Regions}}</b></div>
+      {{if .Dash.AlertRules}}
+      <div class="ov{{if .Dash.AlertFiring}} bad{{end}}"><span>告警规则</span><b>{{.Dash.AlertRules}}</b></div>
       {{end}}
-      <div class="ov{{if .Dash.AlertFiring}} bad{{end}}">
-        <span>告警规则</span><b>{{.Dash.AlertRules}}</b>
-        {{if .Dash.AlertFiring}}<small>未恢复 {{.Dash.AlertFiring}}</small>{{else}}<small>全部正常</small>{{end}}
-      </div>
     </div>
-    <div class="ov-cap">
-      <span>合计 {{.Dash.CPUCores}} 核 · {{fmtBytes .Dash.MemTotal}} 内存 · {{fmtBytes .Dash.DiskTotal}} 磁盘</span>
-      <a class="btn ghost small" href="/dashboard">完整仪表盘 →</a>
-    </div>
+    {{/* 原来这里还有一行「合计 N 核 · … ｜ 完整仪表盘 →」。
+           boss 要求删掉 —— 合计那几个数在下面每张卡片的规格里都有，
+           而"完整仪表盘"在顶栏已经有一个入口了，不必占一行。 */}}
   </section>
   {{end}}
 
@@ -109,13 +112,9 @@
   <script id="rate-data" type="application/json">{{.DashJSON}}</script>
   {{end}}
 
-  {{if .Stats}}
-  <section class="stats">
-    {{range .Stats}}
-    <div class="stat"><span>{{.Label}}</span><b>{{.Value}}</b><small>{{.Note}}</small></div>
-    {{end}}
-  </section>
-  {{end}}
+  {{/* 统计卡整排已拆掉：节点总数/在线/离线/覆盖地区 收进「总览」，
+       今日/本月流量 收进「全网速率」，探测点按 boss 要求删除。
+       同一屏出现两遍同样的数字，访客只会犹豫哪个准。 */}}
 
 
 
@@ -150,18 +149,20 @@
           <b class="rv">{{fmtRate .Dash.NetDown}}</b>
         </div>
       </div>
-      {{if .Dash.TrafficOK}}
+      {{/* 今日 / 本月流量并进来 —— 跟实时速率是同一件事的两个时标：
+           此刻多快、今天跑了多少、这个月跑了多少。 */}}
       <div class="rate-row traf">
         <div class="rate">
-          <span class="rl">24h 上行</span>
-          <b class="rv sm">{{fmtBytes .Dash.TrafficUp}}</b>
+          <span class="rl">今日流量</span>
+          <b class="rv sm">{{fmtBytes .Dash.TodayTotal}}</b>
+          <span class="rs">↑ {{fmtBytes .Dash.TodayUp}} · ↓ {{fmtBytes .Dash.TodayDown}}</span>
         </div>
         <div class="rate">
-          <span class="rl">24h 下行</span>
-          <b class="rv sm">{{fmtBytes .Dash.TrafficDown}}</b>
+          <span class="rl">本月流量</span>
+          <b class="rv sm">{{fmtBytes .Dash.MonthTotal}}</b>
+          <span class="rs">↑ {{fmtBytes .Dash.MonthUp}} · ↓ {{fmtBytes .Dash.MonthDown}}</span>
         </div>
       </div>
-      {{end}}
       {{else}}
       <p class="hint">没有在线节点。</p>
       {{end}}
@@ -324,6 +325,28 @@
       </div>
       {{end}}
 
+      {{/* 互动条：赞 / 踩 / 文章数 / 评论数。
+           投票走 /n/<slug>/vote（和详情页同一套接口、同一个访客 cookie），
+           所以这里投完，进详情页看到的也是同一票。 */}}
+      <div class="actbar">
+        <button type="button" class="act vote {{if .MineUp}}on{{end}}"
+                data-target="node" data-id="{{.ID}}" data-slug="{{.Slug}}" data-vote="up"
+                title="赞一下（再点取消）">
+          <span class="i">▲</span><span class="n" data-vote-up>{{.VoteUp}}</span>
+        </button>
+        <button type="button" class="act vote {{if .MineDown}}on{{end}}"
+                data-target="node" data-id="{{.ID}}" data-slug="{{.Slug}}" data-vote="down"
+                title="踩一下（再点取消）">
+          <span class="i">▼</span><span class="n" data-vote-down>{{.VoteDown}}</span>
+        </button>
+        <span class="act stat" title="文章数">
+          <span class="i">📄</span><span class="n">{{.Articles}}</span>
+        </span>
+        <span class="act stat" title="评论数">
+          <span class="i">💬</span><span class="n">{{.Comments}}</span>
+        </span>
+      </div>
+
       <div class="foot">
         <span class="dot {{if .Online}}on{{else}}off{{end}}" data-field="dot"></span>
         {{/* 明确给一个按钮进详情页。不做"整张卡片可点"，也不做悬停弹详情——
@@ -359,7 +382,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=41"></script>
+<script src="/static/app.js?v=45"></script>
 </body>
 </html>
 {{end}}

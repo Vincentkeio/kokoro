@@ -1424,10 +1424,12 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 }
 .hero-slim .hub-clock { border: 0; background: none; padding: 0; }
 
-/* 速率卡不要跟地球等高 —— 里面只有四个数字，拉高后下面一大片空白，
-   看着像没加载出来。.home-side-new 上有固定 height，必须显式覆盖，
-   光靠 align-self 是盖不住的（height 不是对齐属性）。 */
-.home-band > #speed { height: auto; align-self: start; }
+/* 速率卡和地球**必须等高**（boss 要求上下边界齐平）。
+   .home-side-new 上本来就有 height: var(--band-h)，直接让它生效即可；
+   多出来的高度给曲线吃掉 —— 见下面的 .rate-chart { flex: 1 }，
+   否则底下会留一片空白。 */
+.home-band > #speed { height: var(--band-h); }
+.home-band > #speed .rate-chart { flex: 1 1 auto; min-height: 76px; }
 
 /* ---- 首页「全网速率」卡里的波动图 ----
    和仪表盘那张用同一套 class（.dash-line-up 等），只是尺寸不同。 */
@@ -1498,3 +1500,86 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   display: inline-block; width: 10px; height: 10px; border-radius: 2px;
   margin-right: 6px; vertical-align: -1px;
 }
+
+/* ---- 首页再排一次：时钟进名片、数字进总览、流量进速率 ----
+   boss 的意图是"别再让同一屏出现两遍同样的数字"，
+   所以整排统计卡拆掉了，数字分给两块。 */
+
+/* 名片里的时钟：推到最右，和名字/签名同一行 */
+.owner .hub-clock {
+  margin-left: auto;
+  border: 0; background: none; padding: 0;
+  min-width: 9.5rem;
+}
+
+/* 总览的数字：在原来基础上多给一行小字说明 */
+.ov small { display: block; margin-top: 1px; }
+/* 五个数字时自动折成两行，不要挤成一条 */
+.ov-grid { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
+
+/* 速率卡里的流量小字（↑ x · ↓ y） */
+.rate .rs { font-size: 10.5px; color: var(--faint); font-family: var(--mono); }
+
+/* ---- 卡片压缩（boss 要求）----
+   原来 padding 给得太宽松，一块卡片上下能省出小半屏。 */
+.home-top > .owner,
+.home-top > .owner-empty,
+.home-top > .overview { padding: var(--s3) var(--s4); }
+
+/* 名片：头像小一号、行距收紧、时钟字号压一档 */
+.owner { gap: var(--s3); }
+.owner .avatar { width: 44px; height: 44px; }
+.owner .owner-txt b { font-size: 15px; }
+.owner .bio { margin: 2px 0 0; font-size: 12px; }
+.owner .hub-clock .t { font-size: 20px; }
+.owner .hub-clock .d { font-size: 11px; }
+
+/* 总览：标题和数字都收紧 */
+.overview h3 { margin-bottom: var(--s2); }
+.ov-grid { gap: var(--s2) var(--s3); }
+.ov b { font-size: 18px; }
+.ov span { font-size: 10.5px; }
+.ov small { font-size: 10px; }
+
+/* ---- 总览：进一步压缩 + 数字水平居中 ----
+   每个数字下面的小字删了，格子自然矮一截；数字本身居中，
+   四格排开才像"仪表盘"而不是左对齐的一堆文本。 */
+.ov { align-items: center; text-align: center; }
+.overview h3 { margin-bottom: var(--s2); }
+
+/* ---- 卡片间距统一（boss 要求）----
+   原来 .owner 自带 margin-top: var(--gap)，又被容器补了一次，
+   结果"名片→总览"和"总览→速率卡"的间距不一样。 */
+.home-top { margin-top: var(--gap); margin-bottom: 0; }
+.home-top > .owner,
+.home-top > .owner-empty,
+.home-top > .overview { margin-top: 0; margin-bottom: 0; }
+/* 卡片之间的行距统一走 --gap，别再各自加 */
+.home-band { margin-top: var(--gap); }
+.grid { margin-top: var(--gap); }
+
+/* ---- 卡片摘要两行 ---- */
+.card .task-line { white-space: pre-line; }
+
+/* ---- 卡片互动条：赞 / 踩 / 文章数 / 评论数 ----
+   放在「查看详情」上面一行。赞踩是按钮，文章/评论是纯展示。 */
+.card .actbar {
+  display: flex; align-items: center; gap: var(--s2);
+  margin-top: var(--s3); padding-top: var(--s3);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.card .act {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: var(--r-sm);
+  font-size: 12px; font-family: var(--mono); color: var(--muted);
+  background: none; border: 0;
+}
+.card button.act { cursor: pointer; }
+.card button.act:hover { background: var(--sunken); color: var(--fg); }
+.card .act .i { font-size: 10px; line-height: 1; }
+.card .act .n { font-variant-numeric: tabular-nums; }
+/* 投过的票高亮。绿=赞、红=踩（跟涨跌色一致）。 */
+.card .vote.up.on   { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.card .vote.down.on { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+/* 计数推到右边，跟左边的赞踩拉开 */
+.card .actbar .stat:last-child { margin-left: auto; }

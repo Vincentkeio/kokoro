@@ -135,11 +135,16 @@ func TestSummarizeIPShowsGrade(t *testing.T) {
 {"event":"done","ok":true,"elapsed_ms":1000,"failed":[]}`
 	got := summarizeTask("ipquality", raw)
 	t.Logf("摘要 = %s", got)
-	if !strings.Contains(got, "🟢") || !strings.Contains(got, "IP 优秀") {
+	// 卡片摘要的格式：`🟢 IP质量:优秀 流媒体解锁:7/7 性质: 住宅`
+	// （boss 定的写法，比原来 `IP 优秀 · 解锁 7/7 · 住宅` 更明确）
+	if !strings.Contains(got, "🟢") || !strings.Contains(got, "IP质量:优秀") {
 		t.Errorf("摘要应显示 IP 质量等级：%q", got)
 	}
-	if !strings.Contains(got, "解锁 7/7") {
+	if !strings.Contains(got, "流媒体解锁:7/7") {
 		t.Errorf("摘要应显示解锁数：%q", got)
+	}
+	if !strings.Contains(got, "性质:") {
+		t.Errorf("摘要应显示 IP 性质（机房/家宽）：%q", got)
 	}
 }
 

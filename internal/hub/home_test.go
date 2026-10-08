@@ -65,16 +65,31 @@ func TestHomeHasClockAndStats(t *testing.T) {
 			t.Errorf("首页缺少主机时钟的 %s", want)
 		}
 	}
-	// 统计卡
-	for _, want := range []string{"节点总数", "在线", "覆盖地区", "今日流量", "本月流量", "探测点"} {
+	// 数字现在的归属：节点总数/在线/离线/覆盖地区 -> 总览，
+	// 今日流量/本月流量 -> 全网速率。**整排统计卡已拆掉**。
+	for _, want := range []string{
+		"节点总数", "在线", "离线", "覆盖地区", // 总览
+		"今日流量", "本月流量", // 全网速率
+	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("统计卡缺少「%s」", want)
+			t.Errorf("首页缺少「%s」", want)
 		}
 	}
-	// hero 里不该再出现一遍「N 台小鸡 / M 在线」——同一屏出现两次
-	// 同样的数字只会让人犹豫哪个准
+	// 探测点按 boss 要求删掉了
+	if strings.Contains(body, "探测点") {
+		t.Error("探测点应该已删除")
+	}
+	// ⚠️ 这些数字只能在**一处**出现。以前总览和统计卡各显示一遍
+	// 「节点总数/在线/覆盖地区」，同一屏看两遍同样的数字，
+	// 访客只会犹豫哪个才是准的。
+	for _, label := range []string{"节点总数", "覆盖地区"} {
+		if n := strings.Count(body, label); n != 1 {
+			t.Errorf("「%s」出现了 %d 次，应该只有 1 处", label, n)
+		}
+	}
+	// hero 里不该再出现「N 台小鸡 / M 在线」
 	if strings.Contains(body, "台小鸡</span>") {
-		t.Error("hero 里不该再显示「台小鸡」，它和统计卡重复了")
+		t.Error("hero 里不该再显示「台小鸡」，它和总览重复了")
 	}
 }
 

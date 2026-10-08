@@ -105,7 +105,12 @@
   // 按钮上带 data-target(node|comment) / data-id / data-vote(up|down)。
   // 已经投过同一票再点一次就是撤票，服务端按「最后一票」记。
   function postVote(btn, vote) {
-    var slug = window.__SLUG__ || (location.pathname.split('/')[2] || '');
+    // slug 优先取按钮自己带的 data-slug。
+    // 详情页整页只有一个节点、能从路径拿；**首页一屏几十张卡片**，
+    // 路径是 "/" 拿不到 —— 必须每张卡各带一个。
+    var slug = btn.getAttribute('data-slug') ||
+               window.__SLUG__ || (location.pathname.split('/')[2] || '');
+    if (!slug) return;
     var body = new URLSearchParams();
     body.set('target', btn.getAttribute('data-target'));
     body.set('id', btn.getAttribute('data-id'));
@@ -118,21 +123,22 @@
       credentials: 'same-origin'
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (!d || !d.ok) return;
-      var wrap = btn.parentNode;
-      var up = wrap.querySelector('.up b[data-count]');
-      var down = wrap.querySelector('.down b[data-count]');
-      // 评论的赞踩按钮各自独立，节点的两个按钮同在 .votebar 里
-      if (btn.getAttribute('data-target') === 'node') {
-        up = wrap.querySelector('.up b[data-count]');
-        down = wrap.querySelector('.down b[data-count]');
+      // 容器按两种布局找：详情页 .votebar、首页卡片 .actbar。
+      // 不写死其中一个，否则换一处布局这功能就静默失效。
+      var box = btn.closest('.votebar, .actbar') || btn.parentNode;
+      var u = box.querySelector('[data-vote="up"]');
+      var dn = box.querySelector('[data-vote="down"]');
+      function setNum(el, v) {
+        if (!el) return;
+        var n = el.querySelector('b[data-count], .n');
+        if (n) n.textContent = v;
       }
-      if (up) up.textContent = d.up;
-      if (down) down.textContent = d.down;
-      var u = wrap.querySelector('.up'), dn = wrap.querySelector('.down');
+      setNum(u, d.up);
+      setNum(dn, d.down);
       if (u) u.classList.toggle('on', d.mine > 0);
       if (dn) dn.classList.toggle('on', d.mine < 0);
-      var sc = document.querySelector('.votebar .score');
-      if (sc && btn.getAttribute('data-target') === 'node') sc.textContent = '净 ' + d.score;
+      var sc = box.querySelector('.score');
+      if (sc) sc.textContent = '净 ' + d.score;
     }).catch(function () { /* 失败就保持原样，用户可以整页刷新 */ });
   }
 

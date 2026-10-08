@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/store"
 )
 
 // TestDispatchAndDeliver 入队的任务会在下一次上报时被下发。
@@ -105,11 +106,41 @@ starting fio...
 		t.Errorf("动态流里没有任务完成事件: %+v", evs)
 	}
 
-	// 卡片上要显示摘要
+	// 卡片上要显示摘要。
+	//
+	// ⚠️ 但**硬件跑分（bench）是例外** —— boss 要求卡片那一行只留
+	// 线路和 IP：磁盘 IOPS、CPU 事件数对"要不要买"几乎没影响。
+	// 所以这里再补一条线路测试，验证"该显示的那类会显示"。
+	if err := st.CreateArticle(&model.Article{
+		NodeID: n.ID, Title: "t", Summary: "s", ContentMD: "c",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	mkRouteTask(t, h, st, n.ID)
+
 	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
-	if !strings.Contains(body, "task-line") || !strings.Contains(body, "4567") {
+	if !strings.Contains(body, "task-line") {
 		t.Error("首页卡片没有显示测试摘要")
 	}
+	if !strings.Contains(body, "回程") {
+		t.Error("线路结果应该显示在卡片摘要上")
+	}
+	if strings.Contains(body, "4567") {
+		t.Error("硬件跑分不该出现在卡片摘要里（详情页和浮窗里仍然有）")
+	}
+}
+
+// mkRouteTask 塞一条三网线路测试的完成结果。
+func mkRouteTask(t *testing.T, h *Hub, st *store.Store, nodeID string) {
+	t.Helper()
+	task := &model.NodeTask{NodeID: nodeID, Kind: "netquality", Title: "线路与三网质量",
+		Cmd: "bash /tmp/kb.sh", Status: model.TaskQueued}
+	if err := st.CreateTask(task); err != nil {
+		t.Fatal(err)
+	}
+	out := `{"event":"result","test":"route","ok":true,"data":{"电信":{"line":"CN2 GIA","latency_ms":45.0}}}
+{"event":"done","ok":true,"elapsed_ms":1000,"failed":[]}`
+	h.finishTaskFromResult(model.CommandResult{ID: task.ID, OK: true, Stdout: out})
 }
 
 // TestTaskFailureIsRecorded 失败的测试要记成 failed 并带上原因，不能静默吞掉。

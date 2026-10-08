@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Vincentkeio/kokoro/internal/geo"
-	"github.com/Vincentkeio/kokoro/internal/netprobe"
 	"github.com/Vincentkeio/kokoro/internal/store"
 )
 
@@ -70,30 +69,11 @@ type statCard struct {
 	Note  string
 }
 
-// buildStats 组装首页统计卡。
+// 统计卡已下线（boss 要求把数字分配到「总览」和「全网速率」里）。
 //
-// 流量是**估算值**（见 store.TrafficSince 的说明），所以文案里写"约"，
-// 不给用户一个看起来精确其实不准的数字。
-func (h *Hub) buildStats(total, online, regions int) []statCard {
-	dayUp, dayDown, _ := h.store.TrafficSince(startOfDay())
-	monUp, monDown, _ := h.store.TrafficSince(startOfMonth())
-
-	onlineNote := "全网离线"
-	if total > 0 {
-		onlineNote = fmt.Sprintf("%.0f%% 可用", float64(online)*100/float64(total))
-	}
-
-	return []statCard{
-		{Label: "节点总数", Value: strconv.Itoa(total), Note: "台小鸡已接入"},
-		{Label: "在线", Value: strconv.Itoa(online), Note: onlineNote},
-		{Label: "覆盖地区", Value: strconv.Itoa(regions), Note: "个地理区域"},
-		{Label: "今日流量", Value: FmtBytes(dayUp + dayDown),
-			Note: fmt.Sprintf("↑ %s · ↓ %s", FmtBytes(dayUp), FmtBytes(dayDown))},
-		{Label: "本月流量", Value: FmtBytes(monUp + monDown),
-			Note: fmt.Sprintf("↑ %s · ↓ %s", FmtBytes(monUp), FmtBytes(monDown))},
-		{Label: "探测点", Value: strconv.Itoa(netprobe.Coverage().Total), Note: "三网分省 + 境外"},
-	}
-}
+// 原来那六张卡：节点总数/在线/覆盖地区 -> 总览，
+// 今日流量/本月流量 -> 全网速率，探测点 -> 删除。
+// 同一屏出现两遍同样的数字，访客只会犹豫哪个才是准的。
 
 // startOfDay / startOfMonth 用**服务器本地时区**算。
 //
@@ -288,7 +268,7 @@ func specDisk(total int64) string {
 // 改了 CSS/JS 必须同步 +1：宝塔默认给 js/css 设 12 小时缓存，
 // URL 不变浏览器就吃旧文件，表现成"代码改了但页面没变"。
 // 加 ?v= 是唯一能让缓存立即失效的办法。
-const staticVer = "41"
+const staticVer = "45"
 
 // staticAssetURL 给静态资源拼上版本号。
 func staticAssetURL(name string) string {

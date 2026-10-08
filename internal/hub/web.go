@@ -50,9 +50,10 @@ type homeData struct {
 	Hero     heroView
 	Regions  []string
 
-	// 信息面板：时钟、统计卡、点阵地球
+	// 信息面板：时钟、点阵地球
+	//
+	// 统计卡（statCard）已下线 —— 数字都并进「总览」和「全网速率」了。
 	Clocks []clockZone
-	Stats  []statCard
 	Globe  globeData
 	// GlobeJSON 是喂给前端的地球数据（已序列化）。用 template.JS 是为了
 	// 不被 HTML 转义成 &quot; ——它要塞进 <script type="application/json">。
@@ -291,6 +292,12 @@ type nodeCard struct {
 	Uptime *uptimeSummary
 	// Specs 是卡片上那行静态规格（CPU 型号/内存/Swap/虚拟化/加速）
 	Specs []specItem
+
+	// ---- 卡片底部的互动数据 ----
+	VoteUp, VoteDown int
+	MineUp, MineDown bool
+	Articles         int // 文章数
+	Comments         int // 已审核的评论数
 }
 
 // RegionLabel 给卡片上的地区文案兜底，避免模板里写三层 if。
@@ -319,6 +326,20 @@ type commentView struct {
 	model.Comment
 	Votes   model.VoteCount
 	ReplyTo string
+}
+
+// summaryRank 给卡片摘要里的各段排优先级（数字小的排前面）。
+//
+// IP 质量放最前 —— 买家扫一眼卡片最先想知道的是"这 IP 干不干净、
+// 是不是机房"，而不是跑了多少 IOPS。
+func summaryRank(part string) int {
+	switch {
+	case strings.HasPrefix(part, "回程"):
+		return 0 // 线路在上
+	case strings.Contains(part, "IP质量"):
+		return 1 // IP 在下
+	}
+	return 2
 }
 
 // articleView 是详情页上的一篇文章。
@@ -665,11 +686,27 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 	// 而不是每台节点查一次 History——首页会同时渲染所有节点。
 	series, _ := h.store.RecentNetSeries(time.Now().Add(-time.Hour).UnixMilli())
 
+	// 卡片底部的互动数据，**一次批量取完**再按节点分发。
+	// 每张卡各查三次的话，几十台就是一二百次往返。
+	voter := h.voterID(w, r)
+	ids := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		ids = append(ids, n.ID)
+	}
+	voteAll, _ := h.store.VoteCounts("node", ids, voter)
+	artCnt, _ := h.store.CountByNode("node_articles", "")
+	cmtCnt, _ := h.store.CountByNode("comments", "status = 'approved'")
+
 	cards := make([]nodeCard, 0, len(nodes))
 	online := 0
 	for _, n := range nodes {
 		m := snap[n.ID]
 		c := nodeCard{Node: n, Latest: m, FlagCode: flagCode(&n)}
+		if v, ok := voteAll[n.ID]; ok {
+			c.VoteUp, c.VoteDown = v.Up, v.Down
+			c.MineUp, c.MineDown = v.MineUp(), v.MineDown()
+		}
+		c.Articles, c.Comments = artCnt[n.ID], cmtCnt[n.ID]
 		if m != nil {
 			c.CPUPct = m.CPU.Usage
 			c.MemPct = Pct(float64(m.Mem.Used), float64(m.Mem.Total))
@@ -707,6 +744,9 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		if ts, err := h.store.ListTasks(n.ID, 5); err == nil {
 			// 同一个测试项只保留最新一次的结果
 			seenTest := map[string]bool{}
+			// 摘要合并时每个测试项只算一次（列表倒序，先到的即最新）
+			seenSummaryKind := map[string]bool{}
+			var parts []string
 			for _, t := range ts {
 				if t.Status == model.TaskRunning || t.Status == model.TaskQueued {
 					c.TaskRunning = true
@@ -714,16 +754,32 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 				if t.Status != model.TaskDone {
 					continue
 				}
-				// ⚠️ 摘要只取**最新一条**（列表是倒序，所以先到的就是最新的），
-				// 但浮窗里的**每一项都要收** —— 这里以前写成
+				// ⚠️ 浮窗里的**每一项都要收** —— 这里以前写成
 				// `if c.TaskSummary != "" { continue }`，结果第二个任务起
 				// 整段都被跳过了，浮窗里只剩最新那一次的两项。
-				if c.TaskSummary == "" {
-					// 落库的摘要优先；空的（老任务）就现算一遍
-					c.TaskSummary = t.Summary
-					if c.TaskSummary == "" && t.Detail != "" {
-						c.TaskSummary = summarizeTask(t.Kind, t.Detail)
+				//
+				// 摘要**跨类型合并**：把每个测试项最新那次的摘要拼起来。
+				//
+				// 以前是「只取最新一条任务的摘要」—— 结果最近跑的是测速，
+				// 卡片上就只剩「下行 713 Mbps」，IP 质量和用途全看不见了。
+				// 而"这台机器怎么样"是一整幅画面，不是最后跑的那一项。
+				// ⚠️ **优先现算**，落库的 t.Summary 只作兜底。
+				// 落库那份是任务完成那一刻的快照 —— 改了摘要规则之后，
+				// 老任务行里存的还是旧文本（比如还带着"下行 713 Mbps"），
+				// 不重算的话改了规则页面上也看不出变化。
+				// ⚠️ **硬件跑分（bench）不进卡片摘要**（boss 要求只留线路和 IP）。
+				// 磁盘 IOPS、CPU 事件数对"要不要买"几乎没影响 ——
+				// 决定体验的是线路走哪条骨干、IP 干不干净。
+				// 跑分在详情页和浮窗里仍然看得到。
+				if t.Kind != "bench" {
+					if one := firstNonEmpty(summarizeTask(t.Kind, t.Detail), t.Summary); one != "" {
+						if !seenSummaryKind[t.Kind] {
+							seenSummaryKind[t.Kind] = true
+							parts = append(parts, strings.TrimSpace(one))
+						}
 					}
+				}
+				if c.TaskWhen == "" {
 					c.TaskWhen = relativeTime(t.CreatedAt)
 				}
 				// 把最近几项测试**合并**成一个浮窗。
@@ -746,6 +802,21 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 					}
 				}
 			}
+			// 拼成卡片上那一行。
+			//
+			// 两件事：**排优先级** + **限长**。
+			// 一台机器可能跑过三项以上测试，全铺出来卡片就撑破了 ——
+			// 而卡片摘要的作用是"扫一眼知道这台怎么样"，
+			// 细节在浮窗和详情页里都有。
+			//
+			// 优先级：IP 质量/用途 > 回程线路 > 硬件跑分。
+			// 买家最先判断的是"这 IP 干不干净、是不是机房"。
+			// 顺序：回程线路在上、IP 质量在下。
+			// 卡片模板用 white-space: pre-line 把它渲染成两行。
+			sort.SliceStable(parts, func(i, j int) bool {
+				return summaryRank(parts[i]) < summaryRank(parts[j])
+			})
+			c.TaskSummary = strings.Join(parts, "\n")
 		}
 		c.Specs = nodeSpecs(n, m)
 		c.Uptime = h.loadUptime(n.ID)
@@ -786,7 +857,6 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		Regions:        regions,
 		OwnerEmptyHint: h.adminAuthed(r) && !h.owner().Has,
 		Clocks:         homeClocks(),
-		Stats:          h.buildStats(len(nodes), online, len(regions)),
 		Globe:          globe,
 		GlobeJSON:      template.JS(globeJSON),
 		GlobeLandURL:   staticAssetURL("land.bin"),

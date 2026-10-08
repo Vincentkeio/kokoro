@@ -95,6 +95,10 @@ func (r *benchReport) get(test string) map[string]any {
 func summarizeBench(rep *benchReport) string {
 	var parts []string
 
+	// ⚠️ 硬件跑分**保留在这里**，由卡片那一层去过滤。
+	// 摘要函数是共用的：详情页和浮窗要看完整结果，
+	// 只有卡片那一行按 boss 要求只留线路和 IP。
+	// 在这里删掉的话，详情页也跟着少一块。
 	if d := rep.get("disk"); d != nil {
 		if v, ok := numOf(d, "seq_read_mbs"); ok && v > 0 {
 			w, _ := numOf(d, "seq_write_mbs")
@@ -106,33 +110,26 @@ func summarizeBench(rep *benchReport) string {
 			parts = append(parts, fmt.Sprintf("CPU %.0f 事件/秒", v))
 		}
 	}
-	if d := rep.get("net"); d != nil {
-		if v, ok := numOf(d, "down_mbps"); ok && v > 0 {
-			// 只有**真测了**上行才写上行。脚本在 speedtest 不可用时会降级成
-			// curl 下载测速，那只测下行 —— 写成「上行 0 Mbps」会让人
-			// 以为这机器上传是坏的，其实是没测。
-			if up, ok := numOf(d, "up_mbps"); ok && up > 0 {
-				parts = append(parts, fmt.Sprintf("下行 %.0f / 上行 %.0f Mbps", v, up))
-			} else {
-				parts = append(parts, fmt.Sprintf("下行 %.0f Mbps", v))
-			}
-		}
-	}
+	// 带宽数字**不放摘要里**（boss 要求换成 IP 质量和用途）。
+	//
+	// 理由：下行多少 Mbps 是测速那一刻的瞬时值，受测速节点和当时网络影响很大，
+	// 放卡片上参考价值低；而"这 IP 干不干净、是机房还是家宽"才是买家
+	// 扫一眼就要判断的事。带宽数字在详情页和浮窗里仍然看得到。
 	if d := rep.get("ip"); d != nil {
 		// IP 质量等级放最前面 —— 这是买家扫一眼卡片最想知道的事，
 		// 从最安全的绿到最坏的屏蔽。
 		if g := gradeIP(d); g != nil {
-			parts = append(parts, ipGradeEmoji(g.Level)+" IP "+g.Label)
+			parts = append(parts, ipGradeEmoji(g.Level)+" IP质量:"+g.Label)
 		}
 		if u, ok := d["unlocked"].([]any); ok {
 			total := 0
 			if t, ok := numOf(d, "unlock_total"); ok {
 				total = int(t)
 			}
-			parts = append(parts, fmt.Sprintf("解锁 %d/%d", len(u), total))
+			parts = append(parts, fmt.Sprintf("流媒体解锁:%d/%d", len(u), total))
 		}
 		if t := firstNonEmpty(strOf(d, "usage"), strOf(d, "ip_type")); t != "" {
-			parts = append(parts, t)
+			parts = append(parts, "性质: "+t)
 		}
 	}
 	if d := rep.get("route"); d != nil {
@@ -160,7 +157,9 @@ func summarizeBench(rep *benchReport) string {
 		}
 		return ""
 	}
-	return strings.Join(parts, " · ")
+	// 段内用空格连，不用 " · "：卡片上这两组是**两行**（线路一行、IP 一行），
+	// 行内再用分隔符堆就显得很吵。
+	return strings.Join(parts, " ")
 }
 
 // ---- 模板里用的小工具 ----

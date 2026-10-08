@@ -33,7 +33,7 @@ import (
 var schemaSQL string
 
 // schemaVersion 当前 schema 版本，记录在 PRAGMA user_version 中。
-const schemaVersion = 8
+const schemaVersion = 10
 
 // 5 分钟聚合窗口长度（毫秒）。
 const bucket5m = int64(5 * 60 * 1000)
@@ -220,6 +220,18 @@ CREATE INDEX IF NOT EXISTS idx_node_articles_node
 INSERT INTO node_articles (id, node_id, title, summary, content_md, created_at, updated_at)
 SELECT 'art_' || node_id, node_id, '', summary, content_md, updated_at, updated_at
 FROM node_profile WHERE TRIM(content_md) <> '';`},
+	{version: 9, sql: `CREATE TABLE IF NOT EXISTS node_votes (
+    node_id    TEXT    NOT NULL,
+    voter      TEXT    NOT NULL,
+    value      INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_id, voter)
+);
+CREATE INDEX IF NOT EXISTS idx_node_votes_node ON node_votes (node_id);`},
+	// v9 里我建了张 node_votes，想给卡片做赞踩 —— 结果发现站内早就有
+	// 通用的 votes 表（含 target_type/target_id，连评论的赞踩都在用）。
+	// 这张多余的清掉，免得以后有人看着两张表不知道该写哪张。
+	{version: 10, sql: `DROP TABLE IF EXISTS node_votes;`},
 }
 
 // prepare 预编译高频写入语句。
