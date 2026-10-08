@@ -119,6 +119,11 @@ func summarizeBench(rep *benchReport) string {
 		}
 	}
 	if d := rep.get("ip"); d != nil {
+		// IP 质量等级放最前面 —— 这是买家扫一眼卡片最想知道的事，
+		// 从最安全的绿到最坏的屏蔽。
+		if g := gradeIP(d); g != nil {
+			parts = append(parts, ipGradeEmoji(g.Level)+" IP "+g.Label)
+		}
 		if u, ok := d["unlocked"].([]any); ok {
 			total := 0
 			if t, ok := numOf(d, "unlock_total"); ok {
@@ -126,14 +131,24 @@ func summarizeBench(rep *benchReport) string {
 			}
 			parts = append(parts, fmt.Sprintf("解锁 %d/%d", len(u), total))
 		}
-		if t, ok := d["ip_type"].(string); ok && t != "" {
+		if t := firstNonEmpty(strOf(d, "usage"), strOf(d, "ip_type")); t != "" {
 			parts = append(parts, t)
 		}
 	}
 	if d := rep.get("route"); d != nil {
-		keys := sortedKeysOf(d)
-		if len(keys) > 0 {
-			parts = append(parts, "回程 "+strings.Join(keys, "/"))
+		// 回程线路只报"走了哪条骨干"，三网一样时合并成一条，
+		// 免得摘要里挤三遍同一个词
+		var lines []string
+		for _, isp := range []string{"电信", "联通", "移动"} {
+			sub, _ := d[isp].(map[string]any)
+			if l := strOf(sub, "line"); l != "" {
+				lines = append(lines, l)
+			}
+		}
+		if u := uniqStrings(lines); len(u) == 1 {
+			parts = append(parts, "回程 "+u[0])
+		} else if len(u) > 0 {
+			parts = append(parts, "回程 "+strings.Join(u, " / "))
 		}
 	}
 	if len(parts) == 0 {
@@ -295,8 +310,20 @@ func benchFieldLabel(k string) string {
 		return "DB-IP 风险分"
 	case "hops":
 		return "跳数"
+	case "电信", "联通", "移动":
+		return k
 	case "target":
 		return "目标"
+	case "blacklist_listed":
+		return "黑名单收录"
+	case "blacklist_marked":
+		return "黑名单标记"
+	case "blacklist_clean":
+		return "黑名单干净"
+	case "blacklist_total":
+		return "黑名单库数"
+	case "usage":
+		return "IP 用途"
 	case "unlocked":
 		return "已解锁"
 	case "locked":
@@ -344,12 +371,11 @@ func benchFieldValue(k string, v any) string {
 		if n, ok := x["Name"].(string); ok && !isBlankValue(n) {
 			return n
 		}
-		// 回程路由是 {hops, target}，写成「14 跳 · 202.96.209.133」比
-		// 「hops=14 target=202.96.209.133」好读得多
-		if h, ok1 := numOf(x, "hops"); ok1 {
-			if tg, ok2 := x["target"].(string); ok2 {
-				return fmt.Sprintf("%.0f 跳 · %s", h, tg)
-			}
+		// 回程线路是 {line, asn, hops, latency_ms}。
+		// 只显示「线路 · 延迟」——**不显示跳数**（没人关心过了几个路由器），
+		// 更不显示任何 IP（那是服务器隐私）。
+		if line := strOf(x, "line"); line != "" || x["latency_ms"] != nil {
+			return routeLine(x)
 		}
 		keys := sortedKeysOf(x)
 		parts := make([]string, 0, len(keys))
@@ -413,6 +439,30 @@ func humanBytes(v float64) string {
 		i++
 	}
 	return fmt.Sprintf("%.1f %s", v, units[i])
+}
+
+// firstNonEmpty 取第一个非空字符串。
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// uniqStrings 去重但保持原顺序。
+func uniqStrings(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, v := range in {
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 // numOf 从 map 里取一个数值字段。
