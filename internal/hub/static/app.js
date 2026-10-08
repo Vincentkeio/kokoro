@@ -29,6 +29,10 @@
     if (!el) return;
     el.classList.toggle('on', !!on);
     el.classList.toggle('off', !on);
+    // 文字也要跟着变 —— 光换颜色的话，一台机器掉线后
+    // 标签变红却还写着"在线"，比不更新更让人困惑。
+    var t = el.querySelector('[data-field="dottext"]');
+    if (t) t.textContent = on ? '在线' : '离线';
   }
 
   // 把一份指标应用到页面上的对应节点区块

@@ -213,7 +213,11 @@
     <article class="card{{if not .Online}} off{{end}}" data-node="{{.ID}}">
       <div class="card-head">
         <h2>{{if .FlagCode}}<span class="flag">{{flag .FlagCode}}</span>{{end}}<a href="/n/{{.Slug}}">{{.Name}}</a></h2>
-        <span class="status {{if .Online}}on{{else}}off{{end}}"><i></i>{{if .Online}}在线{{else}}离线{{end}}</span>
+        {{/* data-field="dot" 是 SSE 实时更新在线状态的钩子。
+               ⚠️ 卡片底部原本也有一个带这个钩子的绿点，删掉之后
+               这里就是**唯一**的了 —— 忘了挂上，在线状态就再也不会
+               随上报实时变（页面看着像卡住了）。 */}}
+        <span class="status {{if .Online}}on{{else}}off{{end}}" data-field="dot"><i></i><b data-field="dottext">{{if .Online}}在线{{else}}离线{{end}}</b></span>
       </div>
 
       {{/* 延迟只在这里的区域行展示一次；下面网络行里还有一根带刻度的延迟条，
@@ -345,12 +349,13 @@
         <span class="act stat" title="评论数">
           <span class="i">💬</span><span class="n">{{.Comments}}</span>
         </span>
-      </div>
+        {{/* 查看详情并进这一行、靠最右 —— 原来它自己占一行，
+           整张卡片白白多出一行高度。
+           明确给一个按钮进详情页：不做"整张卡片可点"，也不做悬停弹详情，
+           boss 明确否掉了这两种（看不出哪能点，还容易误触）。
 
-      <div class="foot">
-        <span class="dot {{if .Online}}on{{else}}off{{end}}" data-field="dot"></span>
-        {{/* 明确给一个按钮进详情页。不做"整张卡片可点"，也不做悬停弹详情——
-           boss 明确否掉了这两种：看不出哪能点，还容易误触。 */}}
+           原来这行左边还有个在线状态绿点，也删了 ——
+           在线与否在卡片标题右侧已经有一个了，同一张卡出现两遍。 */}}
         <a class="btn small more" href="/n/{{.Slug}}">查看详情</a>
       </div>
     </article>
@@ -382,7 +387,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=45"></script>
+<script src="/static/app.js?v=46"></script>
 </body>
 </html>
 {{end}}

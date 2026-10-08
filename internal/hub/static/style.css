@@ -1581,5 +1581,12 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 /* 投过的票高亮。绿=赞、红=踩（跟涨跌色一致）。 */
 .card .vote.up.on   { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .card .vote.down.on { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
-/* 计数推到右边，跟左边的赞踩拉开 */
-.card .actbar .stat:last-child { margin-left: auto; }
+/* 评论数紧跟在文章数右边（不推开），把最右让给按钮 */
+/* 「查看详情」推到最右，和计数同一行 */
+.card .actbar .more { margin-left: auto; flex: none; }
+
+/* ---- 卡片底部再压缩 ----
+   「查看详情」并进互动条之后，原来单独那一行（含左侧绿灯）没了，
+   卡片自然矮一行。顺手把互动条的上下留白收紧一点。 */
+.card .actbar { margin-top: var(--s2); padding-top: var(--s2); gap: 6px; }
+.card .foot { display: none; }   /* 老的那一行彻底不用了 */
