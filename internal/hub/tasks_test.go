@@ -36,7 +36,9 @@ func TestDispatchAndDeliver(t *testing.T) {
 	if c.Type != "shell" {
 		t.Errorf("命令类型 = %s，应为 shell", c.Type)
 	}
-	if got := c.Payload["cmd"]; got == nil || !strings.Contains(got.(string), "IP.Check.Place") {
+	// 命令要指向**我们自己的**测试脚本仓库，并带上 --only 选跑哪几块
+	if got := c.Payload["cmd"]; got == nil || !strings.Contains(got.(string), "kokoro-bench.sh") ||
+		!strings.Contains(got.(string), "--only ip") {
 		t.Errorf("命令内容不对: %v", got)
 	}
 	// 超时要够跑脚本，默认 10 秒肯定不够
@@ -238,76 +240,66 @@ func TestExtractJSON(t *testing.T) {
 	}
 }
 
-// TestScriptsArePosixShellSafe 内置脚本必须能被 /bin/sh 执行。
+// TestBenchCmdIsSafeAndComplete 下发的命令要能被 /bin/sh 执行、且带全必要参数。
 //
-// 踩过的坑：NetQuality 官方给的写法是 `bash <(curl -Ls Net.Check.Place) -j`，
-// 进程替换 `<( )` 是 bash 扩展，Debian 的 /bin/sh 是 dash，
-// 直接报 `Syntax error: "(" unexpected` —— 任务下发出去必然失败。
-// 所以命令一律写成 `curl ... | bash -s -- -j` 这种 POSIX 管道形式。
-func TestScriptsArePosixShellSafe(t *testing.T) {
+// 踩过的坑：
+//  1. `bash <(curl ...)` 的进程替换是 bash 扩展，Debian 的 /bin/sh 是 dash，
+//     直接报 `Syntax error: "(" unexpected`。所以命令里不能出现 `<(`。
+//  2. 脚本第一次跑要装依赖，没 TTY 读不到确认就退出 —— 但那是脚本自己
+//     处理的事（kokoro-bench.sh 内部按需装包），命令本身只要保证
+//     拉得到脚本、且拉不到时明确失败。
+//  3. 拉不到脚本时必须 `exit 1`，不能让 bash 去执行空文件。
+func TestBenchCmdIsSafeAndComplete(t *testing.T) {
+	h, _ := newTestHub(t)
 	for _, sc := range testScripts {
-		if strings.Contains(sc.Cmd, "<(") || strings.Contains(sc.Cmd, ">(") {
-			t.Errorf("%s 的命令用了进程替换 <( )，/bin/sh 跑不了: %s", sc.Kind, sc.Cmd)
+		cmd := h.benchCmd(sc.Only)
+		if strings.Contains(cmd, "<(") || strings.Contains(cmd, ">(") {
+			t.Errorf("%s 的命令用了进程替换，/bin/sh 跑不了: %s", sc.Kind, cmd)
 		}
-		if strings.Contains(sc.Cmd, "[[") {
-			t.Errorf("%s 的命令用了 bash 专有的 [[ ]]: %s", sc.Kind, sc.Cmd)
+		if !strings.Contains(cmd, "kokoro-bench.sh") {
+			t.Errorf("%s 的命令没有指向我们的脚本仓库: %s", sc.Kind, cmd)
 		}
-		// 脚本第一次跑要装依赖，没 TTY 时读不到确认就会直接退出，
-		// 所以 -y 是必须的（实测不带就是 "Lacking necessary dependencies" 然后失败）
-		if !strings.Contains(sc.Cmd, "-y") {
-			t.Errorf("%s 的命令没带 -y，非交互环境下装不了依赖: %s", sc.Kind, sc.Cmd)
+		if !strings.Contains(cmd, "--only "+sc.Only) {
+			t.Errorf("%s 的命令没有带上 --only %s: %s", sc.Kind, sc.Only, cmd)
 		}
-		if !strings.Contains(sc.Cmd, "bash") {
-			t.Errorf("%s 的命令没有显式调 bash —— 这些脚本都是按 bash 写的", sc.Kind)
+		// 拉不到就得失败退出，不能默默执行一个空文件
+		if !strings.Contains(cmd, "exit 1") {
+			t.Errorf("%s 的命令缺少拉取失败时的退出: %s", sc.Kind, cmd)
 		}
+		// 超时要够跑脚本
 		if sc.TimeoutMS < 300000 {
 			t.Errorf("%s 的超时 %d ms 太短，跑不完", sc.Kind, sc.TimeoutMS)
 		}
 	}
 }
 
-// TestSummarizeIPQualityRealJSON 用**从真实机器上抓下来的** IPQuality 输出测解析。
+// TestBenchCmdHasHubFallback 命令里要带上 hub 自己的副本做兜底。
 //
-// 这份结构是 2026-10-08 在 zouter 上跑 `curl -Ls IP.Check.Place | bash -s -- -j -y`
-// 拿到的原文（只删了无关的 Mail 段）。用真实数据而不是自己编的，
-// 才能发现"字段名猜错了"这类问题 —— 之前就是猜的。
-func TestSummarizeIPQualityRealJSON(t *testing.T) {
-	// 脚本会把 JSON 夹在彩色进度输出里，所以故意加前后噪声
-	raw := "Lacking necessary dependencies...\n" +
-		"[216.23.83.149]# 正在检测IP数据库 Maxmind ... 03%\r" +
-		`{"Info":{"ASN":"AS3258","Organization":"xTom Japan","City":"Tokyo","Type":"机房"},
-"Type":{"Usage":{"IPinfo":"机房"}},
-"Score":{"IP2LOCATION":"3","SCAMALYTICS":"0","AbuseIPDB":"0","DBIP":"0","IPQS":"null"},
-"Media":{"TikTok":{"Status":"解锁","Region":"JP","Type":"原生"},
-"DisneyPlus":{"Status":"解锁","Region":"JP","Type":"原生"},
-"Netflix":{"Status":"解锁","Region":"JP","Type":"原生"},
-"Youtube":{"Status":"解锁","Region":"JP","Type":"原生"},
-"AmazonPrimeVideo":{"Status":"失败","Region":"","Type":""},
-"Reddit":{"Status":"解锁","Region":"JP","Type":"原生"},
-"ChatGPT":{"Status":"解锁","Region":"JP","Type":"原生"}},
-"Mail":{"Sohu":null,"DNSBlacklist":{"Total":423,"Clean":420,"Marked":3}}}` +
-		"\n\n  评测结果已保存\n"
+// 小鸡到 GitHub 的链路不一定通（国内尤其常见），拉不到就退回 hub。
+func TestBenchCmdHasHubFallback(t *testing.T) {
+	h, _ := newTestHub(t)
+	// 兜底地址是拿面板域名拼的，测试里得先给它一个
+	h.cfg.Domain = "probe.example.com"
+	cmd := h.benchCmd("ip")
+	if !strings.Contains(cmd, "probe.example.com/api/v1/dl/kokoro-bench.sh") {
+		t.Errorf("命令里没有 hub 兜底地址: %s", cmd)
+	}
+	if !strings.Contains(cmd, "raw.githubusercontent.com") {
+		t.Errorf("命令里没有 GitHub 地址: %s", cmd)
+	}
+}
 
-	got := summarizeTask("ipquality", raw)
-	if got == "" {
-		t.Fatal("解析结果为空 —— 摘要没生成")
+// TestBenchCmdWithoutDomain 没配域名时不要拼出 "https:///api/..." 这种畸形地址。
+//
+// 拼错了比没有更糟：curl 会去连一个不存在的主机，报错还很难看懂。
+func TestBenchCmdWithoutDomain(t *testing.T) {
+	h, _ := newTestHub(t)
+	h.cfg.Domain = ""
+	cmd := h.benchCmd("ip")
+	if strings.Contains(cmd, "https:///") {
+		t.Errorf("域名缺失时拼出了畸形地址: %s", cmd)
 	}
-	t.Logf("摘要 = %s", got)
-
-	// 7 个服务里 6 个解锁（AmazonPrimeVideo 是失败的）
-	if !strings.Contains(got, "6/7") {
-		t.Errorf("解锁计数不对，应为 6/7：%q", got)
-	}
-	if !strings.Contains(got, "Netflix") || !strings.Contains(got, "ChatGPT") {
-		t.Errorf("应列出解锁的服务：%q", got)
-	}
-	if strings.Contains(got, "Prime") {
-		t.Errorf("失败的服务不该出现在解锁列表里：%q", got)
-	}
-	if !strings.Contains(got, "风险分 0") {
-		t.Errorf("应显示风险分：%q", got)
-	}
-	if !strings.Contains(got, "机房") {
-		t.Errorf("应显示 IP 类型：%q", got)
+	if !strings.Contains(cmd, "raw.githubusercontent.com") {
+		t.Errorf("至少要保留 GitHub 地址: %s", cmd)
 	}
 }

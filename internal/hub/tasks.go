@@ -27,49 +27,88 @@ import (
 	"github.com/kokoro-probe/kokoro/internal/model"
 )
 
-// testScript 是一个可下发的测试脚本。
+// benchScriptURL 是我们自己的一键测试脚本。
+//
+// 为什么不用社区的 YABS / IPQuality / 融合怪：它们的输出是**给人看的彩色终端**
+// （转圈动画、赞助商广告、JSON 夹在中间），字段结构还随版本变。
+// 探针要的是机器可读的结果，硬解析它们等于逆着设计走 —— 实测抓一屏下来
+// 九成是广告和动画帧。
+//
+// 所以脚本单独一个仓库，输出结构化 NDJSON：stdout 事件 / stderr 进度。
+//
+//	https://github.com/kokoro-probe/kokoro-bench
+const benchScriptURL = "https://raw.githubusercontent.com/kokoro-probe/kokoro-bench/main/kokoro-bench.sh"
+
+// benchScriptFallback 是 hub 自己留的一份副本。
+//
+// 为什么要有：脚本要从 GitHub 拉，而小鸡到 GitHub 的链路不一定通
+// （国内小鸡尤其常见）。拉不到就退回 hub —— hub 反正是能连上的那台。
+const benchScriptFallback = "/api/v1/dl/kokoro-bench.sh"
+
+// testScript 是一个可下发的测试项。
+//
+// 三个"项"其实是**同一个脚本的三次调用**，靠 --only 选跑哪几块。
+// 这样脚本只有一份、只维护一处，而面板上仍然是三个独立的按钮。
 type testScript struct {
 	Kind      string
 	Title     string
-	Cmd       string
+	Only      string // 传给 kokoro-bench.sh 的 --only
 	TimeoutMS int
 	Note      string
 }
 
-// testScripts 是内置脚本清单。
-//
-// 三个都是社区最流行的，且**都支持 -j 输出 JSON**：
-//
-//	bench      YABS（fio 磁盘 + iperf3 测速 + Geekbench CPU）
-//	ipquality  xykt/IPQuality（IP 类型/风险分/流媒体解锁）
-//	netquality xykt/NetQuality（BGP 线路 + 三网延迟 + 回程路由 + 测速）
-//
-// ⚠️ NodeQuality 只是这几个脚本的**外壳**，输出是 Markdown 表格，
-// 反而不如直接调 xykt 的原脚本加 -j 好解析。所以这里不用它。
-//
-// 超时按实测放宽：YABS 含 Geekbench 要十几分钟。
+// testScripts 是内置的测试项。
 var testScripts = []testScript{
 	{
 		Kind:      "bench",
 		Title:     "硬件跑分",
-		Cmd:       `curl -sL yabs.sh | bash -s -- -j -y`,
+		Only:      "sysinfo,disk,cpu",
 		TimeoutMS: 1800000,
-		Note:      "fio 磁盘 IO + iperf3 测速 + Geekbench CPU，约 10~20 分钟",
+		Note:      "系统信息 + fio 磁盘 IO + sysbench CPU，约 3~6 分钟",
 	},
 	{
 		Kind:      "ipquality",
 		Title:     "IP 质量与解锁",
-		Cmd:       `curl -Ls IP.Check.Place | bash -s -- -j -y`,
+		Only:      "ip",
 		TimeoutMS: 900000,
 		Note:      "IP 类型/原生 IP/风险分 + Netflix、Disney+、ChatGPT 等解锁检测，约 3~8 分钟",
 	},
 	{
 		Kind:      "netquality",
 		Title:     "线路与三网质量",
-		Cmd:       `curl -Ls Net.Check.Place | bash -s -- -j -y`,
+		Only:      "net,route",
 		TimeoutMS: 900000,
-		Note:      "三网延迟/回程线路（CN2 GIA、9929、4837）+ 路由，约 5~10 分钟",
+		Note:      "上下行测速 + 三网回程路由，约 5~10 分钟",
 	},
+}
+
+// benchCmd 拼出下发到小鸡上的命令。
+//
+// 先试 GitHub，失败退回 hub 自己的副本；两份都拿不到就明确报错，
+// 而不是让 bash 去执行一个空文件（那会报一堆莫名其妙的语法错误）。
+func (h *Hub) benchCmd(only string) string {
+	base := strings.TrimRight(strings.TrimSpace(h.cfg.Domain), "/")
+	if base != "" && !strings.HasPrefix(base, "http") {
+		base = "https://" + base
+	}
+
+	// 有域名才拼兜底；没有就只用 GitHub ——
+	// 拼成 "https:///api/..." 这种畸形地址还不如没有。
+	fetch := `curl -fsSL --max-time 60 "$U" -o /tmp/kb.sh`
+	if base != "" {
+		fetch = `if ! curl -fsSL --max-time 60 "$U" -o /tmp/kb.sh 2>/dev/null || [ ! -s /tmp/kb.sh ]; then ` +
+			`echo "GitHub 拉取失败，改用面板副本" >&2; ` +
+			`curl -fsSL --max-time 60 "$F" -o /tmp/kb.sh; fi`
+	}
+	fb := ""
+	if base != "" {
+		fb = " F=" + base + benchScriptFallback + ";"
+	}
+	return fmt.Sprintf(
+		`set -e; U=%s;%s %s; `+
+			`[ -s /tmp/kb.sh ] || { echo "测试脚本拉取失败" >&2; exit 1; }; `+
+			`bash /tmp/kb.sh --only %s`,
+		benchScriptURL, fb, fetch, only)
 }
 
 // testScriptByKind 按 kind 找脚本。
@@ -92,7 +131,7 @@ func (h *Hub) DispatchTask(nodeID, kind string) (*model.NodeTask, error) {
 		NodeID: nodeID,
 		Kind:   kind,
 		Title:  sc.Title,
-		Cmd:    sc.Cmd,
+		Cmd:    h.benchCmd(sc.Only),
 		Status: model.TaskQueued,
 	}
 	if err := h.store.CreateTask(t); err != nil {
@@ -146,6 +185,8 @@ func (h *Hub) pendingCommands(nodeID string) []model.Command {
 	if ok {
 		timeout = sc.TimeoutMS
 	}
+	// 用任务里存的 cmd：它是下发那一刻拼好的，重跑历史任务时
+	// 也能复现当时的行为（而不是用现在改过的新命令）。
 	return []model.Command{{
 		ID:   t.ID,
 		Type: "shell",
