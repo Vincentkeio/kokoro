@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // TestDispatchAndDeliver 入队的任务会在下一次上报时被下发。

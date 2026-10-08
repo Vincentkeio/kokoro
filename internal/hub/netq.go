@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/netprobe"
+	"github.com/Vincentkeio/kokoro/internal/netprobe"
 )
 
 // netqKeep 网络质量数据的保留时长。

@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/store"
+	"github.com/Vincentkeio/kokoro/internal/store"
 )
 
 const (

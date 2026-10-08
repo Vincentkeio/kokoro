@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/theme"
+	"github.com/Vincentkeio/kokoro/internal/theme"
 )
 
 // settingTheme 是站点级主题的 settings 键。

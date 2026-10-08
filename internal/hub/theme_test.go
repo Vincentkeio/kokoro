@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/store"
-	"github.com/kokoro-probe/kokoro/internal/theme"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/store"
+	"github.com/Vincentkeio/kokoro/internal/theme"
 )
 
 // newThemeTestHub 起一个不监听端口的 Hub，数据落在临时目录。

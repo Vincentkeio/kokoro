@@ -23,9 +23,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/kokoro-probe/kokoro/internal/flags"
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/notify"
+	"github.com/Vincentkeio/kokoro/internal/flags"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/notify"
 )
 
 // ---- 页面数据 ----

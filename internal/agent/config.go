@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // 配置文件相关常量。

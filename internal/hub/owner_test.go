@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/theme"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/theme"
 )
 
 // TestOwnerCardHasSemantics 钉住「填过就显示」这条判定。

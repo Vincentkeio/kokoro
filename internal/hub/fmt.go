@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/alert"
+	"github.com/Vincentkeio/kokoro/internal/alert"
 )
 
 // FmtBytes 把字节数格式化为人类可读形式（1024 进制）。

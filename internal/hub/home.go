@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/geo"
-	"github.com/kokoro-probe/kokoro/internal/netprobe"
-	"github.com/kokoro-probe/kokoro/internal/store"
+	"github.com/Vincentkeio/kokoro/internal/geo"
+	"github.com/Vincentkeio/kokoro/internal/netprobe"
+	"github.com/Vincentkeio/kokoro/internal/store"
 )
 
 // ---- 时钟 ----

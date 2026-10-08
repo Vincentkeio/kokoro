@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 func TestParseTags(t *testing.T) {

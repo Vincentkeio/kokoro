@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // broker 负责把最新快照推给所有在线浏览器（SSE）。

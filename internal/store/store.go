@@ -26,7 +26,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 //go:embed schema.sql

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // newCollector 创建 Linux 采集器。

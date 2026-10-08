@@ -22,9 +22,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/notify"
-	"github.com/kokoro-probe/kokoro/internal/store"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/notify"
+	"github.com/Vincentkeio/kokoro/internal/store"
 )
 
 const (

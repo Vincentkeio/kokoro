@@ -12,7 +12,7 @@ package geo
 import (
 	"strings"
 
-	"github.com/kokoro-probe/kokoro/internal/flags"
+	"github.com/Vincentkeio/kokoro/internal/flags"
 )
 
 // Coord 是 WGS-84 经纬度。

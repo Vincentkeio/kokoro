@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kokoro-probe/kokoro/internal/theme"
+	"github.com/Vincentkeio/kokoro/internal/theme"
 )
 
 // themeCard 是后台主题选择器里的一张卡。

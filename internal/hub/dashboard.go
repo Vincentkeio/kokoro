@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/collector"
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/collector"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // 本文件是「主机仪表盘」页：一个总览看板，只读渲染，不做鉴权（访客可见）。

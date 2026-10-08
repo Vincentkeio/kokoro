@@ -20,11 +20,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/agent"
-	"github.com/kokoro-probe/kokoro/internal/collector"
-	"github.com/kokoro-probe/kokoro/internal/hub"
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/store"
+	"github.com/Vincentkeio/kokoro/internal/agent"
+	"github.com/Vincentkeio/kokoro/internal/collector"
+	"github.com/Vincentkeio/kokoro/internal/hub"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/store"
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。

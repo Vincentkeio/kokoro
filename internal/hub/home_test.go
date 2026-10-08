@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/store"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/store"
 )
 
 // mkNode 造一台带地理位置的小鸡。

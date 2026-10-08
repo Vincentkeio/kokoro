@@ -29,7 +29,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // Version 是 agent 版本，注册时上报给 Hub。

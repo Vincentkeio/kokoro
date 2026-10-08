@@ -29,7 +29,7 @@ UNINSTALL=0
 INSECURE=0
 USE_GITHUB=0
 
-GH_REPO="${GH_REPO:-kokoro-probe/kokoro}"
+GH_REPO="${GH_REPO:-Vincentkeio/kokoro}"
 GH_PROXY="${GH_PROXY:-}"
 GH_TAG="${GH_TAG:-latest}"
 
@@ -89,7 +89,7 @@ Kokoro agent 安装脚本
   -h, --help         显示本帮助
 
 环境变量:
-  GH_REPO   GitHub 仓库，默认 kokoro-probe/kokoro
+  GH_REPO   GitHub 仓库，默认 Vincentkeio/kokoro
   GH_TAG     Release 标签，默认 latest
   GH_PROXY   下载前缀镜像，例如 https://ghproxy.net/
 EOF

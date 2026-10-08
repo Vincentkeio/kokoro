@@ -22,8 +22,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/theme"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/theme"
 )
 
 // persistTheme 把一份已通过校验的自定义主题写进数据库。

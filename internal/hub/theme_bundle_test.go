@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/store"
-	"github.com/kokoro-probe/kokoro/internal/theme"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/store"
+	"github.com/Vincentkeio/kokoro/internal/theme"
 )
 
 // newStoreOn 在临时目录里开一个 store，并在测试结束时关闭。

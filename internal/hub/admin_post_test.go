@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // postToAdmin 以管理员身份提交一个后台表单。

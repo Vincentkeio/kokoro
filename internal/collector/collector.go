@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // logf 统一日志前缀，方便运维 grep。

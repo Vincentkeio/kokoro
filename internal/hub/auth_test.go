@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/store"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/store"
 )
 
 func TestHashAndVerifyPassword(t *testing.T) {

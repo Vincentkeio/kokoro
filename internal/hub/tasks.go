@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // benchScriptURL 是我们自己的一键测试脚本。
@@ -36,8 +36,8 @@ import (
 //
 // 所以脚本单独一个仓库，输出结构化 NDJSON：stdout 事件 / stderr 进度。
 //
-//	https://github.com/kokoro-probe/kokoro-bench
-const benchScriptURL = "https://raw.githubusercontent.com/kokoro-probe/kokoro-bench/main/kokoro-bench.sh"
+//	https://github.com/Vincentkeio/kokoro-bench
+const benchScriptURL = "https://raw.githubusercontent.com/Vincentkeio/kokoro-bench/main/kokoro-bench.sh"
 
 // benchScriptFallback 是 hub 自己留的一份副本。
 //

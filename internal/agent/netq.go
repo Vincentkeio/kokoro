@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/netprobe"
+	"github.com/Vincentkeio/kokoro/internal/netprobe"
 )
 
 const (

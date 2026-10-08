@@ -1,4 +1,4 @@
-module github.com/kokoro-probe/kokoro
+module github.com/Vincentkeio/kokoro
 
 go 1.25
 

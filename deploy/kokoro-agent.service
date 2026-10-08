@@ -1,6 +1,6 @@
 [Unit]
 Description=Kokoro Agent (server probe)
-Documentation=https://github.com/kokoro-probe/kokoro
+Documentation=https://github.com/Vincentkeio/kokoro
 After=network-online.target
 Wants=network-online.target
 

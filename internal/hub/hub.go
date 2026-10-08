@@ -21,11 +21,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kokoro-probe/kokoro/internal/alert"
-	"github.com/kokoro-probe/kokoro/internal/flags"
-	"github.com/kokoro-probe/kokoro/internal/model"
-	"github.com/kokoro-probe/kokoro/internal/store"
-	"github.com/kokoro-probe/kokoro/internal/theme"
+	"github.com/Vincentkeio/kokoro/internal/alert"
+	"github.com/Vincentkeio/kokoro/internal/flags"
+	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/store"
+	"github.com/Vincentkeio/kokoro/internal/theme"
 )
 
 //go:embed templates/*.html

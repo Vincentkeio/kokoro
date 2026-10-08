@@ -5,7 +5,7 @@ package collector
 import (
 	"errors"
 
-	"github.com/kokoro-probe/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
 // errUnsupported 是非 Linux 平台所有采集项的统一返回值。
