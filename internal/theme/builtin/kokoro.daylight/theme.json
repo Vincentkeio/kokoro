@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "id": "kokoro.daylight",
+  "name": "晨白",
+  "version": "1.0.0",
+  "description": "干净中性的浅色通用皮，像 GitHub 的克制版。看久了不累，适合长时间盯盘。",
+  "author": "Kokoro",
+  "license": "MIT",
+  "tags": ["light", "default", "clean"],
+  "tokensSchemaVersion": 2,
+  "mode": {
+    "default": "light",
+    "allowUserSwitch": true,
+    "supportsDark": true
+  },
+  "tokens": {
+    "--kokoro-color-primary": "#2f6feb",
+    "--kokoro-color-primary-hover": "#2a61d0",
+    "--kokoro-color-primary-active": "#2455b8",
+    "--kokoro-color-primary-fg": "#ffffff",
+    "--kokoro-color-accent": "#7c5cff",
+    "--kokoro-color-accent-fg": "#ffffff",
+    "--kokoro-color-success": "#1a7f37",
+    "--kokoro-color-warning": "#bf6a02",
+    "--kokoro-color-danger": "#cf222e",
+    "--kokoro-color-info": "#0969da",
+    "--kokoro-color-bg": "#ffffff",
+    "--kokoro-color-bg-subtle": "#f6f8fa",
+    "--kokoro-color-surface": "#ffffff",
+    "--kokoro-color-surface-raised": "#ffffff",
+    "--kokoro-color-surface-sunken": "#f6f8fa",
+    "--kokoro-color-border": "#d0d7de",
+    "--kokoro-color-border-strong": "#8c959f",
+    "--kokoro-color-text": "#1f2328",
+    "--kokoro-color-text-muted": "#59636e",
+    "--kokoro-color-text-faint": "#818b98",
+    "--kokoro-color-text-inverse": "#ffffff",
+    "--kokoro-color-link": "#0969da",
+    "--kokoro-radius-sm": "4px",
+    "--kokoro-radius-md": "8px",
+    "--kokoro-radius-lg": "12px",
+    "--kokoro-shadow-sm": "0 1px 2px rgba(31,35,40,.08)",
+    "--kokoro-shadow-md": "0 4px 12px rgba(31,35,40,.10)",
+    "--kokoro-shadow-lg": "0 16px 40px rgba(31,35,40,.16)",
+    "--kokoro-chart-series-1": "#2f6feb",
+    "--kokoro-chart-series-2": "#7c5cff",
+    "--kokoro-chart-series-3": "#1a7f37",
+    "--kokoro-chart-series-4": "#bf6a02",
+    "--kokoro-chart-series-5": "#cf222e",
+    "--kokoro-chart-grid": "#eaeef2",
+    "--kokoro-chart-axis": "#8c959f",
+    "--kokoro-status-online": "#1a7f37",
+    "--kokoro-status-offline": "#8c959f",
+    "--kokoro-status-idle": "#bf6a02",
+    "--kokoro-status-maintenance": "#0969da"
+  },
+  "tokensDark": {
+    "--kokoro-color-primary": "#3b82f6",
+    "--kokoro-color-primary-hover": "#60a5fa",
+    "--kokoro-color-primary-active": "#2563eb",
+    "--kokoro-color-bg": "#0d1117",
+    "--kokoro-color-bg-subtle": "#161b22",
+    "--kokoro-color-surface": "#161b22",
+    "--kokoro-color-surface-raised": "#1c2128",
+    "--kokoro-color-surface-sunken": "#010409",
+    "--kokoro-color-border": "#30363d",
+    "--kokoro-color-border-strong": "#6e7681",
+    "--kokoro-color-text": "#e6edf3",
+    "--kokoro-color-text-muted": "#9198a1",
+    "--kokoro-color-text-faint": "#6e7681",
+    "--kokoro-color-link": "#58a6ff",
+    "--kokoro-shadow-sm": "0 1px 2px rgba(1,4,9,.5)",
+    "--kokoro-shadow-md": "0 4px 12px rgba(1,4,9,.6)",
+    "--kokoro-shadow-lg": "0 16px 40px rgba(1,4,9,.7)",
+    "--kokoro-chart-grid": "#21262d",
+    "--kokoro-chart-axis": "#6e7681",
+    "--kokoro-chart-tooltip-bg": "#1c2128"
+  },
+  "layoutSchemaVersion": 1,
+  "layout": {
+    "shell": {
+      "contentMaxWidth": "1280px",
+      "header": { "variant": "solid", "sticky": true, "showSearch": true, "showModeSwitch": true },
+      "footer": { "variant": "simple" }
+    },
+    "home": {
+      "hero": { "enabled": false, "variant": "plain" },
+      "list": {
+        "mode": "card",
+        "allowUserSwitch": true,
+        "groupBy": "none",
+        "card": { "minWidth": "300px", "gap": "var(--kokoro-space-5)", "border": true, "shadow": "sm", "hoverLift": true },
+        "table": { "density": "comfortable", "striped": true, "rowHover": true },
+        "compact": { "rowHeight": "44px", "dividers": true, "showFlag": true, "inlineBars": true }
+      }
+    },
+    "detail": {
+      "header": { "variant": "compact", "height": "320px", "showTags": true, "secondaryLine": "location" },
+      "sectionGap": "var(--kokoro-space-6)",
+      "introFontSize": "14px"
+    },
+    "charts": {
+      "type": "area",
+      "grid": true,
+      "legend": true,
+      "axisLabel": true,
+      "smooth": true,
+      "tooltip": "axis",
+      "height": "200px",
+      "heightDetail": "300px"
+    },
+    "misc": {
+      "statusDotStyle": "solid",
+      "usageBarStyle": "solid",
+      "tagStyle": "pill",
+      "badgeStyle": "soft",
+      "showUptime": true,
+      "numberFormat": "si",
+      "dateFormat": "relative"
+    }
+  }
+}

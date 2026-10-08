@@ -1,0 +1,1104 @@
+/* Kokoro 基础样式表
+   ---------------------------------------------------------------------------
+   这份文件里**没有任何具体颜色值**——全部走 --kokoro-* 变量，
+   变量由 Hub 在页面 <head> 里按当前主题注入（见 internal/theme）。
+
+   所以「换主题」不需要换 CSS：主题改的是变量值，布局差异则由
+   <body> 上的 data-k-* 属性 + 本文末尾的 [data-k-*] 规则承接。
+
+   分区：
+     1. 变量别名（把 --kokoro-* 映射成好用的短名，并提供降级默认值）
+     2. 基础重置与排版
+     3. 顶栏 / 卡片 / 详情页 / 投票 / 留言 / 后台 / 图表
+     4. 布局模式：card / table / compact（由主题 layout 决定默认值）
+     5. data-k-* 规则：顶栏形态、Hero、详情页头部、状态点、标签样式
+     6. 响应式
+*/
+
+/* ---- 1. 变量别名 ---- */
+:root {
+  /* 别名层：把主题变量接成本文件用的短名。
+     每个都有 fallback，万一主题系统挂掉（tokens 没注入）页面仍然可读——
+     这比"报错白屏"好得多。 */
+  --bg: var(--kokoro-color-bg, #ffffff);
+  --bg-soft: var(--kokoro-color-bg-subtle, #f6f8fa);
+  --panel: var(--kokoro-color-surface, #ffffff);
+  --raised: var(--kokoro-color-surface-raised, #ffffff);
+  --sunken: var(--kokoro-color-surface-sunken, #f6f8fa);
+  --fg: var(--kokoro-color-text, #1f2328);
+  --fg-strong: var(--kokoro-color-text, #0b0d10);
+  --muted: var(--kokoro-color-text-muted, #59636e);
+  --faint: var(--kokoro-color-text-faint, #818b98);
+  --line: var(--kokoro-color-border, #d0d7de);
+  --line-strong: var(--kokoro-color-border-strong, #8c959f);
+  --accent: var(--kokoro-color-primary, #2f6feb);
+  --accent-fg: var(--kokoro-color-primary-fg, #ffffff);
+  --accent-2: var(--kokoro-color-accent, #7c5cff);
+  --ok: var(--kokoro-status-online, #1a7f37);
+  --warn: var(--kokoro-color-warning, #bf6a02);
+  --bad: var(--kokoro-status-offline, #cf222e);
+  --cpu: var(--kokoro-chart-series-1, #2f6feb);
+  --mem: var(--kokoro-chart-series-2, #7c5cff);
+  --disk: var(--kokoro-chart-series-3, #1a7f37);
+  /* 点阵地球的昼夜点色。不放进主题 token 白名单是因为它是"渲染参数"
+     而不是"皮肤样式"——皮肤改的是观感，这个改的是地球本身怎么画。
+     真要跟着皮肤变，改这里或让主题覆盖同名变量即可。 */
+  /* 昼侧点必须**看得见**。原先给 #c9d4e2（很浅），在白卡片上几乎隐形，
+     结果视觉上的"地球"只剩夜侧那团暗色，而昼侧的点还在更外面——
+     看起来就像"点散在地球外面"。这是对比度问题，不是几何问题。 */
+  --globe-day: #93a4bd;
+  --globe-night: #3b465c;
+  /* 球面（海洋）的昼夜底色。必须有足够对比度，否则白卡片上
+     整颗球只剩一圈点，"地球"这个实体就不存在了。 */
+  --globe-ocean-day: #dce7f6;
+  --globe-ocean-night: #b7c8e0;
+  --globe-rim: rgba(47, 111, 235, .18);
+
+  --r-sm: var(--kokoro-radius-sm, 4px);
+  --r: var(--kokoro-radius-md, 8px);
+  --r-lg: var(--kokoro-radius-lg, 12px);
+
+  --s1: var(--kokoro-space-1, 4px);
+  --s2: var(--kokoro-space-2, 8px);
+  --s3: var(--kokoro-space-3, 12px);
+  --s4: var(--kokoro-space-4, 16px);
+  --s5: var(--kokoro-space-5, 24px);
+  --s6: var(--kokoro-space-6, 32px);
+
+  --font: var(--kokoro-font-sans, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
+  --mono: var(--kokoro-font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  --fs: var(--kokoro-font-size-md, 14px);
+
+  --shadow: var(--k-card-shadow, var(--kokoro-shadow-sm, 0 1px 2px rgba(31,35,40,.08)));
+  --shadow-md: var(--kokoro-shadow-md, 0 4px 12px rgba(31,35,40,.10));
+  --shadow-lg: var(--kokoro-shadow-lg, 0 16px 40px rgba(31,35,40,.16));
+
+  --t-fast: var(--kokoro-transition-fast, 120ms);
+  --t: var(--kokoro-transition-base, 200ms);
+  --t-slow: var(--kokoro-transition-slow, 320ms);
+  --ease: var(--kokoro-easing, cubic-bezier(.2,0,0,1));
+
+  --gap: var(--k-card-gap, var(--s5));
+  --maxw: var(--k-maxw, 1280px);
+  --head-h: var(--kokoro-header-height, 56px);
+  --pad: var(--kokoro-card-padding, 16px);
+  --ring: var(--kokoro-ring-width, 3px);
+  --ring-c: var(--kokoro-ring-color, rgba(47,111,235,.35));
+}
+
+/* ---- 2. 基础 ---- */
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  background-image: var(--kokoro-bg-image, none);
+  background-size: var(--kokoro-bg-size, auto);
+  background-repeat: var(--kokoro-bg-repeat, repeat);
+  background-attachment: var(--kokoro-bg-attachment, fixed);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: var(--fs);
+  line-height: var(--kokoro-font-line-height, 1.55);
+  letter-spacing: var(--kokoro-font-letter-spacing, 0);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--kokoro-color-link, var(--accent)); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1, h2, h3, h4 { font-weight: var(--kokoro-font-weight-bold, 700); }
+
+.wrap {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 var(--s5);
+}
+body[data-k-align="left"] > .wrap,
+body[data-k-align="left"] > main.wrap { margin-left: 0; margin-right: 0; }
+
+/* 尊重系统的"减少动态效果"设置 */
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}
+
+/* ---- 3. 顶栏 ---- */
+.top {
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  background: var(--kokoro-header-bg, var(--bg-soft));
+  color: var(--kokoro-header-fg, var(--fg));
+  position: sticky;
+  top: 0;
+  z-index: var(--kokoro-z-dropdown, 1000);
+}
+.top .wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  min-height: var(--head-h);
+  flex-wrap: wrap;
+}
+.brand {
+  font-weight: var(--kokoro-font-weight-bold, 700);
+  font-size: var(--kokoro-font-size-lg, 16px);
+  color: var(--kokoro-header-fg, var(--fg));
+  letter-spacing: -0.01em;
+}
+.brand:hover { text-decoration: none; }
+.top .stat { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+.top .stat b { color: var(--ok); }
+.top .spacer { margin-left: auto; }
+
+/* 顶栏右侧的小控件组 */
+.top-tools { display: flex; align-items: center; gap: var(--s2); margin-left: auto; }
+
+/* ---- 卡片 ---- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--k-card-min, 300px), 1fr));
+  gap: var(--gap);
+  padding: var(--gap) 0;
+}
+
+.card {
+  background: var(--kokoro-card-bg, var(--card, var(--panel)));
+  border: var(--kokoro-border-width, 1px) solid var(--kokoro-card-border, var(--line));
+  border-radius: var(--r);
+  padding: var(--pad);
+  box-shadow: var(--shadow);
+  transition: background var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              transform var(--t) var(--ease),
+              box-shadow var(--t) var(--ease);
+  position: relative;
+  min-width: 0;
+}
+.card:hover { background: var(--card-hover, color-mix(in srgb, var(--panel) 92%, var(--fg))); }
+a.card { display: block; color: inherit; }
+a.card:hover { text-decoration: none; }
+
+
+/* ---- 4. 列表模式：card / table / compact ----
+   默认卡片。table 与 compact 由 [data-k-list-mode] 切到对应规则，
+   主题可以在 layout.home.list.mode 里改这个默认值，访客也能临时覆盖。 */
+
+body[data-k-list-mode="table"] .grid { display: block; padding: var(--s2) 0; }
+body[data-k-list-mode="table"] .card {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.5fr) minmax(210px, 2fr) minmax(150px, 1.2fr) auto;
+  align-items: center; gap: var(--s3);
+  border: 0; border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: 0; box-shadow: none;
+  padding: var(--s2) var(--s1); min-height: 40px;
+}
+/* 表格/紧凑形态里，卡片不再是"一块"而是"一行"，悬停上浮会很怪 */
+body[data-k-list-mode="table"] .card:hover,
+body[data-k-list-mode="compact"] .card:hover { transform: none; box-shadow: none; }
+body[data-k-list-mode="table"] .meta,
+body[data-k-list-mode="table"] .tags,
+body[data-k-list-mode="table"] .specs,
+body[data-k-list-mode="table"] .spark,
+body[data-k-list-mode="table"] .net-empty,
+body[data-k-list-mode="table"] .status { display: none; }
+body[data-k-list-mode="table"] .gauges { flex-direction: row; gap: var(--s3); }
+body[data-k-list-mode="table"] .gauges .g { grid-template-columns: 0 1fr 46px; flex: 1; }
+body[data-k-list-mode="table"] .gauges .g .gl { display: none; }
+body[data-k-list-mode="table"] .net { border-top: 0; margin: 0; padding: 0; }
+body[data-k-list-mode="table"] .net-num { margin: 0; }
+body[data-k-list-mode="table"] .net-num .lat { margin-left: 0; }
+body[data-k-list-mode="table"] .bar { height: 5px; }
+
+body[data-k-list-mode="compact"] .grid { display: block; padding: var(--s2) 0; }
+body[data-k-list-mode="compact"] .card {
+  display: flex; align-items: center; gap: var(--s3);
+  min-height: var(--k-row-h, 44px);
+  border: 0; border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: 0; box-shadow: none; padding: var(--s1) var(--s2);
+}
+body[data-k-list-mode="compact"] .card-head { flex: 1 1 auto; min-width: 0; }
+body[data-k-list-mode="compact"] .card-head h2 { font-size: var(--kokoro-font-size-sm, 13px); }
+body[data-k-list-mode="compact"] .meta,
+body[data-k-list-mode="compact"] .tags,
+body[data-k-list-mode="compact"] .specs,
+body[data-k-list-mode="compact"] .foot,
+body[data-k-list-mode="compact"] .spark,
+body[data-k-list-mode="compact"] .net-empty,
+body[data-k-list-mode="compact"] .status { display: none; }
+body[data-k-list-mode="compact"] .gauges { flex: 0 0 170px; flex-direction: row; gap: var(--s2); }
+body[data-k-list-mode="compact"] .gauges .g { grid-template-columns: 0 1fr 40px; font-size: 11px; flex: 1; }
+body[data-k-list-mode="compact"] .gauges .g .gl { display: none; }
+body[data-k-list-mode="compact"] .net { border-top: 0; margin: 0; padding: 0; flex: 0 0 auto; }
+body[data-k-list-mode="compact"] .net-num { margin: 0; font-size: 11px; gap: 8px; }
+body[data-k-list-mode="compact"] .net-num .lat { display: none; }
+body[data-k-list-mode="compact"] .bar { height: 4px; }
+
+/* 分隔线开关：compact 模式可由主题关掉 */
+body[data-k-list-mode="compact"][data-k-divider="0"] .card { border-bottom: 0; }
+
+/* ---- 状态点 ---- */
+.dot {
+  width: 8px; height: 8px; border-radius: var(--kokoro-radius-full, 999px);
+  background: var(--muted); flex: none; display: inline-block;
+}
+.dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.dot.off { background: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 16%, transparent); }
+
+body[data-k-dot="glow"] .dot.on { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent), 0 0 10px var(--ok); }
+body[data-k-dot="glow"] .dot.off { box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 20%, transparent), 0 0 10px var(--bad); }
+body[data-k-dot="ring"] .dot { background: transparent; border: 2px solid currentColor; }
+body[data-k-dot="ring"] .dot.on { background: var(--ok); }
+body[data-k-dot="ring"] .dot.off { background: var(--bad); }
+body[data-k-dot="none"] .dot { display: none; }
+
+.card-head { display: flex; align-items: center; gap: var(--s2); }
+.card-head h2 {
+  margin: 0; font-size: var(--kokoro-font-size-lg, 16px);
+  font-weight: var(--kokoro-font-weight-bold, 700);
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+.card-head h2 a { color: inherit; }
+
+.meta { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); margin: var(--s1) 0 var(--s3); }
+
+/* ---- 资源条 ---- */
+.meter { display: flex; flex-direction: column; gap: 6px; }
+.meter-row {
+  display: grid; grid-template-columns: 3.2rem 1fr 3.4rem;
+  align-items: center; gap: var(--s2);
+  font-size: var(--kokoro-font-size-sm, 13px);
+}
+.meter-row span { color: var(--muted); }
+.meter-row b { text-align: right; font-variant-numeric: tabular-nums; font-weight: var(--kokoro-font-weight-medium, 500); }
+.bar {
+  height: 6px; background: var(--sunken);
+  border-radius: var(--kokoro-radius-full, 999px); overflow: hidden;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 60%, transparent);
+}
+.bar i {
+  display: block; height: 100%;
+  border-radius: var(--kokoro-radius-full, 999px);
+  transition: width var(--t-slow) var(--ease);
+}
+.bar i.cpu { background: var(--cpu); }
+.bar i.mem { background: var(--mem); }
+.bar i.disk { background: var(--disk); }
+
+/* usageBarStyle=gradient：给条加一层渐变，霓虹/午夜这类深色皮更好看 */
+body[data-k-bar="gradient"] .bar i.cpu { background: linear-gradient(90deg, var(--cpu), color-mix(in srgb, var(--cpu) 55%, var(--accent-2))); }
+body[data-k-bar="gradient"] .bar i.mem { background: linear-gradient(90deg, var(--mem), color-mix(in srgb, var(--mem) 55%, var(--accent-2))); }
+body[data-k-bar="gradient"] .bar i.disk { background: linear-gradient(90deg, var(--disk), color-mix(in srgb, var(--disk) 55%, var(--accent-2))); }
+
+/* usageBarStyle=segmented：终端皮的分段条，用 repeating-linear-gradient 画格子 */
+body[data-k-bar="segmented"] .bar i {
+  background-image: repeating-linear-gradient(90deg,
+    rgba(0,0,0,.35) 0 2px, transparent 2px 5px);
+}
+body[data-k-bar="none"] .bar { display: none; }
+
+.traffic {
+  display: flex; gap: var(--s3); flex-wrap: wrap;
+  margin: var(--s3) 0 0;
+  font-size: var(--kokoro-font-size-sm, 13px);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.traffic b { color: var(--fg); font-weight: var(--kokoro-font-weight-medium, 500); }
+
+.foot { display: flex; align-items: center; gap: var(--s2); margin: var(--s3) 0 0; flex-wrap: wrap; }
+.more { margin-left: auto; font-size: var(--kokoro-font-size-sm, 13px); color: var(--muted); }
+
+.tag {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border-radius: var(--kokoro-radius-full, 999px);
+  padding: 1px 8px;
+  font-size: var(--kokoro-font-size-xs, 12px);
+}
+body[data-k-tag="square"] .tag { border-radius: var(--r-sm); }
+body[data-k-tag="text"] .tag { background: none; color: var(--muted); padding: 0; }
+body[data-k-tag="text"] .tag::before { content: "#"; opacity: .5; }
+
+.empty { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+.empty-state { text-align: center; padding: 80px 20px; color: var(--muted); }
+.empty-state h2 { color: var(--fg); }
+
+/* ---- 5. 详情页 ---- */
+.detail { padding-bottom: var(--s6); }
+.detail-head h1 {
+  font-size: var(--kokoro-font-size-2xl, 26px);
+  margin: var(--s5) 0 var(--s1);
+  display: flex; align-items: center; gap: var(--s3);
+  letter-spacing: -0.02em;
+}
+.detail-head .price { color: var(--warn); font-size: var(--kokoro-font-size-sm, 13px); margin: 0; }
+
+.panel {
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--pad);
+  margin: var(--gap) 0;
+}
+.panel h3 {
+  margin: 0 0 var(--s3);
+  font-size: var(--kokoro-font-size-md, 14px);
+  font-weight: var(--kokoro-font-weight-bold, 700);
+}
+.panel.narrow { max-width: 360px; margin: 80px auto; }
+
+/* 详情页头部形态：hero / compact / none。
+   具体规则由主题引擎生成的 CSS 提供（min-height、padding 等），
+   这里只做兜底，保证 layout 缺失时也是紧凑的。 */
+.detail-head[data-k-detail-header="hero"] {
+  padding: var(--s6) 0 var(--s5);
+}
+.detail-head[data-k-detail-header="compact"] { padding: var(--s4) 0 0; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s3); }
+.kpi {
+  background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: 10px 12px;
+  min-width: 0;
+}
+.kpi span { display: block; color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px); }
+.kpi b {
+  font-size: var(--kokoro-font-size-xl, 20px);
+  font-weight: var(--kokoro-font-weight-bold, 700);
+  font-variant-numeric: tabular-nums;
+  display: block;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.kpi small { display: block; color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px); }
+
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s3); }
+.chart {
+  background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: 10px 12px;
+  min-width: 0;
+}
+.chart-label { display: block; color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px); margin-bottom: 4px; }
+.spark { width: 100%; height: var(--k-chart-h, 200px); display: block; }
+.spark path.area {
+  fill: var(--accent);
+  fill-opacity: var(--kokoro-chart-area-opacity, .18);
+  stroke: none;
+}
+.spark path.line {
+  fill: none; stroke: var(--accent);
+  stroke-width: var(--kokoro-chart-line-width, 1.75);
+  stroke-linejoin: round; stroke-linecap: round;
+}
+.chart .grid { stroke: var(--kokoro-chart-grid, #eaeef2); stroke-width: 1; }
+.chart .axis { fill: var(--kokoro-chart-axis, #8c959f); font-size: 10px; }
+
+/* ---- 正文（服务端渲染的 Markdown） ---- */
+.prose .md { word-break: break-word; line-height: 1.75; font-size: var(--k-intro-font, var(--fs)); }
+.prose .md p { margin: 0 0 var(--s3); }
+.prose .md p:last-child { margin-bottom: 0; }
+.prose .md h3, .prose .md h4, .prose .md h5, .prose .md h6 {
+  margin: var(--s5) 0 var(--s2); font-size: var(--kokoro-font-size-lg, 16px);
+  font-weight: var(--kokoro-font-weight-bold, 700);
+}
+.prose .md h4, .prose .md h5, .prose .md h6 { font-size: var(--kokoro-font-size-md, 14px); }
+.prose .md ul, .prose .md ol { margin: 0 0 var(--s3); padding-left: 22px; }
+.prose .md li { margin: 3px 0; }
+.prose .md code {
+  font-family: var(--mono); font-size: .92em;
+  background: var(--kokoro-code-bg, var(--sunken));
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm); padding: 1px 5px;
+}
+.prose .md pre {
+  background: var(--kokoro-code-bg, var(--sunken));
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: var(--s3);
+  overflow-x: auto; margin: 0 0 var(--s3);
+}
+.prose .md pre code { border: 0; background: none; padding: 0; }
+.prose .md blockquote {
+  margin: 0 0 var(--s3); padding: 6px var(--s3);
+  border-left: 3px solid var(--accent); color: var(--muted);
+}
+.prose .md hr { border: 0; border-top: var(--kokoro-border-width, 1px) solid var(--line); margin: var(--s4) 0; }
+.prose .md a { text-decoration: underline; }
+.prose .md img { max-width: 100%; border-radius: var(--r); }
+
+/* ---- 投票 ---- */
+.votebar { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s3); flex-wrap: wrap; }
+.vote {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  color: var(--fg); cursor: pointer;
+  border-radius: var(--kokoro-radius-full, 999px);
+  padding: 4px 12px; font-size: var(--kokoro-font-size-sm, 13px);
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.vote:hover { border-color: var(--accent); }
+.vote .ico { font-size: 11px; }
+.vote b { font-variant-numeric: tabular-nums; font-weight: var(--kokoro-font-weight-medium, 500); }
+.vote.up.on { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); color: var(--accent); }
+.vote.down.on { background: color-mix(in srgb, var(--bad) 14%, transparent); border-color: var(--bad); color: var(--bad); }
+.vote.mini { padding: 2px 8px; font-size: var(--kokoro-font-size-xs, 12px); }
+.votebar .score { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+
+/* ---- 留言 ---- */
+.cmts { list-style: none; margin: 0 0 var(--s4); padding: 0; }
+.cmt { border-top: var(--kokoro-border-width, 1px) solid var(--line); padding: 10px 0; }
+.cmt:first-child { border-top: 0; }
+.cmt-head { display: flex; align-items: center; gap: var(--s2); font-size: var(--kokoro-font-size-sm, 13px); flex-wrap: wrap; }
+.cmt-head b { font-weight: var(--kokoro-font-weight-bold, 700); }
+.cmt-head time { color: var(--muted); }
+.cmt-head .reply { color: var(--accent); }
+.cmt-body { white-space: pre-wrap; word-break: break-word; margin: 6px 0; line-height: 1.65; }
+.cmt-contact {
+  font-size: var(--kokoro-font-size-sm, 13px); color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: var(--r-sm); padding: 4px 8px;
+  display: inline-block; margin-bottom: 6px;
+}
+.cmt-actions { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.link {
+  background: none; border: 0; color: var(--accent); cursor: pointer;
+  font-size: var(--kokoro-font-size-sm, 13px); padding: 2px 4px;
+  border-radius: var(--r-sm);
+}
+.link:hover { text-decoration: underline; }
+.link.bad { color: var(--bad); }
+.link.ok { color: var(--ok); }
+
+.cform { display: flex; flex-direction: column; gap: var(--s2); border-top: var(--kokoro-border-width, 1px) solid var(--line); padding-top: var(--s3); }
+.cform-row { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.cform-row input { flex: 1; min-width: 180px; }
+.cform textarea { width: 100%; resize: vertical; line-height: 1.6; font-family: inherit; }
+.cform-foot { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.cform-foot .btn { margin-left: auto; }
+
+/* ---- 表单与按钮 ---- */
+input, select, button, textarea {
+  font-family: inherit; font-size: var(--kokoro-font-size-sm, 13px);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  background: var(--sunken);
+  color: var(--fg);
+  max-width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: var(--ring) solid var(--ring-c);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+::placeholder { color: var(--faint); }
+
+.btn {
+  background: var(--accent); color: var(--accent-fg);
+  border: 1px solid transparent;
+  cursor: pointer; border-radius: var(--r-sm); padding: 6px 14px;
+  font-weight: var(--kokoro-font-weight-medium, 500);
+  transition: background var(--t-fast) var(--ease), filter var(--t-fast) var(--ease);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { filter: brightness(1.08); text-decoration: none; }
+.btn.ghost { background: transparent; color: var(--fg); border-color: var(--line); }
+.btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
+.btn.danger { background: var(--bad); }
+.btn.small { padding: 4px 10px; font-size: var(--kokoro-font-size-xs, 12px); }
+
+.row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+
+/* 后台开关 */
+.switch {
+  display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer;
+  background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--kokoro-radius-full, 999px);
+  padding: 3px 10px 3px 4px;
+  font-size: var(--kokoro-font-size-xs, 12px); color: var(--muted);
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.switch .knob {
+  width: 26px; height: 14px; border-radius: var(--kokoro-radius-full, 999px);
+  background: var(--line); position: relative;
+  transition: background var(--t-fast) var(--ease);
+  flex: none;
+}
+.switch .knob::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--muted);
+  transition: left var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.switch.on { color: var(--ok); border-color: var(--ok); }
+.switch.on .knob { background: var(--ok); }
+.switch.on .knob::after { left: 14px; background: #fff; }
+.switch-text { min-width: 3.6rem; text-align: left; }
+
+.chk { display: inline-flex; align-items: center; gap: 6px; font-size: var(--kokoro-font-size-md, 14px); }
+.chk input { padding: 0; width: 15px; height: 15px; }
+.inline { display: inline; }
+.nowrap { white-space: nowrap; }
+.cmt-cell { max-width: 420px; }
+.cmt-text { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); white-space: pre-wrap; word-break: break-word; }
+.muted { color: var(--muted); }
+.warn { color: var(--warn); }
+.err { color: var(--bad); font-size: var(--kokoro-font-size-sm, 13px); }
+.ok { color: var(--ok); }
+.bad { color: var(--bad); }
+.hint { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+
+/* ---- 表格 ---- */
+.tbl { width: 100%; border-collapse: collapse; font-size: var(--kokoro-font-size-sm, 13px); }
+.tbl th, .tbl td {
+  text-align: left; padding: 8px 10px;
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  vertical-align: middle;
+}
+.tbl th { color: var(--muted); font-weight: var(--kokoro-font-weight-medium, 500); font-size: var(--kokoro-font-size-xs, 12px); white-space: nowrap; }
+.tbl tr:hover td { background: color-mix(in srgb, var(--sunken) 60%, transparent); }
+.tbl code { font-family: var(--mono); font-size: .92em; }
+.tbl code.cmd { color: var(--accent); word-break: break-all; }
+
+/* ---- 登录 ---- */
+.login form { display: flex; flex-direction: column; gap: 10px; }
+.login h2 { margin: 0 0 var(--s3); font-size: var(--kokoro-font-size-xl, 20px); }
+.login label { display: flex; flex-direction: column; gap: 4px; font-size: var(--kokoro-font-size-sm, 13px); color: var(--muted); }
+
+.foot-page {
+  color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px);
+  padding: var(--s5) var(--s5) var(--s7);
+  text-align: center;
+  background: var(--kokoro-footer-bg, transparent);
+}
+
+/* ---- 国旗 ---- */
+.flag {
+  display: inline-flex; align-items: center; vertical-align: -2px;
+  margin-right: 5px; border-radius: 2px; overflow: hidden;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--line-strong) 55%, transparent);
+  flex: none;
+}
+.flag svg { display: block; width: 1.35em; height: 1.05em; }
+.flag.lg svg { width: 1.6em; height: 1.2em; }
+
+/* ---- 搜索 ---- */
+.search { display: flex; gap: 6px; }
+.search input { width: min(320px, 42vw); }
+.result-line { margin: var(--s1) 0 0; }
+
+/* ---- 站长名片 ---- */
+.owner {
+  display: flex; align-items: center; gap: var(--s4);
+  margin-top: var(--gap);
+  /* 这是"站长本人"，给一点存在感：左侧一条主色竖条 + 稍大的呼吸空间 */
+  border-left: 3px solid var(--accent);
+  padding: var(--s4) var(--s5);
+}
+.owner .avatar {
+  width: 60px; height: 60px; border-radius: 50%; object-fit: cover;
+  border: 2px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: var(--sunken); flex: none;
+}
+.owner .avatar.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; color: var(--faint);
+}
+.owner-txt b { font-size: 17px; letter-spacing: -.01em; }
+.owner .bio { margin: var(--s1) 0 0; color: var(--muted); line-height: 1.6; }
+
+/* ---- 6. data-k-* 布局规则 ---- */
+
+/* 顶栏形态 */
+body[data-k-header="transparent"] .top { background: transparent; border-bottom-color: transparent; }
+body[data-k-header="bordered"] .top {
+  background: transparent;
+  border-bottom: 2px solid var(--accent);
+}
+body[data-k-header="blur"] .top {
+  backdrop-filter: blur(var(--kokoro-backdrop-blur, 0px)) saturate(150%);
+  background: color-mix(in srgb, var(--kokoro-header-bg, var(--panel)) 72%, transparent);
+}
+body[data-k-header="blur"] .top::after {
+  /* blur 需要底部一条线，否则内容从顶栏下面滚过去时边界会糊掉 */
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+/* Hero（首页）。data-k-hero 只在主题启用 Hero 时才有值，
+   所以下面这条就是"主题要了 Hero 才显示"的开关。 */
+body:not([data-k-hero]) .hero { display: none; }
+.hero {
+  margin: var(--s5) 0 0;
+  padding: var(--s7) var(--s5);
+  border-radius: var(--r-lg);
+  text-align: center;
+  background: var(--bg-soft);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+}
+body[data-k-hero="gradient"] .hero { background-image: var(--kokoro-hero-gradient); border-color: transparent; }
+body[data-k-hero="gradient"] .hero h1,
+body[data-k-hero="gradient"] .hero p { color: var(--kokoro-color-text-inverse, #fff); }
+.hero h1 { margin: 0 0 var(--s2); font-size: var(--kokoro-font-size-3xl, 34px); letter-spacing: -0.02em; }
+.hero p { margin: 0; color: var(--muted); }
+body[data-k-align="left"] .hero { text-align: left; }
+.hero-stats {
+  display: flex; gap: var(--s5); justify-content: center; flex-wrap: wrap;
+  margin-top: var(--s5);
+}
+.hero-stats div { text-align: center; }
+.hero-stats b {
+  display: block; font-size: var(--kokoro-font-size-2xl, 26px);
+  font-variant-numeric: tabular-nums;
+}
+.hero-stats span { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+body[data-k-hero="gradient"] .hero-stats span { color: color-mix(in srgb, var(--kokoro-color-text-inverse, #fff) 80%, transparent); }
+
+/* 卡片 hover 上浮（主题可关） */
+body[data-k-lift="0"] .card:hover { transform: none; }
+.card:hover { transform: translateY(-2px); }
+body[data-k-list-mode="table"] .card:hover,
+body[data-k-list-mode="compact"] .card:hover { transform: none; }
+
+/* ---- 响应式 ---- */
+@media (max-width: 860px) {
+  body[data-k-list-mode="table"] .card { grid-template-columns: 1fr 80px; grid-template-areas: "head head" "meter meter"; }
+}
+
+@media (max-width: 640px) {
+  .wrap { padding: 0 var(--s3); }
+  .top .wrap { gap: var(--s2); }
+  .search { order: 3; width: 100%; }
+  .search input { width: 100%; }
+  .top-tools { width: 100%; order: 2; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .grid { grid-template-columns: 1fr; }
+  .hero { padding: var(--s5) var(--s3); }
+  .hero h1 { font-size: var(--kokoro-font-size-2xl, 26px); }
+  body[data-k-list-mode="table"] .card { grid-template-columns: 1fr; }
+  body[data-k-list-mode="compact"] .meter { flex: 0 0 80px; }
+}
+/* ---- 7. 主题切换相关的新增组件 ---- */
+
+/* 顶栏右侧那组控件：列表形态三连按钮 + 深浅色按钮 */
+.modes {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--sunken);
+}
+.mode-btn {
+  background: none; border: 0; border-radius: 0;
+  padding: 3px 9px; cursor: pointer;
+  font-size: var(--kokoro-font-size-xs, 12px);
+  color: var(--muted);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.mode-btn + .mode-btn { border-left: 1px solid var(--line); }
+.mode-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.mode-btn.on {
+  background: var(--accent); color: var(--accent-fg);
+  font-weight: var(--kokoro-font-weight-medium, 500);
+}
+.mode-btn.on:hover { background: var(--accent); color: var(--accent-fg); }
+
+.mode-toggle { min-width: 32px; justify-content: center; font-size: 14px; line-height: 1; }
+
+/* 右上角的皮肤切换器（下拉）。
+   用 <details>/<summary> 实现：没有 JS 也能开合，JS 只负责
+   "点外面 / 按 Esc 时收起"，那是渐进增强而不是依赖。 */
+.skin { position: relative; }
+.skin > summary.skin-btn {
+  list-style: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--kokoro-font-size-sm, 13px);
+  color: var(--muted);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--kokoro-radius-full, 999px);
+  padding: 3px 10px;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+/* 去掉 Chrome 默认的那个小三角 */
+.skin > summary.skin-btn::-webkit-details-marker { display: none; }
+.skin > summary.skin-btn:hover,
+.skin[open] > summary.skin-btn { color: var(--fg); border-color: var(--accent); }
+.skin-ico { opacity: .75; }
+
+.skin-menu {
+  position: absolute; right: 0; top: calc(100% + 6px);
+  min-width: 220px; max-width: 320px;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--kokoro-radius-md, 10px);
+  box-shadow: var(--shadow-md);
+  padding: var(--s2);
+  /* 顶栏本身是 sticky 且带 z-index，下拉必须压在页面内容之上 */
+  z-index: var(--kokoro-z-dropdown, 1000);
+}
+.skin-item {
+  display: block; text-decoration: none;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--kokoro-radius-sm, 8px);
+  color: var(--fg);
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.skin-item:hover { background: var(--sunken); text-decoration: none; }
+.skin-item.on { border-color: var(--accent); background: var(--sunken); }
+.skin-item-name { font-size: var(--kokoro-font-size-sm, 13px); }
+.skin-item small {
+  display: block; margin-top: 2px;
+  color: var(--faint); font-size: var(--kokoro-font-size-xs, 12px); line-height: 1.5;
+}
+/* "恢复默认"是退出动作，不是又一套皮肤：用虚线边区分开，
+   免得有人把它当成主题列表里的一项。 */
+.skin-item.reset {
+  margin-top: 2px;
+  border-style: dashed;
+  color: var(--faint);
+}
+.skin-item.reset:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ==========================================================================
+   8. 首页信息面板：时钟 / 统计卡 / 点阵地球 / 富卡片
+   --------------------------------------------------------------------------
+   这一整块都是「首页改版」新增的。原则和前面一致：颜色与圆角全部走主题变量，
+   所以换皮肤时它跟着变，不需要单独适配。
+   ========================================================================== */
+
+/* 暗色模式下的地球配色：白天点压暗、夜里点更暗，辉光提亮 */
+html[data-k-mode="dark"], body[data-k-mode="dark"] {
+  --globe-day: #5d6b82;
+  --globe-night: #242c3a;
+  --globe-ocean-day: #22304a;
+  --globe-ocean-night: #0f1521;
+  --globe-rim: rgba(59, 130, 246, .26);
+}
+
+/* ---- 8.1 时钟条 ---- */
+.clocks {
+  display: flex; flex-wrap: wrap; gap: 1px;
+  background: var(--line); border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); overflow: hidden; margin-bottom: var(--gap);
+}
+.clock { flex: 1 1 140px; background: var(--panel); padding: 10px 14px; }
+/* 第一格是访客本地时间，给它一点主色，其余保持安静——一眼找到"自己的时间" */
+.clock:first-child { background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+.clock:first-child .tz { color: var(--accent); }
+.clock .tz { display: block; font-size: 11px; color: var(--faint); letter-spacing: .04em; }
+.clock b { font-family: var(--mono); font-size: 17px; color: var(--fg-strong); letter-spacing: .04em; }
+.clock .d { display: block; font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+/* ---- 8.2 统计卡 ---- */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--gap); margin-bottom: var(--gap);
+}
+.stat {
+  position: relative; overflow: hidden;
+  background: var(--panel); border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: 13px 15px 12px;
+}
+/* 顶部一条主色细条：让一组数字看起来像「一块仪表」而不是六个白盒子 */
+.stat::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 12%, transparent));
+}
+.stat span { font-size: 12px; color: var(--faint); }
+.stat b { display: block; font-size: 23px; font-family: var(--mono); letter-spacing: -.02em;
+  color: var(--fg-strong); margin: 4px 0 2px; }
+.stat small { font-size: 11.5px; color: var(--muted); }
+
+/* ---- 8.3 点阵地球 ---- */
+.map-card {
+  background: var(--panel); border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: 14px 16px 10px; margin-bottom: var(--gap);
+}
+.map-head { display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s3); flex-wrap: wrap; margin-bottom: 4px; }
+.map-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--fg-strong); }
+.map-legend { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); }
+.map-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 5px; vertical-align: middle; }
+.map-legend .i-on { background: var(--ok); }
+.map-legend .i-cur { background: var(--accent); }
+.map-legend .i-off { background: var(--faint); }
+.map-legend .hint-drag { color: var(--faint); }
+.globe {
+  position: relative; width: 100%; height: min(64vh, 560px);
+  max-width: 900px; margin: 8px auto 0;
+  border-radius: var(--r-sm); overflow: hidden; touch-action: none;
+  background: radial-gradient(70% 70% at 50% 45%,
+    color-mix(in srgb, var(--accent) 7%, transparent), transparent 72%);
+}
+.globe canvas { position: absolute; inset: 0; display: block; }
+.globe-ov { cursor: grab; }
+.globe-ov.grabbing { cursor: grabbing; }
+.globe-tip {
+  position: absolute; transform: translate(-50%, -100%); pointer-events: none;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: 3px 8px; font-size: 12px; line-height: 1.5;
+  white-space: nowrap; z-index: 3;
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--fg) 40%, transparent);
+}
+.globe-tip b { display: block; }
+.globe-tip span { color: var(--muted); font-size: 11px; }
+.globe-broken::after {
+  content: '地球加载失败（浏览器不支持 WebGL，或掩码没取到）';
+  color: var(--muted); position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---- 8.4 富卡片 ---- */
+.card-head h2 a { color: inherit; text-decoration: none; }
+.card-head h2 a:hover { color: var(--accent); }
+.status { display: inline-flex; align-items: center; gap: 5px; flex: none;
+  font-size: 11.5px; color: var(--muted); }
+.status i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.status.on { color: var(--ok); }
+.status.on i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.card.off { opacity: .62; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--s2); }
+
+.gauges { display: flex; flex-direction: column; gap: 6px; }
+.gauges .g {
+  display: grid; grid-template-columns: 3.2rem 1fr 3.4rem;
+  align-items: center; gap: var(--s2);
+  font-size: var(--kokoro-font-size-sm, 13px);
+}
+.gauges .g .gl { color: var(--muted); }
+.gauges .g em {
+  font-style: normal; text-align: right; font-family: var(--mono);
+  font-variant-numeric: tabular-nums; color: var(--fg);
+}
+/* 状态色优先于主题的系列色：占用到警戒线时条子必须变色，
+   否则"紫色条"看不出快满了。
+   选择器形态与主题的 `body[data-k-bar="..."] .bar i.cpu` 同级，
+   靠书写顺序靠后取胜——所以这几条必须留在文件末尾附近。 */
+.bar i.lv-warn, body[data-k-bar] .bar i.lv-warn { background: var(--warn); }
+.bar i.lv-bad,  body[data-k-bar] .bar i.lv-bad  { background: var(--bad); }
+.bar.mini { height: 5px; width: 74px; flex: none; }
+
+.net { border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  margin-top: var(--s2); padding-top: var(--s2); }
+.card .spark { display: block; width: 100%; height: 40px; }
+.card .sp-area { fill: color-mix(in srgb, var(--accent) 16%, transparent); stroke: none; }
+.card .sp-line { fill: none; stroke: var(--accent); stroke-width: 1.6;
+  stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.card.off .sp-line { stroke: var(--faint); }
+.card.off .sp-area { fill: color-mix(in srgb, var(--faint) 16%, transparent); }
+.net-empty { margin: 0 0 var(--s1); color: var(--faint); font-size: 11.5px; }
+.net-num {
+  display: flex; align-items: center; gap: 12px;
+  /* ⚠️ 不能换行：上下行速率 + 延迟条加起来本来就宽，允许 wrap 的话
+     窄卡片上会折成两行，看着像排版坏了。
+     宽度不够时让延迟条收缩，而不是整体折行。 */
+  flex-wrap: nowrap; min-width: 0;
+  margin-top: 5px; font-size: 11.5px; color: var(--muted); font-family: var(--mono);
+}
+.net-num .up, .net-num .down { flex: none; white-space: nowrap; }
+.net-num .up { color: var(--ok); }
+.net-num .down { color: var(--accent); }
+.net-num .lat { margin-left: auto; display: inline-flex; align-items: center;
+  gap: 6px; font-family: inherit; flex: 0 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; }
+.net-num .lat .bar.mini { width: 56px; flex: 0 1 56px; min-width: 18px; }
+
+.specs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin: var(--s2) 0 0;
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  padding-top: var(--s2); font-size: 11.5px;
+}
+.specs > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.specs dt { color: var(--faint); flex: none; }
+.specs dd {
+  margin: 0; color: var(--fg); font-family: var(--mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+}
+.specs dd i.bar { flex: 1 1 40px; min-width: 30px; }
+
+/* ---- 8.5 卡片底部的详情按钮 ----
+   不用"整张卡片可点"，也不用悬停弹详情：一个明确的按钮最不容易误触。 */
+.card .foot {
+  display: flex; align-items: center; gap: var(--s2);
+  margin-top: var(--s2); padding-top: var(--s2);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.card .foot .more { margin-left: auto; text-decoration: none; }
+
+/* 后台登录时、名片却空着 —— 首页给一条明确的引导。
+   这是 boss 真实踩过的：名片填在后台，但首页什么都没有，看起来像功能没做。 */
+.owner-empty {
+  display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+  margin-top: var(--gap);
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  color: var(--fg); font-size: 13px;
+}
+.owner-empty .tag-admin {
+  font-size: 11px; padding: 1px 7px; border-radius: var(--radius-full, 999px);
+  background: var(--accent); color: var(--accent-fg); flex: none;
+}
+
+
+/* ==========================================================================
+   9. 首页「全球节点」那一行：右侧地球，左侧留给信息密度高的动态区
+   --------------------------------------------------------------------------
+   地球独占一整行时右半边是空的（900px 宽只有 560px 高），浪费。
+   现在左侧放"最新留言"这类动态，右侧地球，窄屏叠成一列。
+   ========================================================================== */
+.home-band {
+  /* 这一行的高度由 --band-h 统一决定，两张卡都填满它 ——
+     高度交给内容撑的话，动态流短、地球高，两块就一高一矮很难看。
+     stretch 让网格项等高，卡片内部再用 flex 把内容区撑开。 */
+  --band-h: min(60vh, 480px);
+  display: grid;
+  /* auto-fit：只有左侧那一块时（没有可定位节点）它会占满整行，
+     两块都在时才是左右各一。用固定两列的话单块会留一个空洞。 */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--gap);
+  align-items: stretch;
+  margin-top: var(--gap);
+}
+
+/* 右侧地球：卡片本身占满整行高度，头部/脚注之外全给画布 */
+.home-band .map-card {
+  margin: 0;
+  height: var(--band-h);
+  display: flex; flex-direction: column;
+}
+.home-band .globe { flex: 1; min-height: 0; }
+
+/* 左侧动态流：同样占满整行高度，列表区内部滚动。
+   最新的在最上面（数据本来就是倒序），所以不需要初始滚动。 */
+.home-side-new {
+  min-width: 0;
+  height: var(--band-h);
+  display: flex; flex-direction: column;
+  /* ⚠️ .panel 自带 `margin: var(--gap) 0`，不清掉的话动态流整块会被
+     往下推一个 gap，两张卡的上/下边缘就对不齐了（等高也没用，
+     等的是内容盒，外边距在外面）。 */
+  margin: 0;
+}
+.home-side-new h3 { margin: 0 0 var(--s3); font-size: 15px; }
+.home-side-new .live-head { flex: none; }
+
+@media (max-width: 1024px) {
+  .home-band { grid-template-columns: 1fr; }
+  /* 窄屏叠成一列时不再强求等高：固定高度会让两块都出现大片空白 */
+  .home-band { --band-h: auto; }
+  .home-band .map-card { height: auto; }
+  .home-band .globe { height: min(52vh, 420px); flex: none; }
+  .home-side-new { height: auto; max-height: 60vh; }
+}
+
+/* ---- 9.0 实时动态流 ---- */
+.live-head { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s3); }
+.live-head h3 { margin: 0; }
+/* 一颗缓慢呼吸的小绿点，暗示"这条流是活的" */
+.live-pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent);
+  animation: live-pulse 2.4s var(--ease, ease-out) infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .live-pulse { animation: none; } }
+
+.feed {
+  list-style: none; margin: 0; padding: 0;
+  /* 内容超出就在这块内部滚，卡片高度不变 */
+  flex: 1; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  /* 给滚动条留出空间，否则最后一条会被压住 */
+  padding-right: var(--s2);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.feed::-webkit-scrollbar { width: 8px; }
+.feed::-webkit-scrollbar-track { background: transparent; }
+.feed::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
+  border-radius: 999px;
+}
+.feed::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--fg) 32%, transparent); }
+.feed-item {
+  display: flex; gap: var(--s3); align-items: flex-start;
+  padding: var(--s2) 0;
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.feed-item:first-child { border-top: 0; padding-top: 0; }
+.feed-icon {
+  flex: none; width: 1.2em; text-align: center;
+  font-size: 13px; line-height: 1.5; color: var(--muted);
+}
+/* 上线下线用状态色，一眼能扫出来 */
+.feed-item.k-online .feed-icon  { color: var(--ok); }
+.feed-item.k-offline .feed-icon { color: var(--faint); }
+.feed-item.k-alert .feed-icon   { color: var(--warn, #bf8700); }
+.feed-item.k-resolved .feed-icon{ color: var(--ok); }
+.feed-item.k-comment .feed-icon { color: var(--accent); }
+.feed-item.k-post .feed-icon    { color: var(--accent); }
+.feed-body { min-width: 0; flex: 1; }
+.feed-text {
+  margin: 0; font-size: 13px; line-height: 1.55; color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.feed-time { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+
+/* ---- 9.1 主机时钟（放在 Hero 右侧，只显示一台机器的时间） ---- */
+.hub-clock {
+  flex: none; text-align: right;
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r);
+  padding: var(--s2) var(--s4);
+  min-width: 11rem;
+}
+.hub-clock .tz {
+  display: block; font-size: 11px; color: var(--muted); letter-spacing: .04em;
+}
+.hub-clock .tz em { font-style: normal; color: var(--faint); }
+.hub-clock b {
+  display: block; font-family: var(--mono); font-size: 24px; letter-spacing: .02em;
+  color: var(--fg-strong); line-height: 1.25;
+}
+.hub-clock .d { display: block; font-size: 11px; color: var(--faint); font-family: var(--mono); }
+@media (max-width: 640px) {
+  .hub-clock { text-align: left; min-width: 0; }
+  .hub-clock b { font-size: 20px; }
+}
+
+/* Hero 改成「左文右钟」两段式 */
+.hero { align-items: center; }
+.hero-txt { min-width: 0; flex: 1 1 20rem; }
+
+/* ---- 卡片上的测试摘要 ----
+   跑分/解锁/线路这些结果是一句话，放在卡片底部一行。 */
+.card .task-line {
+  margin: var(--s2) 0 0; padding: var(--s2) var(--s3);
+  background: var(--sunken); border-radius: var(--r-sm);
+  font-size: 12.5px; line-height: 1.5; color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.card .task-line.running { color: var(--accent); display: flex; align-items: center; gap: var(--s2); }
+.card .task-line .spin {
+  width: 10px; height: 10px; flex: none; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .card .task-line .spin { animation: none; } }

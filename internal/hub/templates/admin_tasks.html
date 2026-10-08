@@ -1,0 +1,135 @@
+{{define "admin_tasks.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>测试 · {{.Node.Name}} · {{.SiteName}} 后台</title>
+{{template "head.html" .}}
+<style>
+.task-wrap { max-width: 68rem; }
+.task-head { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s4); }
+.task-head h1 { margin: 0; font-size: 20px; }
+.task-head .sub { color: var(--muted); font-size: 13px; }
+.all-bar {
+  display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+  margin: 0 0 var(--s4);
+  padding: var(--s3) var(--s4);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+}
+.script-grid { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.script-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+  padding: var(--s4); display: flex; flex-direction: column; gap: var(--s2);
+}
+.script-card h3 { margin: 0; font-size: 15px; }
+.script-card .note { color: var(--muted); font-size: 12.5px; line-height: 1.6; margin: 0; }
+.script-card code {
+  font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  background: var(--sunken); border-radius: var(--r-sm); padding: 4px 6px;
+  overflow-wrap: anywhere;
+}
+.script-card .go { margin-top: auto; }
+.tip-ok, .tip-err { border-radius: var(--r-sm); padding: var(--s2) var(--s3); font-size: 13px; margin-bottom: var(--s3); }
+.tip-ok { background: color-mix(in srgb, var(--ok) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent); }
+.tip-err { background: color-mix(in srgb, var(--bad) 12%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); }
+.task-list { list-style: none; margin: 0; padding: 0; }
+.task-list li {
+  padding: var(--s3) 0; border-top: 1px solid var(--line);
+  display: flex; gap: var(--s3); align-items: baseline; flex-wrap: wrap;
+}
+.task-list li:first-child { border-top: 0; }
+.st { font-size: 11px; padding: 1px 8px; border-radius: 999px; flex: none; }
+.st-queued  { background: var(--sunken); color: var(--muted); }
+.st-running { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.st-done    { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.st-failed  { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+.task-sum { flex: 1; min-width: 12rem; font-size: 13px; }
+.task-time { color: var(--faint); font-size: 11px; font-family: var(--mono); }
+.task-raw { width: 100%; margin: var(--s2) 0 0; }
+.task-raw pre {
+  max-height: 20rem; overflow: auto; font-size: 11.5px; line-height: 1.5;
+  background: var(--sunken); border-radius: var(--r-sm); padding: var(--s3);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+</style>
+</head>
+<body {{.Theme.Attrs}} data-admin="1">
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">{{.SiteName}} 后台</a>
+    <div class="top-tools">
+      <a class="btn ghost small" href="/admin">← 后台</a>
+      {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode>{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
+      <a class="btn ghost small" href="/n/{{.Node.Slug}}" target="_blank" rel="noopener">看详情页 ↗</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap task-wrap">
+
+  <div class="task-head">
+    <h1>测试</h1>
+    <span class="sub">{{.Node.Name}}{{if .Node.Region}} · {{.Node.Region}}{{end}}</span>
+  </div>
+
+  {{if .Msg}}<p class="tip-ok">{{.Msg}}</p>{{end}}
+  {{if .Err}}<p class="tip-err">{{.Err}}</p>{{end}}
+
+  {{/* 命令是**拉取式**的：面板入队，agent 下一次上报时取走。
+       所以点完不会立刻跑，最长要等一个上报周期（默认 2 秒）。 */}}
+  {{/* 一键全部：一次把三项都排进队列。命令是**串行**执行的
+       （一次只下发一条），所以不会三个跑分同时抢 CPU 把结果跑偏。 */}}
+  <form method="post" action="/admin/tasks" class="all-bar">
+    <input type="hidden" name="node" value="{{.Node.ID}}">
+    <input type="hidden" name="kind" value="all">
+    <button class="btn" type="submit">一键全部测试</button>
+    <span class="hint" style="margin:0">三项依次跑，前一项跑完才轮到下一项；总耗时约 20~40 分钟。</span>
+  </form>
+
+  <p class="hint">也可以单独下发某一项。命令是拉取式的：面板入队后，
+    小鸡下一次上报时取走（默认 2 秒一次），结果回来会显示在它的卡片上。</p>
+
+  <div class="script-grid">
+    {{range .Scripts}}
+    <div class="script-card">
+      <h3>{{.Title}}</h3>
+      <p class="note">{{.Note}}</p>
+      <code>{{.Cmd}}</code>
+      <form class="go" method="post" action="/admin/tasks">
+        <input type="hidden" name="node" value="{{$.Node.ID}}">
+        <input type="hidden" name="kind" value="{{.Kind}}">
+        <button class="btn small" type="submit">下发</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+
+  <section class="panel" style="margin-top:var(--s5)">
+    <h3>历史（最近 20 条）</h3>
+    {{if .Tasks}}
+    <ul class="task-list">
+      {{range .Tasks}}
+      <li>
+        <span class="st st-{{.Status}}">{{if eq .Status "queued"}}排队中{{else if eq .Status "running"}}执行中{{else if eq .Status "done"}}已完成{{else}}失败{{end}}</span>
+        <span class="task-sum">
+          <b>{{.Title}}</b>
+          {{if .Summary}} · {{.Summary}}{{end}}
+          {{if .Error}} · <span style="color:var(--bad)">{{.Error}}</span>{{end}}
+        </span>
+        <span class="task-time">{{fmtTime .CreatedAt}}</span>
+        {{if .Detail}}
+        <details class="task-raw"><summary>原始输出</summary><pre>{{.Detail}}</pre></details>
+        {{end}}
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="hint">还没跑过测试。</p>
+    {{end}}
+  </section>
+
+</main>
+
+<script src="/static/app.js?v=24"></script>
+</body>
+</html>
+{{end}}

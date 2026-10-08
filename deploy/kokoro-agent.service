@@ -1,0 +1,33 @@
+[Unit]
+Description=Kokoro Agent (server probe)
+Documentation=https://github.com/kokoro-probe/kokoro
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/etc/kokoro
+ExecStart=/usr/local/bin/kokoro-agent run --config /etc/kokoro/config.toml
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+# 安全加固：agent 只需要写配置目录，其余路径只读
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/etc/kokoro
+
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kokoro-agent
+
+[Install]
+WantedBy=multi-user.target

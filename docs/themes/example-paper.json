@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "id": "example.paper-warm",
+  "name": "暖纸（示例）",
+  "version": "1.0.0",
+  "description": "米白纸感衬线风：大留白、弱描边、柔和阴影、详情页大图头。仅浅色。",
+  "author": "docs",
+  "license": "MIT",
+  "tags": ["light", "serif", "editorial", "reading"],
+  "tokensSchemaVersion": 2,
+  "tokens": {
+    "--kokoro-color-primary": "#a8562f",
+    "--kokoro-color-primary-hover": "#8f4526",
+    "--kokoro-color-primary-active": "#79391e",
+    "--kokoro-color-primary-fg": "#fffdf9",
+    "--kokoro-color-accent": "#4a6fa5",
+    "--kokoro-color-accent-fg": "#fffdf9",
+    "--kokoro-color-bg": "#faf7f0",
+    "--kokoro-color-bg-subtle": "#f2ede2",
+    "--kokoro-color-surface": "#fffdf9",
+    "--kokoro-color-surface-raised": "#ffffff",
+    "--kokoro-color-surface-sunken": "#f2ede2",
+    "--kokoro-color-border": "#e2d9c8",
+    "--kokoro-color-border-strong": "#c9bda6",
+    "--kokoro-color-text": "#2b2620",
+    "--kokoro-color-text-muted": "#6b6255",
+    "--kokoro-color-text-faint": "#9a9184",
+    "--kokoro-color-text-inverse": "#fffdf9",
+    "--kokoro-color-link": "#4a6fa5",
+    "--kokoro-color-success": "#4a7c3f",
+    "--kokoro-color-warning": "#b07d2b",
+    "--kokoro-color-danger": "#a8402f",
+    "--kokoro-color-info": "#4a6fa5",
+
+    "--kokoro-radius-sm": "3px",
+    "--kokoro-radius-md": "6px",
+    "--kokoro-radius-lg": "10px",
+
+    "--kokoro-font-sans": "Georgia, 'Times New Roman', 'Songti SC', 'SimSun', serif",
+    "--kokoro-font-mono": "ui-monospace, 'Cascadia Code', Consolas, monospace",
+    "--kokoro-font-size-md": "15px",
+    "--kokoro-font-size-lg": "17px",
+    "--kokoro-font-size-xl": "21px",
+    "--kokoro-font-size-2xl": "28px",
+    "--kokoro-font-size-3xl": "38px",
+    "--kokoro-font-line-height": "1.75",
+    "--kokoro-font-letter-spacing": "0.005em",
+
+    "--kokoro-shadow-sm": "0 1px 2px rgba(70, 58, 42, .06)",
+    "--kokoro-shadow-md": "0 6px 20px rgba(70, 58, 42, .09)",
+    "--kokoro-shadow-lg": "0 18px 48px rgba(70, 58, 42, .13)",
+
+    "--kokoro-transition-fast": "160ms",
+    "--kokoro-transition-base": "260ms",
+    "--kokoro-transition-slow": "420ms",
+
+    "--kokoro-chart-series-1": "#a8562f",
+    "--kokoro-chart-series-2": "#4a6fa5",
+    "--kokoro-chart-series-3": "#4a7c3f",
+    "--kokoro-chart-series-4": "#b07d2b",
+    "--kokoro-chart-series-5": "#a8402f",
+    "--kokoro-chart-grid": "#e2d9c8",
+    "--kokoro-chart-axis": "#9a9184",
+    "--kokoro-chart-tooltip-bg": "#2b2620",
+    "--kokoro-chart-tooltip-fg": "#fffdf9",
+    "--kokoro-chart-area-opacity": "0.12",
+    "--kokoro-chart-line-width": "1.75",
+
+    "--kokoro-status-online": "#4a7c3f",
+    "--kokoro-status-offline": "#9a9184",
+    "--kokoro-status-idle": "#b07d2b",
+    "--kokoro-status-maintenance": "#4a6fa5",
+
+    "--kokoro-card-bg": "#fffdf9",
+    "--kokoro-card-border": "#e2d9c8",
+    "--kokoro-header-bg": "rgba(250, 247, 240, .82)",
+    "--kokoro-header-fg": "#2b2620",
+    "--kokoro-footer-bg": "#f2ede2",
+    "--kokoro-code-bg": "#f2ede2",
+    "--kokoro-content-max-width": "1120px",
+    "--kokoro-card-padding": "20px",
+    "--kokoro-ring-color": "rgba(168, 86, 47, .3)",
+    "--kokoro-ring-width": "2px"
+  },
+  "mode": {
+    "default": "light",
+    "allowUserSwitch": true,
+    "supportsDark": false
+  },
+  "layoutSchemaVersion": 1,
+  "layout": {
+    "shell": {
+      "contentMaxWidth": "1120px",
+      "contentAlign": "left",
+      "header": {
+        "variant": "blur",
+        "sticky": true,
+        "showSearch": true,
+        "showModeSwitch": false
+      },
+      "footer": {
+        "variant": "columns"
+      }
+    },
+    "home": {
+      "hero": {
+        "enabled": true,
+        "variant": "plain",
+        "align": "left",
+        "showStats": true
+      },
+      "list": {
+        "mode": "card",
+        "groupBy": "none",
+        "card": {
+          "minWidth": "340px",
+          "gap": "24px",
+          "border": true,
+          "shadow": "sm",
+          "hoverLift": false
+        }
+      }
+    },
+    "detail": {
+      "header": {
+        "variant": "hero",
+        "height": "360px",
+        "showTags": true,
+        "secondaryLine": "location"
+      },
+      "sectionGap": "40px",
+      "introFontSize": "17px",
+      "commentsCollapsed": false
+    },
+    "charts": {
+      "type": "area",
+      "grid": true,
+      "legend": true,
+      "axisLabel": true,
+      "smooth": true,
+      "tooltip": "axis",
+      "height": "220px",
+      "heightDetail": "320px"
+    },
+    "misc": {
+      "statusDotStyle": "ring",
+      "usageBarStyle": "segmented",
+      "tagStyle": "pill",
+      "badgeStyle": "soft",
+      "showUptime": true,
+      "numberFormat": "si",
+      "dateFormat": "absolute"
+    }
+  }
+}

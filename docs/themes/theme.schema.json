@@ -1,0 +1,972 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vps.mjfuns.lat/schemas/kokoro-theme-1.json",
+  "title": "Kokoro 探针面板主题清单（theme.json）",
+  "description": "Kokoro 自托管探针面板的主题清单格式，对应 internal/theme.Manifest。主题分两层：tokens 管颜色、圆角、阴影、字体、间距等 CSS 变量；layout 管页面结构偏好（列表模式、顶栏形态、图表类型等）。解析器启用了 DisallowUnknownFields，因此任何未在本Schema 中定义的字段都会被拒绝。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "version",
+    "tokens"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "description": "清单结构版本。当前只支持 1；填 0 或不填按 1 处理，填大于 1 的值 Hub 会拒绝并提示升级 Hub。",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1,
+      "default": 1
+    },
+    "id": {
+      "description": "主题唯一标识。必填，长度 3~64，只允许小写字母、数字和 . _ -。建议用「作者.主题名」形式，如 example.minimal。注意以 kokoro. 开头的 ID 是官方内置主题的保留前缀，不要占用。",
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9._-]+$"
+    },
+    "name": {
+      "description": "主题展示名，会出现在后台主题选择器里。必填，不能为空。",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "version": {
+      "description": "主题版本号。必填，建议用语义化版本（如 1.0.0），方便后台提示升级。",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "description": {
+      "description": "一句话说明这个主题的特点，会显示在主题选择器里。不填则不显示。",
+      "type": "string",
+      "maxLength": 200
+    },
+    "author": {
+      "description": "作者名。不填会被 Hub 自动填成「未知作者」，不会报错。",
+      "type": "string",
+      "maxLength": 64
+    },
+    "homepage": {
+      "description": "主题主页或仓库地址。填了就必须以 http:// 或 https:// 开头，否则 Hub 报错——这是唯一会因填错而失败的选填字段。",
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^https?://"
+    },
+    "license": {
+      "description": "许可证标识，如 MIT。不填按 MIT 处理。",
+      "type": "string",
+      "maxLength": 32
+    },
+    "tags": {
+      "description": "主题标签，用于后台筛选。不填则无标签。",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 32
+      },
+      "maxItems": 16
+    },
+    "tokensSchemaVersion": {
+      "description": "tokens 变量表版本。当前支持到 2；填 0 或不填按 2 处理，填大于 2 的值 Hub 会拒绝。",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2,
+      "default": 2
+    },
+    "tokens": {
+      "type": "object",
+      "description": "一组 CSS 自定义属性（--kokoro-*）。键只能取下面枚举出的 101 个变量名，主题无法声明命名表以外的变量，也无法覆盖非 kokoro 变量。值里禁止出现 ; { } < > \\ @ 这几个字符——它们能终止声明、插入新规则或开新标签，Hub 会直接拒绝。另外 url() 只允许 data:image/ 与 /_theme-assets/ 下的本地资源，@import 一律禁止（正则无法精确表达这两条，故未写进 pattern，请手动遵守）。只写你要改的键，其余走内置默认值。",
+      "propertyNames": {
+        "description": "变量名白名单，共 101 个，与 Hub 的 TokenSchema + Singles 完全一致。",
+        "enum": [
+          "--kokoro-backdrop-blur",
+          "--kokoro-bg-attachment",
+          "--kokoro-bg-image",
+          "--kokoro-bg-repeat",
+          "--kokoro-bg-size",
+          "--kokoro-border-width",
+          "--kokoro-card-bg",
+          "--kokoro-card-border",
+          "--kokoro-card-border-image",
+          "--kokoro-card-padding",
+          "--kokoro-chart-area-opacity",
+          "--kokoro-chart-axis",
+          "--kokoro-chart-bar-radius",
+          "--kokoro-chart-grid",
+          "--kokoro-chart-line-width",
+          "--kokoro-chart-point-radius",
+          "--kokoro-chart-series-1",
+          "--kokoro-chart-series-2",
+          "--kokoro-chart-series-3",
+          "--kokoro-chart-series-4",
+          "--kokoro-chart-series-5",
+          "--kokoro-chart-series-6",
+          "--kokoro-chart-series-7",
+          "--kokoro-chart-series-8",
+          "--kokoro-chart-tooltip-bg",
+          "--kokoro-chart-tooltip-fg",
+          "--kokoro-code-bg",
+          "--kokoro-color-accent",
+          "--kokoro-color-accent-fg",
+          "--kokoro-color-bg",
+          "--kokoro-color-bg-subtle",
+          "--kokoro-color-border",
+          "--kokoro-color-border-strong",
+          "--kokoro-color-danger",
+          "--kokoro-color-info",
+          "--kokoro-color-link",
+          "--kokoro-color-primary",
+          "--kokoro-color-primary-active",
+          "--kokoro-color-primary-fg",
+          "--kokoro-color-primary-hover",
+          "--kokoro-color-success",
+          "--kokoro-color-surface",
+          "--kokoro-color-surface-raised",
+          "--kokoro-color-surface-sunken",
+          "--kokoro-color-text",
+          "--kokoro-color-text-faint",
+          "--kokoro-color-text-inverse",
+          "--kokoro-color-text-muted",
+          "--kokoro-color-warning",
+          "--kokoro-content-max-width",
+          "--kokoro-easing",
+          "--kokoro-font-letter-spacing",
+          "--kokoro-font-line-height",
+          "--kokoro-font-mono",
+          "--kokoro-font-sans",
+          "--kokoro-font-size-2xl",
+          "--kokoro-font-size-3xl",
+          "--kokoro-font-size-lg",
+          "--kokoro-font-size-md",
+          "--kokoro-font-size-sm",
+          "--kokoro-font-size-xl",
+          "--kokoro-font-size-xs",
+          "--kokoro-font-weight-bold",
+          "--kokoro-font-weight-medium",
+          "--kokoro-font-weight-normal",
+          "--kokoro-footer-bg",
+          "--kokoro-glow",
+          "--kokoro-header-bg",
+          "--kokoro-header-fg",
+          "--kokoro-header-height",
+          "--kokoro-hero-gradient",
+          "--kokoro-hero-overlay",
+          "--kokoro-opacity-disabled",
+          "--kokoro-radius-full",
+          "--kokoro-radius-lg",
+          "--kokoro-radius-md",
+          "--kokoro-radius-sm",
+          "--kokoro-ring-color",
+          "--kokoro-ring-width",
+          "--kokoro-shadow-lg",
+          "--kokoro-shadow-md",
+          "--kokoro-shadow-sm",
+          "--kokoro-sidebar-width",
+          "--kokoro-space-1",
+          "--kokoro-space-2",
+          "--kokoro-space-3",
+          "--kokoro-space-4",
+          "--kokoro-space-5",
+          "--kokoro-space-6",
+          "--kokoro-space-7",
+          "--kokoro-space-8",
+          "--kokoro-status-idle",
+          "--kokoro-status-maintenance",
+          "--kokoro-status-offline",
+          "--kokoro-status-online",
+          "--kokoro-transition-base",
+          "--kokoro-transition-fast",
+          "--kokoro-transition-slow",
+          "--kokoro-z-dropdown",
+          "--kokoro-z-modal",
+          "--kokoro-z-toast"
+        ]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 512,
+        "pattern": "^[^\\;{}<>\\\\@]{1,512}$"
+      },
+      "minProperties": 1
+    },
+    "tokensDark": {
+      "type": "object",
+      "description": "深色模式下的变量覆盖。同样的 101 个变量名白名单。只写深色下要改的键，未写的沿用 tokens 里的浅色值——所以写深色覆盖时不用把 100 个变量重写一遍。整块可以不填；不填表示这份主题的深色模式完全复用 tokens。",
+      "propertyNames": {
+        "description": "变量名白名单，共 101 个，与 Hub 的 TokenSchema + Singles 完全一致。",
+        "enum": [
+          "--kokoro-backdrop-blur",
+          "--kokoro-bg-attachment",
+          "--kokoro-bg-image",
+          "--kokoro-bg-repeat",
+          "--kokoro-bg-size",
+          "--kokoro-border-width",
+          "--kokoro-card-bg",
+          "--kokoro-card-border",
+          "--kokoro-card-border-image",
+          "--kokoro-card-padding",
+          "--kokoro-chart-area-opacity",
+          "--kokoro-chart-axis",
+          "--kokoro-chart-bar-radius",
+          "--kokoro-chart-grid",
+          "--kokoro-chart-line-width",
+          "--kokoro-chart-point-radius",
+          "--kokoro-chart-series-1",
+          "--kokoro-chart-series-2",
+          "--kokoro-chart-series-3",
+          "--kokoro-chart-series-4",
+          "--kokoro-chart-series-5",
+          "--kokoro-chart-series-6",
+          "--kokoro-chart-series-7",
+          "--kokoro-chart-series-8",
+          "--kokoro-chart-tooltip-bg",
+          "--kokoro-chart-tooltip-fg",
+          "--kokoro-code-bg",
+          "--kokoro-color-accent",
+          "--kokoro-color-accent-fg",
+          "--kokoro-color-bg",
+          "--kokoro-color-bg-subtle",
+          "--kokoro-color-border",
+          "--kokoro-color-border-strong",
+          "--kokoro-color-danger",
+          "--kokoro-color-info",
+          "--kokoro-color-link",
+          "--kokoro-color-primary",
+          "--kokoro-color-primary-active",
+          "--kokoro-color-primary-fg",
+          "--kokoro-color-primary-hover",
+          "--kokoro-color-success",
+          "--kokoro-color-surface",
+          "--kokoro-color-surface-raised",
+          "--kokoro-color-surface-sunken",
+          "--kokoro-color-text",
+          "--kokoro-color-text-faint",
+          "--kokoro-color-text-inverse",
+          "--kokoro-color-text-muted",
+          "--kokoro-color-warning",
+          "--kokoro-content-max-width",
+          "--kokoro-easing",
+          "--kokoro-font-letter-spacing",
+          "--kokoro-font-line-height",
+          "--kokoro-font-mono",
+          "--kokoro-font-sans",
+          "--kokoro-font-size-2xl",
+          "--kokoro-font-size-3xl",
+          "--kokoro-font-size-lg",
+          "--kokoro-font-size-md",
+          "--kokoro-font-size-sm",
+          "--kokoro-font-size-xl",
+          "--kokoro-font-size-xs",
+          "--kokoro-font-weight-bold",
+          "--kokoro-font-weight-medium",
+          "--kokoro-font-weight-normal",
+          "--kokoro-footer-bg",
+          "--kokoro-glow",
+          "--kokoro-header-bg",
+          "--kokoro-header-fg",
+          "--kokoro-header-height",
+          "--kokoro-hero-gradient",
+          "--kokoro-hero-overlay",
+          "--kokoro-opacity-disabled",
+          "--kokoro-radius-full",
+          "--kokoro-radius-lg",
+          "--kokoro-radius-md",
+          "--kokoro-radius-sm",
+          "--kokoro-ring-color",
+          "--kokoro-ring-width",
+          "--kokoro-shadow-lg",
+          "--kokoro-shadow-md",
+          "--kokoro-shadow-sm",
+          "--kokoro-sidebar-width",
+          "--kokoro-space-1",
+          "--kokoro-space-2",
+          "--kokoro-space-3",
+          "--kokoro-space-4",
+          "--kokoro-space-5",
+          "--kokoro-space-6",
+          "--kokoro-space-7",
+          "--kokoro-space-8",
+          "--kokoro-status-idle",
+          "--kokoro-status-maintenance",
+          "--kokoro-status-offline",
+          "--kokoro-status-online",
+          "--kokoro-transition-base",
+          "--kokoro-transition-fast",
+          "--kokoro-transition-slow",
+          "--kokoro-z-dropdown",
+          "--kokoro-z-modal",
+          "--kokoro-z-toast"
+        ]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 512,
+        "pattern": "^[^\\;{}<>\\\\@]{1,512}$"
+      }
+    },
+    "mode": {
+      "type": "object",
+      "description": "深浅色策略。整块不填即全部走默认（跟随系统、可切换、支持深色）。",
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "description": "默认深浅色：auto 跟随访客系统、light 固定浅色、dark 固定深色。不填按 auto 处理。注意填了非法值不会报错，会被静默回落成 auto。",
+          "enum": [
+            "auto",
+            "light",
+            "dark"
+          ],
+          "default": "auto"
+        },
+        "allowUserSwitch": {
+          "description": "是否给访客看深浅色切换按钮。不填按 true 处理。",
+          "type": "boolean"
+        },
+        "supportsDark": {
+          "description": "这份主题是否支持深色。写 false 时 tokensDark 会被忽略，页面只输出浅色一套变量。",
+          "type": "boolean"
+        }
+      }
+    },
+    "layoutSchemaVersion": {
+      "description": "layout 结构版本。当前只支持 1；填 0 或不填按 1 处理，填大于 1 的值 Hub 会拒绝。",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1,
+      "default": 1
+    },
+    "layout": {
+      "type": "object",
+      "description": "第二层「布局」：描述页面结构偏好。Hub 把它展开成 <body> 上的 data-k-* 属性与一小段生成的 CSS。整块可以不填，全部不填即用内置默认布局。",
+      "additionalProperties": false,
+      "properties": {
+        "shell": {
+          "type": "object",
+          "description": "整站骨架：内容区宽度与对齐、顶栏与页脚形态。",
+          "additionalProperties": false,
+          "properties": {
+            "contentMaxWidth": {
+              "description": "内容区最大宽度。不填则用 var(--kokoro-content-max-width)（默认 1280px）。合法写法如 1280px、90%、calc(100% - 32px)。",
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^\\s*(?:0|auto|none|inherit|initial|(?:calc|min|max|clamp|var)\\([^;{}<>\\\\@]*\\)|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|cm|mm|in))\\s*$"
+            },
+            "contentAlign": {
+              "description": "内容区水平对齐方式。不填按center 处理。",
+              "enum": [
+                "center",
+                "left"
+              ],
+              "$comment": "layout.go enums['shell.contentAlign']"
+            },
+            "header": {
+              "type": "object",
+              "description": "顶栏外观与行为。",
+              "additionalProperties": false,
+              "properties": {
+                "variant": {
+                  "description": "顶栏形态。blur 会用 --kokoro-backdrop-blur 做背景模糊，bordered 会在底部加一条主色线。不填按 solid 处理。",
+                  "enum": [
+                    "solid",
+                    "transparent",
+                    "blur",
+                    "bordered"
+                  ],
+                  "$comment": "layout.go enums['shell.header.variant']"
+                },
+                "sticky": {
+                  "description": "顶栏是否吸顶。不填按 true 处理；显式写 false 表示让顶栏随页面滚走。",
+                  "type": "boolean"
+                },
+                "showSearch": {
+                  "description": "顶栏是否显示搜索框。不填按内置默认（跟随 list.allowUserSwitch）。",
+                  "type": "boolean"
+                },
+                "showModeSwitch": {
+                  "description": "顶栏是否显示深浅色切换按钮。不填按内置默认；写 false 可强制隐藏，即使 mode.allowUserSwitch 为 true。",
+                  "type": "boolean"
+                }
+              }
+            },
+            "footer": {
+              "type": "object",
+              "description": "页脚形态。",
+              "additionalProperties": false,
+              "properties": {
+                "variant": {
+                  "description": "页栏版式：simple 单行、columns 多列、minimal 极简。不填由内置样式决定。",
+                  "enum": [
+                    "simple",
+                    "columns",
+                    "minimal"
+                  ],
+                  "$comment": "layout.go enums['shell.footer.variant']"
+                }
+              }
+            }
+          }
+        },
+        "home": {
+          "type": "object",
+          "description": "首页：Hero 区与节点列表。",
+          "additionalProperties": false,
+          "properties": {
+            "hero": {
+              "type": "object",
+              "description": "首页顶部的大图区。注意 enabled 与 variant 是两个独立维度：variant 选了 gradient 但 enabled 没开，Hero 依然不显示。",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "description": "是否显示 Hero。不填即不显示（默认 false），必须显式写 true 才会出现。",
+                  "type": "boolean"
+                },
+                "variant": {
+                  "description": "Hero 样式。gradient 使用 --kokoro-hero-gradient，image 配合 --kokoro-bg-image。不填按 plain 处理。",
+                  "enum": [
+                    "plain",
+                    "gradient",
+                    "image",
+                    "split"
+                  ],
+                  "$comment": "layout.go enums['home.hero.variant']"
+                },
+                "align": {
+                  "description": "Hero 文案对齐方式。不填由内置样式决定。",
+                  "enum": [
+                    "left",
+                    "center"
+                  ],
+                  "$comment": "layout.go enums['home.hero.align']"
+                },
+                "subtitle": {
+                  "description": "Hero 副标题，一行纯文本。不填则不显示副标题。",
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "^[^\\;{}<>\\\\@]{1,200}$"
+                },
+                "showStats": {
+                  "description": "Hero 内是否显示汇总数字（节点数、总流量等）。不填按内置默认。",
+                  "type": "boolean"
+                }
+              }
+            },
+            "list": {
+              "type": "object",
+              "description": "节点列表：显示模式、分组方式，以及 card / table / compact 三套子样式。",
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "description": "列表模式。不填按 card 处理。map 是地图模式，需要站点配置里启用地图资源。",
+                  "enum": [
+                    "card",
+                    "table",
+                    "compact",
+                    "map"
+                  ],
+                  "$comment": "layout.go enums['home.list.mode']"
+                },
+                "allowUserSwitch": {
+                  "description": "是否允许访客自己切换列表模式。不填按内置默认（允许）。",
+                  "type": "boolean"
+                },
+                "groupBy": {
+                  "description": "分组依据。none 表示不分组（不填等同于 none）。",
+                  "enum": [
+                    "none",
+                    "status",
+                    "region",
+                    "tag",
+                    "provider"
+                  ],
+                  "$comment": "layout.go enums['home.list.groupBy']"
+                },
+                "card": {
+                  "type": "object",
+                  "description": "card 模式专用。",
+                  "additionalProperties": false,
+                  "properties": {
+                    "minWidth": {
+                      "description": "卡片最小宽度，决定一行放几张。不填按 300px 处理。",
+                      "type": "string",
+                      "maxLength": 200,
+                      "pattern": "^\\s*(?:0|auto|none|inherit|initial|(?:calc|min|max|clamp|var)\\([^;{}<>\\\\@]*\\)|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|cm|mm|in))\\s*$"
+                    },
+                    "gap": {
+                      "description": "卡片之间的间距。不填按 var(--kokoro-space-5)（24px）处理。",
+                      "type": "string",
+                      "maxLength": 200,
+                      "pattern": "^\\s*(?:0|auto|none|inherit|initial|(?:calc|min|max|clamp|var)\\([^;{}<>\\\\@]*\\)|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|cm|mm|in))\\s*$"
+                    },
+                    "border": {
+                      "description": "卡片是否描边。不填按内置默认（描边）。",
+                      "type": "boolean"
+                    },
+                    "shadow": {
+                      "description": "卡片阴影档位。glow 用 --kokoro-glow，其余映射到 --kokoro-shadow-*。不填按 sm 处理。",
+                      "enum": [
+                        "none",
+                        "sm",
+                        "md",
+                        "lg",
+                        "glow"
+                      ],
+                      "$comment": "layout.go enums['home.list.card.shadow']"
+                    },
+                    "hoverLift": {
+                      "description": "鼠标悬停时卡片是否上浮。不填按 true 处理；写 false 可关掉这个动效。",
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "table": {
+                  "type": "object",
+                  "description": "table 模式专用。",
+                  "additionalProperties": false,
+                  "properties": {
+                    "density": {
+                      "description": "表格行高密度。不填按 comfortable 处理。",
+                      "enum": [
+                        "compact",
+                        "comfortable"
+                      ],
+                      "$comment": "layout.go enums['home.list.table.density']"
+                    },
+                    "striped": {
+                      "description": "表格是否用斑马纹隔行。不填按内置默认。",
+                      "type": "boolean"
+                    },
+                    "rowHover": {
+                      "description": "表格行悬停是否高亮。不填按内置默认（高亮）。",
+                      "type": "boolean"
+                    },
+                    "showUnit": {
+                      "description": "数值是否带单位后缀（如 1.2 GB）。不填按内置默认。",
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "compact": {
+                  "type": "object",
+                  "description": "compact 模式专用（等宽紧凑行，终端风格主题常用）。",
+                  "additionalProperties": false,
+                  "properties": {
+                    "rowHeight": {
+                      "description": "行高，必须写一个带单位的长度值。不填按 44px 处理。",
+                      "type": "string",
+                      "maxLength": 200,
+                      "pattern": "^\\s*(?:0|auto|none|inherit|initial|(?:calc|min|max|clamp|var)\\([^;{}<>\\\\@]*\\)|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|cm|mm|in))\\s*$"
+                    },
+                    "dividers": {
+                      "description": "行之间是否画分隔线。不填按内置默认（不画）。",
+                      "type": "boolean"
+                    },
+                    "showFlag": {
+                      "description": "是否显示节点所在地区/国旗标记。注意这是一个布尔值，不是字符串。",
+                      "type": "boolean",
+                      "$comment": "layout.go 的 enums map 里登记了 home.list.compact.showFlag = {\"true\",\"false\"}（字符串），但 ValidateLayout 从未对该键调用 check()，而 Go 结构体字段是 *bool。故实际取值必须是 JSON 布尔值，此处以 boolean 表达。"
+                    },
+                    "inlineBars": {
+                      "description": "是否在行内画出流量条。不填按内置默认。",
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "detail": {
+          "type": "object",
+          "description": "节点详情页：头部形态与区块排版。",
+          "additionalProperties": false,
+          "properties": {
+            "header": {
+              "type": "object",
+              "description": "详情页头部。",
+              "additionalProperties": false,
+              "properties": {
+                "variant": {
+                  "description": "头部形态：hero 大幅留白、compact 紧凑条、none 完全去掉。不填按 compact 处理。",
+                  "enum": [
+                    "hero",
+                    "compact",
+                    "none"
+                  ],
+                  "$comment": "layout.go enums['detail.header.variant']"
+                },
+                "height": {
+                  "description": "头部高度。hero 形态下尤其有效。不填按 320px 处理。",
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "^\\s*(?:0|auto|none|inherit|initial|(?:calc|min|max|clamp|var)\\([^;{}<>\\\\@]*\\)|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|cm|mm|in))\\s*$"
+                },
+                "showTags": {
+                  "description": "头部是否显示标签。不填按内置默认（显示）。",
+                  "type": "boolean"
+                },
+                "secondaryLine": {
+                  "description": "头部第二行显示什么：location 地区、specs 配置、uptime 在线时长、none 不显示。不填按内置默认。",
+                  "enum": [
+                    "location",
+                    "specs",
+                    "uptime",
+                    "none"
+                  ],
+                  "$comment": "layout.go enums['detail.header.secondaryLine']"
+                }
+              }
+            },
+            "sectionGap": {
+              "description": "各区块之间的垂直间距。不填按 var(--kokoro-space-6)（32px）处理。",
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^\\s*(?:0|auto|none|inherit|initial|(?:calc|min|max|clamp|var)\\([^;{}<>\\\\@]*\\)|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|cm|mm|in))\\s*$"
+            },
+            "introFontSize": {
+              "description": "简介正文字号。不填则沿用 --kokoro-font-size-md。",
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^\\s*(?:0|auto|none|inherit|initial|(?:calc|min|max|clamp|var)\\([^;{}<>\\\\@]*\\)|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|cm|mm|in))\\s*$"
+            },
+            "commentsCollapsed": {
+              "description": "备注/评论区是否默认折叠。不填按内置默认（展开）。",
+              "type": "boolean"
+            }
+          }
+        },
+        "charts": {
+          "type": "object",
+          "description": "图表通用参数，作用于首页与详情页的所有图表。",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "description": "图表类型。不填按 area（面积图）处理。",
+              "enum": [
+                "line",
+                "area",
+                "bar"
+              ],
+              "$comment": "layout.go enums['charts.type']"
+            },
+            "grid": {
+              "description": "是否绘制网格线。不填按内置默认（绘制）；写 false 会输出 data-k-chart-grid=\"0\" 让前端SVG 跳过网格。",
+              "type": "boolean"
+            },
+            "legend": {
+              "description": "是否显示图例。不填按内置默认。",
+              "type": "boolean"
+            },
+            "axisLabel": {
+              "description": "是否显示坐标轴标签。不填按内置默认。",
+              "type": "boolean"
+            },
+            "smooth": {
+              "description": "折线是否做平滑曲线处理。不填按内置默认。",
+              "type": "boolean"
+            },
+            "tooltip": {
+              "description": "tooltip 触发方式：axis 跟随整个坐标轴、item 只跟随单个数据点、none 关闭。不填按内置默认。",
+              "enum": [
+                "axis",
+                "item",
+                "none"
+              ],
+              "$comment": "layout.go enums['charts.tooltip']"
+            },
+            "height": {
+              "description": "常规图表高度。不填按 200px 处理。",
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^\\s*(?:0|auto|none|inherit|initial|(?:calc|min|max|clamp|var)\\([^;{}<>\\\\@]*\\)|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|cm|mm|in))\\s*$"
+            },
+            "heightDetail": {
+              "description": "详情页图表高度（通常比首页高）。不填按 300px 处理。",
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^\\s*(?:0|auto|none|inherit|initial|(?:calc|min|max|clamp|var)\\([^;{}<>\\\\@]*\\)|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|cm|mm|in))\\s*$"
+            }
+          }
+        },
+        "misc": {
+          "type": "object",
+          "description": "零碎风格开关：状态点、流量条、标签、数字与日期格式。",
+          "additionalProperties": false,
+          "properties": {
+            "statusDotStyle": {
+              "description": "节点状态点样式。不填按 solid 处理。",
+              "enum": [
+                "solid",
+                "ring",
+                "glow",
+                "none"
+              ],
+              "$comment": "layout.go enums['misc.statusDotStyle']"
+            },
+            "usageBarStyle": {
+              "description": "流量条样式。不填按 solid 处理。",
+              "enum": [
+                "solid",
+                "gradient",
+                "segmented",
+                "none"
+              ],
+              "$comment": "layout.go enums['misc.usageBarStyle']"
+            },
+            "tagStyle": {
+              "description": "标签样式。不填按 pill 处理。",
+              "enum": [
+                "pill",
+                "square",
+                "text"
+              ],
+              "$comment": "layout.go enums['misc.tagStyle']"
+            },
+            "badgeStyle": {
+              "description": "徽章样式。不填按 soft 处理。",
+              "enum": [
+                "soft",
+                "outline",
+                "solid"
+              ],
+              "$comment": "layout.go enums['misc.badgeStyle']"
+            },
+            "showUptime": {
+              "description": "是否显示在线时长。不填按内置默认。",
+              "type": "boolean"
+            },
+            "numberFormat": {
+              "description": "数值格式化：si 带单位（1.2 GB）、plain 纯数字（1,234）、percent 百分比。不填按内置默认。",
+              "enum": [
+                "si",
+                "plain",
+                "percent"
+              ],
+              "$comment": "layout.go enums['misc.numberFormat']"
+            },
+            "dateFormat": {
+              "description": "日期显示为相对时间（3 小时前）还是绝对时间。不填按内置默认。",
+              "enum": [
+                "relative",
+                "absolute"
+              ],
+              "$comment": "layout.go enums['misc.dateFormat']"
+            }
+          }
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "description": "包完整性信息。仅在使用 .kokoro-theme 主题包时由 Hub 自动写入；如果你只是手写一份 theme.json 导入，整块不要填。",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "description": "包格式标识。留空或填 kokoro-theme 均可，填其它值 Hub 会拒绝。",
+          "enum": [
+            "kokoro-theme"
+          ]
+        },
+        "files": {
+          "description": "包内文件相对路径清单。导入裸 theme.json 时不要填。",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "sha256": {
+          "description": "包内容汇总哈希（小写十六进制）。Hub 会拿它与实际算出的值核对，不一致则拒绝导入。",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "signed": {
+          "description": "是否附带签名。当前 Hub 只记录这个声明、不做校验，因此填 true 不代表包真的可信。",
+          "type": "boolean"
+        },
+        "bundle": {
+          "description": "预留字段：签名者 ID。当前版本不使用。",
+          "type": "string",
+          "maxLength": 64
+        }
+      }
+    }
+  },
+  "$defs": {
+    "enumValues": {
+      "title": "layout 枚举取值总表",
+      "description": "internal/theme/layout.go 的 enums map 是这些取值的唯一权威来源：未登记的键一律拒绝，这样拼错的键会立刻报错，而不是悄悄回落到默认值。下面是集中列出的一份便于查阅的拷贝，实际约束就写在 layout 各字段上。",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shell.header.variant": {
+          "description": "对应 layout 里的 shell.header.variant。",
+          "enum": [
+            "solid",
+            "transparent",
+            "blur",
+            "bordered"
+          ]
+        },
+        "shell.contentAlign": {
+          "description": "对应 layout 里的 shell.contentAlign。",
+          "enum": [
+            "center",
+            "left"
+          ]
+        },
+        "shell.footer.variant": {
+          "description": "对应 layout 里的 shell.footer.variant。",
+          "enum": [
+            "simple",
+            "columns",
+            "minimal"
+          ]
+        },
+        "home.hero.variant": {
+          "description": "对应 layout 里的 home.hero.variant。",
+          "enum": [
+            "plain",
+            "gradient",
+            "image",
+            "split"
+          ]
+        },
+        "home.hero.align": {
+          "description": "对应 layout 里的 home.hero.align。",
+          "enum": [
+            "left",
+            "center"
+          ]
+        },
+        "home.list.mode": {
+          "description": "对应 layout 里的 home.list.mode。",
+          "enum": [
+            "card",
+            "table",
+            "compact",
+            "map"
+          ]
+        },
+        "home.list.groupBy": {
+          "description": "对应 layout 里的 home.list.groupBy。",
+          "enum": [
+            "none",
+            "status",
+            "region",
+            "tag",
+            "provider"
+          ]
+        },
+        "home.list.card.shadow": {
+          "description": "对应 layout 里的 home.list.card.shadow。",
+          "enum": [
+            "none",
+            "sm",
+            "md",
+            "lg",
+            "glow"
+          ]
+        },
+        "home.list.table.density": {
+          "description": "对应 layout 里的 home.list.table.density。",
+          "enum": [
+            "compact",
+            "comfortable"
+          ]
+        },
+        "home.list.compact.showFlag": {
+          "description": "对应 layout 里的 home.list.compact.showFlag。",
+          "enum": [
+            "true",
+            "false"
+          ]
+        },
+        "detail.header.variant": {
+          "description": "对应 layout 里的 detail.header.variant。",
+          "enum": [
+            "hero",
+            "compact",
+            "none"
+          ]
+        },
+        "detail.header.secondaryLine": {
+          "description": "对应 layout 里的 detail.header.secondaryLine。",
+          "enum": [
+            "location",
+            "specs",
+            "uptime",
+            "none"
+          ]
+        },
+        "charts.type": {
+          "description": "对应 layout 里的 charts.type。",
+          "enum": [
+            "line",
+            "area",
+            "bar"
+          ]
+        },
+        "charts.tooltip": {
+          "description": "对应 layout 里的 charts.tooltip。",
+          "enum": [
+            "axis",
+            "item",
+            "none"
+          ]
+        },
+        "misc.statusDotStyle": {
+          "description": "对应 layout 里的 misc.statusDotStyle。",
+          "enum": [
+            "solid",
+            "ring",
+            "glow",
+            "none"
+          ]
+        },
+        "misc.usageBarStyle": {
+          "description": "对应 layout 里的 misc.usageBarStyle。",
+          "enum": [
+            "solid",
+            "gradient",
+            "segmented",
+            "none"
+          ]
+        },
+        "misc.tagStyle": {
+          "description": "对应 layout 里的 misc.tagStyle。",
+          "enum": [
+            "pill",
+            "square",
+            "text"
+          ]
+        },
+        "misc.badgeStyle": {
+          "description": "对应 layout 里的 misc.badgeStyle。",
+          "enum": [
+            "soft",
+            "outline",
+            "solid"
+          ]
+        },
+        "misc.numberFormat": {
+          "description": "对应 layout 里的 misc.numberFormat。",
+          "enum": [
+            "si",
+            "plain",
+            "percent"
+          ]
+        },
+        "misc.dateFormat": {
+          "description": "对应 layout 里的 misc.dateFormat。",
+          "enum": [
+            "relative",
+            "absolute"
+          ]
+        }
+      }
+    }
+  },
+  "$comment": "这份 Schema 只描述格式与取值范围，便于主题作者（或拿着 Schema 生成主题的 AI）在提交前就发现错误；它不能替代 Hub 的校验。真正的安全边界在 Hub 源码里：internal/theme.Parse（DisallowUnknownFields）、ValidateTokens（validateTokenValue 的字符黑名单与 url() 限制）、ValidateLayout（enums 枚举与 isLengthValue 尺寸校验），以及 package.go 里的包解压安全检查。Schema 通过只代表格式大体正确，Hub 仍可能以别的原因拒绝；反之 Schema 过于宽松之处，以 Hub 的校验结果为准。"
+}

@@ -1,0 +1,33 @@
+# 构建产物（交叉编译出来的二进制有 14MB+，不进仓库）
+/dist/
+*.exe
+*.exe~
+
+# 本地临时工作区（截图、日志、探测脚本产物）
+/work/
+
+# 运行时数据（数据库、上传的头像、证书）
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+# 证书与私钥（绝不入库）
+*.pem
+*.key
+*.crt
+cert/
+
+# 本机凭据与配置
+.env
+*.local
+config.toml
+
+# AI 助手的工作记忆，属于本机，不是项目内容
+.workbuddy-ai/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

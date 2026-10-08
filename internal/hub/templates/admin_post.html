@@ -1,0 +1,107 @@
+{{define "admin_post.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>文章 · {{.Node.Name}} · {{.SiteName}} 后台</title>
+{{template "head.html" .}}
+<style>
+/* 文章编辑页：左边写、右边预览思路太重，这里只做「写」，
+   预览在详情页看。单栏更容易专心写。 */
+.post-wrap { max-width: 62rem; }
+.post-head { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s4); }
+.post-head h1 { margin: 0; font-size: 20px; }
+.post-head .sub { color: var(--muted); font-size: 13px; }
+.post-form { display: flex; flex-direction: column; gap: var(--s3); }
+.post-form label { display: block; font-size: 13px; color: var(--muted); margin-bottom: var(--s1); }
+.post-form input[type="text"], .post-form textarea {
+  width: 100%; font: inherit; color: var(--fg);
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: var(--s2) var(--s3);
+}
+.post-form textarea { min-height: 26rem; resize: vertical; line-height: 1.75; }
+.post-form textarea.body { font-family: var(--mono); font-size: 13px; }
+.post-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.post-actions { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s2); }
+.post-hint { color: var(--faint); font-size: 12px; }
+.saved-tip {
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
+  color: var(--fg); border-radius: var(--r-sm);
+  padding: var(--s2) var(--s3); font-size: 13px;
+}
+@media (max-width: 640px) { .post-row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body {{.Theme.Attrs}} data-admin="1">
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">{{.SiteName}} 后台</a>
+    <div class="top-tools">
+      <a class="btn ghost small" href="/admin">← 后台</a>
+      {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode>{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
+      <a class="btn ghost small" href="/n/{{.Node.Slug}}" target="_blank" rel="noopener">看详情页 ↗</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap post-wrap">
+
+  <div class="post-head">
+    <h1>{{if .Profile.ContentMD}}编辑文章{{else}}写一篇文章{{end}}</h1>
+    <span class="sub">
+      {{.Node.Name}}{{if .Node.Region}} · {{.Node.Region}}{{end}}
+      · <code>/n/{{.Node.Slug}}</code>
+    </span>
+  </div>
+
+  {{if .Saved}}<p class="saved-tip">已保存。详情页 <a href="/n/{{.Node.Slug}}" target="_blank" rel="noopener">/n/{{.Node.Slug}}</a> 已更新。</p>{{end}}
+
+  {{/* 每台小鸡一篇文章：node_profile 以 node_id 为主键，存的就是这一篇。
+       不需要"新建/删除"，写就是这篇、清空就是删掉。 */}}
+  <p class="post-hint">每台小鸡只有一篇文章，写在这里就是它的介绍。支持 Markdown：
+    标题 <code>#</code>、列表 <code>-</code>、链接 <code>[文字](地址)</code>、代码块用三个反引号。
+    正文留空即表示不显示文章。</p>
+
+  <form class="post-form" method="post" action="/admin/nodes">
+    <input type="hidden" name="action" value="save_profile">
+    <input type="hidden" name="id" value="{{.Node.ID}}">
+    <input type="hidden" name="back" value="post">
+
+    <div>
+      <label for="p-summary">摘要（列表页和分享卡片上的一句话）</label>
+      <input id="p-summary" type="text" name="summary" value="{{.Profile.Summary}}"
+             maxlength="200" placeholder="一句话说清这台机器是干嘛的">
+    </div>
+
+    <div>
+      <label for="p-body">正文（Markdown）</label>
+      <textarea id="p-body" class="body" name="content_md"
+                placeholder="# 标题&#10;&#10;正文…">{{.Profile.ContentMD}}</textarea>
+    </div>
+
+    <div class="post-row">
+      <div>
+        <label for="p-price">价格（可留空，不给访客看）</label>
+        <input id="p-price" type="text" name="price" value="{{.Profile.Price}}"
+               maxlength="64" placeholder="例如 ¥99/年">
+      </div>
+      <div>
+        <label for="p-expire">到期时间（可留空）</label>
+        <input id="p-expire" type="text" name="expire_at" value="{{.Profile.ExpireAt}}"
+               maxlength="32" placeholder="例如 2027-03-01">
+      </div>
+    </div>
+
+    <div class="post-actions">
+      <button class="btn" type="submit">保存</button>
+      <a class="btn ghost" href="/admin">返回后台</a>
+      <span class="post-hint">保存后详情页立刻生效。</span>
+    </div>
+  </form>
+
+</main>
+
+<script src="/static/app.js?v=24"></script>
+</body>
+</html>
+{{end}}

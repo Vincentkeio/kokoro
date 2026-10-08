@@ -1,0 +1,24 @@
+{{define "login.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>登录 · {{.SiteName}}</title>
+{{template "head.html" .}}
+</head>
+<body {{.Theme.Attrs}}>
+<main class="wrap login">
+  <div class="panel narrow">
+    <h2>{{.SiteName}} 后台</h2>
+    {{if .Error}}<p class="bad">{{.Error}}</p>{{end}}
+    <form method="post" action="/admin">
+      <input type="text" name="username" placeholder="管理员用户名" value="{{.User}}" autocomplete="username" autofocus required>
+      <input type="password" name="password" placeholder="密码" autocomplete="current-password" required>
+      <button class="btn" type="submit">进入</button>
+    </form>
+    <p class="hint">首次启动的账号密码只在 Hub 日志里打印过一次。忘了可以拿命令行重设：
+<code>kokoro passwd --data &lt;数据目录&gt; --user &lt;用户名&gt;</code></p>
+  </div>
+</main>
+</body>
+</html>
+{{end}}

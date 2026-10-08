@@ -1,0 +1,93 @@
+{{define "head.html"}}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{{/* 主题变量与布局变量。顺序有讲究：base.css 提供别名层的 fallback，
+     然后 tokens 覆盖别名引用的具体值，最后 layout 变量补 --k-* 系列。
+     themeTokens 已经过校验（未知变量名会被 Parse 拒绝），且值里不可能出现
+     </style>，所以这里直接内联是安全的。 */}}
+<link rel="icon" href="/static/favicon.svg?v=24">
+<link rel="stylesheet" href="/static/style.css?v=24">
+<style id="kokoro-tokens">{{.Theme.Tokens}}</style>
+<style id="kokoro-layout">{{.Theme.LayoutCSS}}</style>
+{{if eq .Theme.DefaultMode "auto"}}
+<script>
+/* 主题声明"跟随系统"时，在首屏渲染前同步判定，避免深色偏好下闪一下白。
+   这段必须在任何 paint 之前执行，所以放在 <head> 里而不是页脚。 */
+(function(){try{if(matchMedia("(prefers-color-scheme: dark)").matches){
+document.documentElement.dataset.kMode="dark";
+document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
+</script>
+{{end}}
+{{end}}
+
+{{define "topbar.html"}}
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">{{.SiteName}}</a>
+    <form class="search" method="get" action="/search" role="search">
+      <input type="search" name="q" value="{{if .Query}}{{.Query}}{{end}}" placeholder="搜小鸡：名字 / 地区 / 机房 / 标签…" aria-label="搜索小鸡">
+      <button class="btn small" type="submit">搜索</button>
+    </form>
+    <div class="top-tools">
+      {{if ne .Theme.ListMode ""}}
+      <div class="modes" role="group" aria-label="列表显示方式">
+        <button class="mode-btn{{if eq .Theme.ListMode "card"}} on{{end}}" data-set-list="card" type="button" title="卡片视图">卡片</button>
+        <button class="mode-btn{{if eq .Theme.ListMode "table"}} on{{end}}" data-set-list="table" type="button" title="表格视图">表格</button>
+        <button class="mode-btn{{if eq .Theme.ListMode "compact"}} on{{end}}" data-set-list="compact" type="button" title="紧凑视图">紧凑</button>
+      </div>
+      {{end}}
+      {{if .Theme.ShowSwitch}}
+      <button class="btn ghost small mode-toggle" type="button"
+              data-toggle-mode
+              title="切换深色 / 浅色"
+              aria-label="切换深色或浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>
+      {{end}}
+      <a class="btn ghost small" href="/dashboard">仪表盘</a>
+      <a class="btn ghost small" href="/admin">后台</a>
+      {{/* 皮肤切换器放在最后 = 贴着右上角。
+           不要为了"把外观控件聚在一起"把它挪到 mode-toggle 旁边：
+           站长明确要求它在右上角，这个位置本身就是它的可发现性。 */}}
+      {{template "skinpicker.html" .}}
+    </div>
+  </div>
+</header>
+{{end}}
+
+{{define "skinpicker.html"}}
+{{/* 页头右上角的皮肤切换器。两条语义完全不同的路径，别搞混：
+     /pick/<id>  访客自选，只写 k_theme cookie，不动站点设置，人人可用；
+     /theme/<id> 管理员改站点默认主题，影响所有人（后台用）。
+
+     只要装了至少一套主题就显示——**只有一套也显示**。
+     单主题时菜单里只有一个选项，看着像没用，但它是访客唯一能
+     看到"本站支持换外观"和"我现在用着哪套"的地方。
+     不要因为选项少就把整条藏掉，那是拿可发现性换整洁。
+
+     用 <details> 做下拉：无 JS 也能开合，JS 只负责"点外面/Esc 关掉"。
+     summary 上显示当前皮肤名，所以访客不用展开就知道自己在用哪套。
+
+     back 用 urlquery 模板函数转义一次就够了——千万别在 Go 里先
+     QueryEscape 再让模板再转义一层，那样 / 会变成 %252F，
+     服务端解出来是 "%2F" 这种非站内路径，只能被安全检查丢掉。 */}}
+{{if .Theme.VisitorSwitch}}
+<details class="skin" data-skin-picker>
+  <summary class="skin-btn" title="切换皮肤">
+    <span class="skin-ico" aria-hidden="true">◐</span>
+    <span class="skin-cur">{{.Theme.Name}}</span>
+  </summary>
+  <div class="skin-menu" role="menu" aria-label="皮肤">
+    {{range .Theme.Pickable}}
+    <a class="skin-item{{if eq .ID $.Theme.ID}} on{{end}}" role="menuitem"
+       href="/pick/{{.ID}}?back={{urlquery $.Theme.BackURL}}">
+      <span class="skin-item-name">{{.Name}}</span>
+      {{if .Description}}<small>{{.Description}}</small>{{end}}
+    </a>
+    {{end}}
+    {{if .Theme.VisitorOverride}}
+    <a class="skin-item reset" role="menuitem"
+       href="/pick/default?back={{urlquery .Theme.BackURL}}">恢复默认</a>
+    {{end}}
+  </div>
+</details>
+{{end}}
+{{end}}

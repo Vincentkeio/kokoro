@@ -1,0 +1,55 @@
+{{define "kglobe.html"}}
+{{/* 点阵地球的加载与初始化。
+     只有存在可定位的节点时 home.html 才会 include 这个模板。
+
+     脚本顺序有讲究：globe.js 必须**先**执行完，下面的初始化才能拿到
+     window.KokoroGlobe。所以不能用 defer —— 内联脚本在解析时就跑，
+     而 defer 的脚本要等解析完，反而会晚一步。 */}}
+<script src="/static/globe.js?v=24"></script>
+<script>
+(function () {
+  'use strict';
+
+  var host = document.getElementById('globe');
+  var dataEl = document.getElementById('globe-data');
+  if (!host || !dataEl || !window.KokoroGlobe) return;
+
+  var data;
+  try {
+    data = JSON.parse(dataEl.textContent);
+  } catch (e) {
+    return;
+  }
+  if (!data || !data.places || !data.places.length) return;
+
+  function cssVar(el, name, fb) {
+    var v = getComputedStyle(el).getPropertyValue(name).trim();
+    return v || fb;
+  }
+
+  var g = new KokoroGlobe(host, {
+    landUrl: host.getAttribute('data-land') || '/static/land.bin',
+    hub: data.hasHub ? data.hub : null,
+    places: data.places,
+    colors: function () {
+      var el = document.documentElement;
+      return {
+        day:   cssVar(el, '--globe-day', '#93a4bd'),
+        night: cssVar(el, '--globe-night', '#3b465c'),
+        oceanDay:   cssVar(el, '--globe-ocean-day', '#e8f0fa'),
+        oceanNight: cssVar(el, '--globe-ocean-night', '#c6d3e6'),
+        arc:   cssVar(el, '--accent', '#2f6feb'),
+        hub:   cssVar(el, '--accent', '#2f6feb'),
+        ok:    cssVar(el, '--ok', '#1a7f37'),
+        off:   cssVar(el, '--faint', '#8b949e'),
+        rim:   cssVar(el, '--globe-rim', 'rgba(47,111,235,.20)')
+      };
+    }
+  });
+
+  // 暴露给 app.js 的 SSE 处理器：agent 每上报一次，对应航线上跑一个脉冲。
+  // 这比"自己定时假脉冲"诚实——看到的光点就是真的数据到达。
+  window.kokoroGlobe = g;
+})();
+</script>
+{{end}}

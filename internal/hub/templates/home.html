@@ -1,0 +1,254 @@
+{{define "home.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>{{if .Query}}搜索「{{.Query}}」 · {{.SiteName}}{{else}}{{.SiteName}} · 小鸡列表{{end}}</title>
+<meta name="description" content="{{.SiteName}} · 每台小鸡都有一颗心">
+{{template "head.html" .}}
+</head>
+<body {{.Theme.Attrs}} data-k-list-mode="{{.Theme.ListMode}}">
+{{template "topbar.html" .}}
+
+<main class="wrap">
+
+  {{/* 只要 Hero 或时钟有一个要显示，这一行就渲染——
+       把时钟塞进 {{if .Hero.Enabled}} 里的话，主题一关 Hero 时钟就跟着消失了。 */}}
+  {{if or .Hero.Enabled .Clocks}}
+  <section class="hero">
+    {{if .Hero.Enabled}}{{if or .Hero.Title .Hero.Subtitle}}
+    <div class="hero-txt">
+      <h1>{{if .Hero.Title}}{{.Hero.Title}}{{else}}{{.SiteName}}{{end}}</h1>
+      {{if .Hero.Subtitle}}<p>{{.Hero.Subtitle}}</p>{{end}}
+      {{/* 这里刻意**不再放**「N 台小鸡 / M 在线」：下面的统计卡已经有一份，
+         同一屏出现两次同样的数字，只会让人犹豫哪个才是准的。 */}}
+    </div>
+    {{end}}{{end}}
+    {{/* 时钟只留**主机自己的时间**：原来铺五格（本地/UTC/东京/洛杉矶/法兰克福）
+         占一整行却没什么信息量，站长真正要看的是"面板这台机器现在几点"。 */}}
+    {{if .Clocks}}{{range .Clocks}}
+    <div class="hub-clock"{{if .HasOffset}} data-offset="{{.OffsetMin}}"{{else if .TZ}} data-tz="{{.TZ}}"{{end}}>
+      <span class="tz">{{.Label}}{{if .Note}} <em>{{.Note}}</em>{{end}}</span>
+      <b class="t">--:--:--</b>
+      <span class="d">----</span>
+    </div>
+    {{end}}{{end}}
+  </section>
+  {{end}}
+
+  {{/* 站长名片：名字 / 头像 / 签名是**公开**的，游客和站长看到的是同一份。
+       数据来自后台「站长名片」，只有三项都空时才不显示。 */}}
+  {{if .Owner.Has}}
+  <section class="panel owner">
+    {{if .Owner.Avatar}}
+      <img class="avatar" src="{{.Owner.Avatar}}" alt="{{.Owner.Name}} 的头像" width="60" height="60">
+    {{else}}
+      <span class="avatar placeholder" aria-hidden="true">👤</span>
+    {{end}}
+    <div class="owner-txt">
+      <b>{{.Owner.Name}}</b>
+      {{if .Owner.Bio}}<p class="bio">{{.Owner.Bio}}</p>{{end}}
+    </div>
+  </section>
+  {{else if .OwnerEmptyHint}}
+  {{/* 只有管理员自己登录时才看到这条 —— 访客看不到"这里缺东西"。
+       加它的原因很实际：名片填在后台，首页却什么都没有，看起来像功能没做。 */}}
+  <section class="panel owner-empty">
+    <span class="tag-admin">仅你可见</span>
+    <span>还没填站长名片（名字 / 头像 / 个性签名）。填完这里就会公开显示给所有访客。</span>
+    <a class="btn small" href="/admin#profile">去填 →</a>
+  </section>
+  {{end}}
+
+  {{if .Stats}}
+  <section class="stats">
+    {{range .Stats}}
+    <div class="stat"><span>{{.Label}}</span><b>{{.Value}}</b><small>{{.Note}}</small></div>
+    {{end}}
+  </section>
+  {{end}}
+
+
+
+  {{if .Query}}
+  <p class="hint result-line">
+    「{{.Query}}」命中 {{.Total}} 台 · <a href="/">返回全部</a>
+  </p>
+  {{end}}
+
+  {{/* 全球节点这一行：右侧是点阵地球，左侧空出来的区域放"动态/榜单"这类
+       信息密度高的内容。窄屏时自动叠成一列。 */}}
+  <div class="home-band">
+    {{/* 实时动态流：上下线 / 告警 / 留言 / 文章 / 测试完成，合成一条时间线。
+         选它而不是静态表格的理由：它跟旁边的地球一样是"活的"，
+         两块一起动才有监控大屏的感觉。 */}}
+    <section class="panel home-side-new" id="live">
+      <div class="live-head">
+        <h3>实时动态</h3>
+        <span class="live-pulse" aria-hidden="true"></span>
+      </div>
+      {{if .Feed}}
+      <ol class="feed">
+        {{range .Feed}}
+        <li class="feed-item k-{{.Kind}}">
+          <span class="feed-icon" aria-hidden="true">{{.Icon}}</span>
+          <div class="feed-body">
+            <p class="feed-text">{{.Text}}</p>
+            <time class="feed-time">{{.When}}</time>
+          </div>
+        </li>
+        {{end}}
+      </ol>
+      {{else}}
+      <p class="hint">还没有动态。小鸡上线、有人留言、站长更新文章，都会出现在这里。</p>
+      {{end}}
+    </section>
+
+    {{/* 没有可定位的节点时整块地球不渲染——画一个空球没意义 */}}
+    {{if .Globe.Places}}
+    <section class="map-card">
+      <div class="map-head">
+        <h2>全球节点</h2>
+        <div class="map-legend">
+          <span><i class="i-on"></i>在线</span>
+          <span><i class="i-hub"></i>主机</span>
+          <span><i class="i-off"></i>离线</span>
+          {{if .Globe.HasHub}}<span><i class="i-cur"></i>主机</span>{{end}}
+        </div>
+
+
+      </div>
+      <div class="globe" id="globe" data-land="{{.GlobeLandURL}}"
+           aria-label="节点分布地球"></div>
+      <div class="map-foot">
+        <span>拖动旋转 · 滚轮缩放</span>
+        <span>{{len .Globe.Places}} 个可定位节点</span>
+      </div>
+    </section>
+    {{end}}
+  </div>
+
+{{if .Nodes}}
+  <section class="grid">
+    {{range .Nodes}}
+    <article class="card{{if not .Online}} off{{end}}" data-node="{{.ID}}">
+      <div class="card-head">
+        <h2>{{if .FlagCode}}<span class="flag">{{flag .FlagCode}}</span>{{end}}<a href="/n/{{.Slug}}">{{.Name}}</a></h2>
+        <span class="status {{if .Online}}on{{else}}off{{end}}"><i></i>{{if .Online}}在线{{else}}离线{{end}}</span>
+      </div>
+
+      {{/* 延迟只在这里的区域行展示一次；下面网络行里还有一根带刻度的延迟条，
+           两处都写「延迟 xx ms」属于同一个数字看两遍。 */}}
+      <p class="meta">{{.RegionLabel}}</p>
+
+      {{if .Tags}}<div class="tags">{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</div>{{end}}
+
+      {{if .Latest}}
+      <div class="gauges">
+        <div class="g"><span class="gl">CPU</span>
+          <i class="bar"><i class="cpu lv-{{.CPULv}}" style="width:{{printf "%.1f" .CPUPct}}%" data-field="cpu-bar"></i></i>
+          <em data-field="cpu">{{printf "%.1f" .CPUPct}}%</em></div>
+        <div class="g"><span class="gl">内存</span>
+          <i class="bar"><i class="mem lv-{{.MemLv}}" style="width:{{printf "%.1f" .MemPct}}%" data-field="mem-bar"></i></i>
+          <em data-field="mem">{{printf "%.1f" .MemPct}}%</em></div>
+        <div class="g"><span class="gl">磁盘</span>
+          <i class="bar"><i class="disk lv-{{.DiskLv}}" style="width:{{printf "%.1f" .DiskPct}}%" data-field="disk-bar"></i></i>
+          <em data-field="disk">{{printf "%.1f" .DiskPct}}%</em></div>
+      </div>
+
+      <div class="net">
+        {{if .SparkLine}}
+        <svg class="spark" viewBox="0 0 260 40" preserveAspectRatio="none" aria-hidden="true">
+          <path class="sp-area" d="{{.SparkArea}}"/>
+          <path class="sp-line" d="{{.SparkLine}}"/>
+          {{/* 流量粒子：与全球节点的彗星呼应——从左到右扫过曲线，表示"小鸡的
+              数据在往里流"。SMIL 实现，不依赖 JS；begin 用节点 ID 哈希做相位
+              偏移，避免十几张卡片上的粒子同步扫过。 */}}
+          <g class="spark-flow">
+            <circle cx="0" cy="38" r="0" fill="var(--accent)">
+              <animate attributeName="cx" from="-4" to="264" dur="3.2s"
+                       begin="{{sparkDelay .ID}}s" repeatCount="indefinite"/>
+              <animate attributeName="r" values="0;2.4;2.4;0" keyTimes="0;0.18;0.82;1"
+                       dur="3.2s" begin="{{sparkDelay .ID}}s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.18;0.82;1"
+                       dur="3.2s" begin="{{sparkDelay .ID}}s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="0" cy="38" r="0" fill="var(--accent)" opacity="0">
+              <animate attributeName="cx" from="-4" to="264" dur="3.2s"
+                       begin="{{sparkDelayTail .ID}}s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0;0.45;0.45;0" keyTimes="0;0.18;0.82;1"
+                       dur="3.2s" begin="{{sparkDelayTail .ID}}s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+        </svg>
+        {{else}}
+        <p class="net-empty">还没有足够的历史数据画曲线</p>
+        {{end}}
+        <div class="net-num">
+          <span class="up">↑ <b data-field="up">{{fmtRate .Latest.Net.Up}}</b></span>
+          <span class="down">↓ <b data-field="down">{{fmtRate .Latest.Net.Down}}</b></span>
+          <span class="lat">延迟
+            <i class="bar mini"><i class="cpu lv-{{.LatLv}}" style="width:{{printf "%.0f" .LatencyPct}}%"></i></i>
+            {{.LatencyText}}</span>
+        </div>
+      </div>
+
+      <dl class="specs">
+        <div><dt>CPU</dt><dd>{{specCPU .CPUCores}}</dd></div>
+        <div><dt>内存</dt><dd>{{specMem .MemTotal}}</dd></div>
+        <div><dt>磁盘</dt><dd>{{specDisk .DiskTotal}}</dd></div>
+        <div><dt>系统</dt><dd>{{if .OS}}{{.OS}}{{else}}—{{end}}</dd></div>
+        <div><dt>运行</dt><dd>{{fmtDur .Latest.Host.Uptime}}</dd></div>
+        <div><dt>负载</dt><dd>{{printf "%.2f" .Latest.CPU.Load1}}
+          <i class="bar mini"><i class="mem lv-{{.LoadLv}}" style="width:{{printf "%.0f" .LoadPct}}%"></i></i></dd></div>
+      </dl>
+      {{else}}
+      <p class="empty">还没有收到数据</p>
+      {{end}}
+
+      {{/* 测试摘要：跑过跑分/解锁/线路检测就在这里显示一行。
+           正在跑的时候给个"测试中"，让站长知道要等。 */}}
+      {{if .TaskRunning}}
+      <p class="task-line running"><span class="spin"></span>测试进行中…</p>
+      {{else if .TaskSummary}}
+      <p class="task-line">🔧 {{.TaskSummary}}</p>
+      {{end}}
+
+      <div class="foot">
+        <span class="dot {{if .Online}}on{{else}}off{{end}}" data-field="dot"></span>
+        {{/* 明确给一个按钮进详情页。不做"整张卡片可点"，也不做悬停弹详情——
+           boss 明确否掉了这两种：看不出哪能点，还容易误触。 */}}
+        <a class="btn small more" href="/n/{{.Slug}}">查看详情</a>
+      </div>
+    </article>
+    {{end}}
+  </section>
+  {{else if .Query}}
+  <section class="empty-state">
+    <h2>没搜到</h2>
+    <p>换个词试试，或者 <a href="/">看看全部小鸡</a>。</p>
+  </section>
+  {{else}}
+  <section class="empty-state">
+    <h2>还没有小鸡接入</h2>
+    <p>到 <a href="/admin">后台</a> 拿一条一键命令，在小鸡上执行即可。</p>
+  </section>
+  {{end}}
+
+
+</main>
+
+<footer class="wrap foot-page">
+  <span>Kokoro · {{.Year}}{{if .Theme.Name}} · 皮肤《{{.Theme.Name}}》{{end}}</span>
+</footer>
+
+{{if .Globe.Places}}
+{{/* 地球数据用 JSON 塞进来，而不是让前端再发一次请求：
+     首屏就能画，省一个来回；数据量也小（几十个点）。 */}}
+<script id="globe-data" type="application/json">{{.GlobeJSON}}</script>
+{{template "kglobe.html" .}}
+{{end}}
+
+<script src="/static/app.js?v=24"></script>
+</body>
+</html>
+{{end}}

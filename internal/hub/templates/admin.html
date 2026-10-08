@@ -1,0 +1,395 @@
+{{define "admin.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>后台 · {{.SiteName}}</title>
+{{template "head.html" .}}
+</head>
+<body {{.Theme.Attrs}} data-admin="1">
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">{{.SiteName}} 后台</a>
+    <a class="btn ghost" href="/dashboard">仪表盘</a>
+    <a class="btn ghost" href="/admin/themes">皮肤</a>
+    {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode title="切换深色 / 浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
+    <a class="btn ghost" href="/">← 前台</a>
+    <span class="stat">{{.AdminUser}}</span>
+    <a class="btn ghost" href="/admin/logout">退出</a>
+  </div>
+</header>
+
+<main class="wrap admin">
+  <section class="panel">
+    <h3>一键安装令牌</h3>
+    <p class="hint">生成一条命令，在小鸡上粘贴执行即可接入。令牌可设有效期与使用次数。</p>
+    <form class="row" method="post" action="/admin/tokens">
+      <input type="hidden" name="action" value="create">
+      <input name="label" placeholder="备注，如 zouter" required>
+      <input name="ttl_hours" type="number" placeholder="有效小时(留空永久)" style="width:11rem">
+      <input name="max_uses" type="number" placeholder="可用次数(留空不限)" style="width:11rem">
+      <button class="btn" type="submit">生成</button>
+    </form>
+
+    {{if .Tokens}}
+    <table class="tbl">
+      <thead><tr><th>备注</th><th>令牌</th><th>已用</th><th>安装命令</th><th></th></tr></thead>
+      <tbody>
+      {{range .Tokens}}
+      <tr>
+        <td>{{.Label}}</td>
+        <td><code>{{.Token}}</code></td>
+        <td>{{.Uses}}{{if .MaxUses}} / {{.MaxUses}}{{end}}</td>
+        <td><code class="cmd">curl -fsSL {{$.HubURL}}/i/{{.Token}} | sh</code></td>
+        <td>
+          <form method="post" action="/admin/tokens">
+            <input type="hidden" name="action" value="revoke">
+            <input type="hidden" name="token" value="{{.Token}}">
+            <button class="btn danger" type="submit">吊销</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="empty">还没有令牌，用上面的表单生成一个。</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <h3>节点（{{len .Nodes}}）</h3>
+    {{if .Nodes}}
+    <table class="tbl">
+      <thead><tr><th>名称</th><th>地区</th><th>架构</th><th>状态</th><th>展示</th><th>可见性</th><th>操作</th></tr></thead>
+      <tbody>
+      {{range .Nodes}}
+      <tr>
+        <td>
+          <form class="row" method="post" action="/admin/nodes">
+            <input type="hidden" name="action" value="rename">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <input name="name" value="{{.Name}}" style="width:11rem" title="小鸡名称">
+            <input name="region" value="{{.Region}}" placeholder="地区" style="width:8rem" title="地区，会直接显示在列表上">
+            <input name="country" value="{{.Country}}" placeholder="国家码" list="cc-list" style="width:6rem" title="填 US / JP 或「美国」「日本」，用来显示国旗">
+            <input name="tags" value="{{joinTags .Tags}}" placeholder="标签（逗号分隔）" style="width:11rem" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 8 个">
+            <button class="btn small" type="submit">保存</button>
+          </form>
+        </td>
+        <td>{{if .Region}}{{.Region}}{{else}}{{.Country}}{{end}}</td>
+        <td>{{.Arch}}</td>
+        <td>{{if .Online}}<span class="ok">在线</span>{{else}}<span class="bad">离线</span>{{end}}</td>
+        <td>
+          {{$shown := ne .Visibility "private"}}
+          <form method="post" action="/admin/nodes" class="inline">
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <button type="submit" class="switch {{if $shown}}on{{end}}" title="一键显示/隐藏">
+              <span class="knob"></span>
+              <span class="switch-text">{{if $shown}}显示中{{else}}已隐藏{{end}}</span>
+            </button>
+          </form>
+        </td>
+        <td>
+          <form class="row" method="post" action="/admin/nodes">
+            <input type="hidden" name="action" value="visibility">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <select name="visibility">
+              <option value="public" {{if eq .Visibility "public"}}selected{{end}}>公开</option>
+              <option value="unlisted" {{if eq .Visibility "unlisted"}}selected{{end}}>不索引</option>
+              <option value="private" {{if eq .Visibility "private"}}selected{{end}}>私有</option>
+            </select>
+            <button class="btn small" type="submit">保存</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="/admin/nodes" onsubmit="return confirm('确认删除该节点？')">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <button class="btn danger small" type="submit">删除</button>
+          </form>
+          <a class="btn small ghost" href="/admin/tasks?node={{.ID}}">测试</a>
+          <a class="btn small ghost" href="/admin/post?node={{.ID}}">文章</a>
+          <a class="btn small ghost" href="/n/{{.Slug}}">查看</a>
+        </td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="empty">还没有节点接入。</p>
+    {{end}}
+  </section>
+
+  <datalist id="cc-list">
+    {{range .CC}}<option value="{{.Code}}">{{.Label}}</option>{{end}}
+  </datalist>
+
+  <section class="panel" id="alerts">
+    <h3>告警与通知</h3>
+
+    <h4 class="sub">Telegram Bot</h4>
+    <form class="col" id="notify-form">
+      <div class="row">
+        <label class="chk"><input type="checkbox" name="telegram_enabled" value="1" {{if .NotifyOn}}checked{{end}}> 启用 Telegram</label>
+        <label class="chk"><input type="checkbox" name="telegram_silent" value="1" {{if .NotifySilent}}checked{{end}}> 静音发送</label>
+      </div>
+      <div class="row">
+        <input name="telegram_bot_token" placeholder="Bot Token（留空或保持打码值表示不改）" value="{{.NotifyToken}}" style="min-width:22rem;flex:1">
+        <input name="telegram_chat_id" placeholder="Chat ID，如 -100123456789" value="{{.NotifyChat}}" style="width:16rem">
+      </div>
+      <div class="row">
+        <span class="hint">免打扰时段：</span>
+        <input name="quiet_hours_start" type="number" min="-1" max="23" value="{{.NotifyQuietStart}}" style="width:6rem" title="起始整点，-1 表示不设">
+        <span class="hint">点到</span>
+        <input name="quiet_hours_end" type="number" min="-1" max="23" value="{{.NotifyQuietEnd}}" style="width:6rem" title="结束整点，-1 表示不设">
+        <span class="hint">这段时间内只记录不推送（当前 {{.NotifyQuiet}}）</span>
+      </div>
+      <div class="row">
+        <input name="webhook_url" placeholder="Webhook URL（可选，POST JSON）" value="{{.WebhookURL}}" style="min-width:18rem;flex:1">
+        <label class="chk"><input type="checkbox" name="webhook_enabled" value="1" {{if .WebhookOn}}checked{{end}}> 启用 Webhook</label>
+      </div>
+      <div class="row">
+        <button class="btn" type="submit">保存通知配置</button>
+        <button class="btn ghost" type="button" id="notify-test">发一条测试</button>
+        <span class="hint" id="notify-msg"></span>
+      </div>
+    </form>
+
+    <h4 class="sub">告警规则</h4>
+    {{if .AlertRules}}
+    <table class="tbl" id="rule-tbl">
+      <thead><tr><th>作用域</th><th>条件</th><th>持续</th><th>静默</th><th></th></tr></thead>
+      <tbody>
+      {{range .AlertRules}}
+      <tr data-id="{{.ID}}">
+        <td>{{if .NodeID}}<code>{{.NodeID}}</code>{{else}}<span class="tag">全部小鸡</span>{{end}}</td>
+        <td>{{metricName .Metric}} {{if eq .Op "lt"}}&lt;{{else}}&gt;{{end}} {{.Threshold}}</td>
+        <td>{{if .Duration}}{{.Duration}} 秒{{else}}立刻{{end}}</td>
+        <td>{{if .Silenced}}<span class="warn">已静默</span>{{else}}<span class="ok">生效</span>{{end}}</td>
+        <td><button class="btn small danger" type="button" data-del="{{.ID}}">删除</button></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="empty">还没有告警规则。加一条：CPU 连续 5 分钟超过 80% 就发 Telegram。</p>
+    {{end}}
+
+    <form class="row" id="rule-form" style="margin-top:10px">
+      <select name="node_id">
+        <option value="">全部小鸡</option>
+        {{range .Nodes}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+      </select>
+      <select name="metric">
+        <option value="cpu">CPU 使用率 %</option>
+        <option value="mem">内存使用率 %</option>
+        <option value="disk">磁盘使用率 %</option>
+        <option value="swap">SWAP 使用率 %</option>
+        <option value="load1">1 分钟负载</option>
+        <option value="net_up">上行速率 MB/s</option>
+        <option value="net_down">下行速率 MB/s</option>
+        <option value="offline">离线时长 秒</option>
+        <option value="traffic">本月总流量 GB</option>
+      </select>
+      <select name="op"><option value="gt">大于</option><option value="lt">小于</option></select>
+      <input name="threshold" type="number" step="any" placeholder="阈值" required style="width:8rem">
+      <input name="duration" type="number" placeholder="持续秒数" style="width:9rem" title="条件连续满足多少秒才触发，留空表示立刻">
+      <button class="btn" type="submit">添加规则</button>
+      <span class="hint" id="rule-msg"></span>
+    </form>
+
+    {{if .AlertEvents}}
+    <h4 class="sub">最近告警</h4>
+    <table class="tbl">
+      <thead><tr><th>时间</th><th>小鸡</th><th>内容</th><th>状态</th></tr></thead>
+      <tbody>
+      {{range .AlertEvents}}
+      <tr>
+        <td class="nowrap">{{tsShort .FiredAt}}</td>
+        <td>{{if .NodeName}}{{.NodeName}}{{else}}<span class="muted">{{.NodeID}}</span>{{end}}</td>
+        <td>{{.Message}}</td>
+        <td>{{if .Resolved}}<span class="ok">已恢复</span>{{else}}<span class="bad">告警中</span>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{end}}
+  </section>
+
+  <section class="panel" id="hubgeo">
+    <h3>面板位置</h3>
+    <form class="row" method="post" action="/admin/settings">
+      <label>纬度 <input name="hub_lat" value="{{.HubLat}}" placeholder="例如 34.05" style="width:8rem"></label>
+      <label>经度 <input name="hub_lon" value="{{.HubLon}}" placeholder="例如 -118.24" style="width:8rem"></label>
+      <button class="btn small" type="submit">保存</button>
+      <span class="hint">首页那张全球节点图会从各台小鸡连一条航线到这里。留空就不画航线
+        （不会猜——把线连到错误的大洲比不画更误导）。</span>
+    </form>
+  </section>
+
+  <section class="panel" id="theme-fetch">
+    <h3>主题获取出口</h3>
+    <form class="row" method="post" action="/admin/settings">
+      <label class="wide">允许抓回环的域名
+        <input type="text" name="theme_fetch_hosts" value="{{.ThemeFetchHosts}}"
+               placeholder="逗号分隔，例如 127.0.0.1, mysite.example.com">
+      </label>
+      <button class="btn small" type="submit">保存</button>
+      <span class="hint">默认禁止抓取本机回环地址（那是这台机器上的所有服务，不只是本站）。
+        本站域名{{if .HubURL}}（<code>{{.HubURL}}</code>）{{end}}已自动放行；
+        只有这里填的域名才会额外允许走回环。精确匹配，不含子域名。</span>
+    </form>
+  </section>
+
+  <section class="panel" id="comments">
+    <h3>留言审核{{if .PendingN}} <small class="bad">{{.PendingN}} 条待处理</small>{{end}}</h3>
+    <form class="row" method="post" action="/admin/settings">
+      <label class="chk"><input type="checkbox" name="comment_enabled" value="1" {{if .CommentOn}}checked{{end}}> 开放留言</label>
+      <label class="chk"><input type="checkbox" name="comment_auto_approve" value="1" {{if .AutoApprove}}checked{{end}}> 免审核直接上墙</label>
+      <button class="btn small" type="submit">保存</button>
+      <span class="hint">关掉免审核后，新留言要先在这里点「通过」才会显示在前台。</span>
+    </form>
+
+    {{if .Comments}}
+    <table class="tbl">
+      <thead><tr><th>时间</th><th>小鸡</th><th>留言</th><th>联系方式</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>
+      {{range .Comments}}
+      <tr>
+        <td class="nowrap">{{tsShort .CreatedAt}}</td>
+        <td>{{if .NodeName}}<a href="/n/{{.NodeSlug}}">{{.NodeName}}</a>{{else}}<span class="muted">{{.NodeID}}</span>{{end}}</td>
+        <td class="cmt-cell">
+          <b>{{.Author}}</b>{{if .ParentID}} <span class="muted">（回复）</span>{{end}}
+          <div class="cmt-text">{{.Content}}</div>
+        </td>
+        <td>{{if .Contact}}<code>{{.Contact}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>
+          {{if eq .Status "approved"}}<span class="ok">已通过</span>
+          {{else if eq .Status "spam"}}<span class="bad">垃圾</span>
+          {{else}}<span class="warn">待审核</span>{{end}}
+        </td>
+        <td class="nowrap">
+          <form method="post" action="/admin/comments" class="inline">
+            <input type="hidden" name="id" value="{{.ID}}">
+            {{if ne .Status "approved"}}<button class="btn small" name="action" value="approve">通过</button>{{end}}
+            {{if ne .Status "pending"}}<button class="btn small ghost" name="action" value="pending">退回待审</button>{{end}}
+            <button class="btn small ghost" name="action" value="spam">垃圾</button>
+            <button class="btn small danger" name="action" value="delete">删除</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="empty">还没有留言。</p>
+    {{end}}
+  </section>
+
+  <section class="panel" id="account">
+    <h3>管理员账号</h3>
+    {{if .AccountMsg}}<p class="{{if .AccountBad}}bad{{else}}ok{{end}}">{{.AccountMsg}}</p>{{end}}
+    <form class="row" method="post" action="/admin/account">
+      <input name="username" value="{{.AdminUser}}" placeholder="用户名" autocomplete="username" style="width:12rem" required>
+      <input type="password" name="current_password" placeholder="当前密码（必填）" autocomplete="current-password" style="width:12rem" required>
+      <input type="password" name="new_password" placeholder="新密码（留空只改用户名）" autocomplete="new-password" style="width:14rem">
+      <input type="password" name="confirm_password" placeholder="再输一次新密码" autocomplete="new-password" style="width:14rem">
+      <button class="btn" type="submit">保存</button>
+    </form>
+    <p class="hint">改密码会把所有已登录的会话全部注销，需要重新登录。密码用 PBKDF2-HMAC-SHA256 加盐存储（10 万次迭代），不存明文。</p>
+  </section>
+
+  <section class="panel" id="profile">
+    <h3>站长名片</h3>
+    <p class="hint">头像和签名会显示在首页顶部与每台小鸡的页面底部。头像支持 png / jpg / webp / gif，不超过 2MB。</p>
+    <form class="row" method="post" action="/admin/profile" enctype="multipart/form-data">
+      <input name="owner_name" placeholder="昵称" value="{{.OwnerName}}" style="width:12rem">
+      <input name="owner_bio" placeholder="签名档，一句话介绍自己" value="{{.OwnerBio}}" style="min-width:16rem;flex:1">
+      <input type="file" name="avatar" accept="image/png,image/jpeg,image/webp,image/gif">
+      <label class="chk"><input type="checkbox" name="avatar_clear" value="1"> 清除头像</label>
+      <button class="btn" type="submit">保存</button>
+    </form>
+    {{if .OwnerAvatar}}<p class="row" style="margin-top:10px">
+      <img src="{{.OwnerAvatar}}" alt="当前头像" style="width:48px;height:48px;border-radius:50%;object-fit:cover">
+      <span class="hint">当前头像</span>
+    </p>{{end}}
+  </section>
+
+  <section class="panel">
+    <h3>主机远程下发（规划中）</h3>
+    <p class="hint">下一步会支持在这里填 IP 与 SSH 凭据，由主机直接把 agent 装到子机上，不用去小鸡上敲命令。</p>
+  </section>
+</main>
+<script>
+/* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
+(function () {
+  'use strict';
+  function say(el, good, text) {
+    if (!el) return;
+    el.className = good ? 'hint ok' : 'hint bad';
+    el.textContent = text;
+  }
+  function post(url, params) {
+    var body = new URLSearchParams();
+    Object.keys(params).forEach(function (k) {
+      if (params[k] !== '') body.set(k, params[k]);
+    });
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      body: body.toString(),
+      credentials: 'same-origin'
+    }).then(function (r) {
+      return r.json().catch(function () { return { ok: false, error: '返回不是 JSON' }; });
+    });
+  }
+  function collect(form) {
+    var p = {};
+    new FormData(form).forEach(function (v, k) { p[k] = v; });
+    return p;
+  }
+
+  var nf = document.getElementById('notify-form');
+  if (nf) nf.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var msg = document.getElementById('notify-msg');
+    post('/admin/notify', collect(nf)).then(function (d) {
+      say(msg, !!(d && d.ok), d && d.ok ? '已保存' : ('失败：' + ((d && d.error) || '未知错误')));
+    });
+  });
+
+  var tb = document.getElementById('notify-test');
+  if (tb) tb.addEventListener('click', function () {
+    var msg = document.getElementById('notify-msg');
+    say(msg, true, '发送中…');
+    post('/admin/alerts/test', {}).then(function (d) {
+      say(msg, !!(d && d.ok), d && d.ok ? '测试消息已发出，去看 Telegram' : ('失败：' + ((d && d.error) || '检查 token 与 chat id')));
+    });
+  });
+
+  var rf = document.getElementById('rule-form');
+  if (rf) rf.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var msg = document.getElementById('rule-msg');
+    post('/admin/alerts', collect(rf)).then(function (d) {
+      if (d && d.ok) { location.reload(); return; }
+      say(msg, false, '失败：' + ((d && d.error) || '请检查阈值'));
+    });
+  });
+
+  document.querySelectorAll('[data-del]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.getAttribute('data-del');
+      post('/admin/alerts', { action: 'delete', id: id }).then(function (d) {
+        if (d && d.ok) {
+          var tr = document.querySelector('#rule-tbl tr[data-id="' + id + '"]');
+          if (tr) tr.parentNode.removeChild(tr);
+        }
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>
+{{end}}

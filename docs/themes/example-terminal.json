@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "id": "example.terminal-green",
+  "name": "终端绿（示例）",
+  "version": "1.0.0",
+  "description": "高信息密度终端风：等宽字体、零圆角、紧凑列表、磷光绿。可直接导入体验。",
+  "author": "docs",
+  "license": "MIT",
+  "tags": ["dark", "mono", "dense", "terminal"],
+  "tokensSchemaVersion": 2,
+  "tokens": {
+    "--kokoro-color-primary": "#00e676",
+    "--kokoro-color-primary-hover": "#00c96b",
+    "--kokoro-color-primary-active": "#00b35e",
+    "--kokoro-color-primary-fg": "#00110a",
+    "--kokoro-color-accent": "#69f0ae",
+    "--kokoro-color-accent-fg": "#00110a",
+    "--kokoro-color-bg": "#0a0f0a",
+    "--kokoro-color-bg-subtle": "#0f160f",
+    "--kokoro-color-surface": "#111811",
+    "--kokoro-color-surface-raised": "#162016",
+    "--kokoro-color-surface-sunken": "#070b07",
+    "--kokoro-color-border": "#1e3324",
+    "--kokoro-color-border-strong": "#2f4f39",
+    "--kokoro-color-text": "#d6f5de",
+    "--kokoro-color-text-muted": "#7fa98c",
+    "--kokoro-color-text-faint": "#4e7059",
+    "--kokoro-color-text-inverse": "#00110a",
+    "--kokoro-color-link": "#69f0ae",
+    "--kokoro-color-success": "#00e676",
+    "--kokoro-color-warning": "#ffb300",
+    "--kokoro-color-danger": "#ff5252",
+    "--kokoro-color-info": "#40c4ff",
+
+    "--kokoro-radius-sm": "0px",
+    "--kokoro-radius-md": "0px",
+    "--kokoro-radius-lg": "0px",
+    "--kokoro-radius-full": "0px",
+
+    "--kokoro-font-sans": "ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace",
+    "--kokoro-font-mono": "ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace",
+    "--kokoro-font-size-md": "13px",
+    "--kokoro-font-line-height": "1.45",
+    "--kokoro-font-letter-spacing": "0.01em",
+
+    "--kokoro-border-width": "1px",
+    "--kokoro-shadow-sm": "none",
+    "--kokoro-shadow-md": "none",
+    "--kokoro-shadow-lg": "none",
+    "--kokoro-glow": "none",
+
+    "--kokoro-transition-fast": "0ms",
+    "--kokoro-transition-base": "0ms",
+    "--kokoro-transition-slow": "0ms",
+
+    "--kokoro-chart-series-1": "#00e676",
+    "--kokoro-chart-series-2": "#69f0ae",
+    "--kokoro-chart-series-3": "#40c4ff",
+    "--kokoro-chart-series-4": "#ffb300",
+    "--kokoro-chart-series-5": "#ff5252",
+    "--kokoro-chart-grid": "#1e3324",
+    "--kokoro-chart-axis": "#4e7059",
+    "--kokoro-chart-tooltip-bg": "#d6f5de",
+    "--kokoro-chart-tooltip-fg": "#00110a",
+    "--kokoro-chart-area-opacity": "0.22",
+    "--kokoro-chart-line-width": "1.5",
+
+    "--kokoro-status-online": "#00e676",
+    "--kokoro-status-offline": "#4e7059",
+    "--kokoro-status-idle": "#ffb300",
+    "--kokoro-status-maintenance": "#40c4ff",
+
+    "--kokoro-header-bg": "#0a0f0a",
+    "--kokoro-header-fg": "#d6f5de",
+    "--kokoro-footer-bg": "#0f160f",
+    "--kokoro-code-bg": "#070b07",
+    "--kokoro-content-max-width": "1500px",
+    "--kokoro-card-padding": "12px",
+    "--kokoro-ring-color": "rgba(0, 230, 118, .45)",
+    "--kokoro-ring-width": "2px"
+  },
+  "mode": {
+    "default": "dark",
+    "allowUserSwitch": false,
+    "supportsDark": false
+  },
+  "layoutSchemaVersion": 1,
+  "layout": {
+    "shell": {
+      "contentMaxWidth": "1500px",
+      "header": {
+        "variant": "bordered",
+        "sticky": true
+      },
+      "footer": {
+        "variant": "minimal"
+      }
+    },
+    "home": {
+      "hero": {
+        "enabled": false
+      },
+      "list": {
+        "mode": "compact",
+        "allowUserSwitch": false,
+        "groupBy": "region",
+        "compact": {
+          "rowHeight": "38px",
+          "dividers": true,
+          "showFlag": true,
+          "inlineBars": true
+        }
+      }
+    },
+    "detail": {
+      "header": {
+        "variant": "none",
+        "showTags": true,
+        "secondaryLine": "specs"
+      },
+      "sectionGap": "20px",
+      "commentsCollapsed": true
+    },
+    "charts": {
+      "type": "line",
+      "grid": true,
+      "legend": false,
+      "smooth": false,
+      "tooltip": "axis",
+      "height": "180px",
+      "heightDetail": "260px"
+    },
+    "misc": {
+      "statusDotStyle": "solid",
+      "usageBarStyle": "solid",
+      "tagStyle": "square",
+      "badgeStyle": "outline",
+      "numberFormat": "plain",
+      "dateFormat": "relative"
+    }
+  }
+}

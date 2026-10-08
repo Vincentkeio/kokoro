@@ -1,0 +1,142 @@
+# Kokoro Hub 的 Nginx 反代示例（宝塔环境）
+# 用法：把本文件放到 /www/server/panel/vhost/nginx/vps.mjfuns.lat.conf，
+#      或由宝塔「站点 -> 配置文件」整体替换，然后 nginx -t && nginx -s reload。
+#
+# 注意（宝塔用户必读）：
+#   1. 证书路径要换成宝塔实际签发的路径，常见为：
+#      /www/server/panel/vhost/cert/vps.mjfuns.lat/fullchain.pem
+#      /www/server/panel/vhost/cert/vps.mjfuns.lat/privkey.pem
+#      若已由宝塔自动申请 Let's Encrypt，直接沿用宝塔生成的 ssl_certificate 行即可。
+#   2. 若宝塔已经在同一个 server 块里写好了 80/443 监听与证书，只需要把下面的
+#      location 段（含 SSE / WebSocket 相关指令）合并进去，不要重复监听端口。
+#   3. Hub 只监听 127.0.0.1:8799，443 被宝塔/Nginx 占用，所以这里是纯反代。
+#   4. 若 VPS 没有 IPv6，删掉下面所有 listen [::]:xxx; 行，否则 nginx -t 会报错。
+
+# ---- HTTP：只放行 ACME 校验，其余 301 到 HTTPS ----
+server {
+    listen 80;
+    listen [::]:80;
+    server_name vps.mjfuns.lat;
+
+    # Let's Encrypt / 宝塔的 HTTP-01 校验目录
+    location ^~ /.well-known/acme-challenge/ {
+        root /www/wwwroot/kokoro;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    # 其余请求全部跳 HTTPS（注意放行健康检查）
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ---- HTTPS：反代到本机 8799 ----
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name vps.mjfuns.lat;
+
+    # 证书：换成宝塔实际签发的路径
+    ssl_certificate     /www/server/panel/vhost/cert/vps.mjfuns.lat/fullchain.pem;
+    ssl_certificate_key /www/server/panel/vhost/cert/vps.mjfuns.lat/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:KokoroSSL:10m;
+    ssl_session_timeout 1d;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    access_log /www/wwwlogs/vps.mjfuns.lat.log;
+    error_log  /www/wwwlogs/vps.mjfuns.lat.error.log;
+
+    # 将来要上传主题包与图片，给 20m
+    client_max_body_size 20m;
+
+    # Let's Encrypt 校验（HTTPS 侧也留一份，便于续期）
+    location ^~ /.well-known/acme-challenge/ {
+        root /www/wwwroot/kokoro;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    # ---- SSE 实时推送 /api/v1/stream ----
+    # 关键：必须关掉缓冲，否则事件会被攒着不推
+    location = /api/v1/stream {
+        proxy_pass http://127.0.0.1:8799;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+
+        proxy_buffering off;              # SSE 生命线
+        proxy_cache off;
+        proxy_read_timeout 3600s;         # 长连接不被 60s 掐断
+        proxy_send_timeout 3600s;
+        chunked_transfer_encoding on;
+        add_header X-Accel-Buffering "no" always;
+        gzip off;
+    }
+
+    # ---- 主站与 API ----
+    location / {
+        proxy_pass http://127.0.0.1:8799;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 为将来的 WebSocket 通道预留升级头
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+        # 静态资源：模板里的 CSS/JS 都带版本号（如 /static/app.css?v=1.2.3），可以放心长缓存
+        location ~* ^/static/.*\.(css|js|woff2?|ttf|svg|png|jpg|jpeg|gif|ico|webp)$ {
+            expires 7d;
+            add_header Cache-Control "public, max-age=604800, immutable";
+            access_log off;
+            proxy_pass http://127.0.0.1:8799;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+
+    # 分发制品（agent 二进制）不走缓存，避免升级时拿到旧文件
+    location ^~ /api/v1/dl/ {
+        proxy_pass http://127.0.0.1:8799;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        expires -1;
+        add_header Cache-Control "no-store";
+    }
+}
+
+# 说明：$connection_upgrade 变量需要在 nginx.conf 的 http 段里定义，宝塔默认没有，
+# 请在 /www/server/nginx/conf/nginx.conf 的 http { } 内加一行（与 map 同级）：
+#
+#   map $http_upgrade $connection_upgrade {
+#       default upgrade;
+#       ''      close;
+#   }
+#
+# 若不想改 nginx.conf，也可以把上面的两行 Upgrade/Connection 头直接删掉，
+# 主站与 SSE 不受影响，只是将来启用 WebSocket 通道时需要再加回来。

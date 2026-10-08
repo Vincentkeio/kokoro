@@ -1,0 +1,180 @@
+{{define "node.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>{{.Node.Name}} · {{.SiteName}}</title>
+{{if .Profile.Summary}}<meta name="description" content="{{.Profile.Summary}}">{{end}}
+{{template "head.html" .}}
+</head>
+<body {{.Theme.Attrs}} data-node="{{.Node.ID}}">
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">{{.SiteName}}</a>
+    <a class="btn ghost small" href="/">← 全部</a>
+    <div class="top-tools">
+      {{if .Theme.ShowSwitch}}
+      <button class="btn ghost small mode-toggle" type="button" data-toggle-mode title="切换深色 / 浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>
+      {{end}}
+      {{/* 皮肤切换器必须在详情页也在——它原先挂在页尾，改到页头后
+           这里漏了就会让详情页整页没有切换入口。由
+           TestSkinPickerOnHomeAndNode 守住。 */}}
+      {{template "skinpicker.html" .}}
+    </div>
+  </div>
+</header>
+
+<main class="wrap detail">
+  <div class="detail-head">
+    <h1>{{if .FlagCode}}<span class="flag lg" title="{{flagName .FlagCode}}">{{flag .FlagCode}}</span>{{end}} {{.Node.Name}}
+      <span class="dot {{if .Node.Online}}on{{else}}off{{end}}" data-field="dot"></span>
+    </h1>
+    <p class="meta">
+      {{if .Node.Region}}{{.Node.Region}}{{else if .Node.Country}}{{flagName .Node.Country}}{{end}}
+      {{if .Node.Country}}· {{.Node.Country}}{{if .Node.City}} {{.Node.City}}{{end}}{{end}}
+      {{if .Node.OS}}· {{.Node.OS}}{{end}}
+      {{if .Node.Kernel}}· {{.Node.Kernel}}{{end}}
+      {{if .Node.Arch}}· {{.Node.Arch}}{{end}}
+    </p>
+    {{if .Profile.Price}}<p class="price">价格：{{.Profile.Price}}{{if .Profile.ExpireAt}} · 到期 {{.Profile.ExpireAt}}{{end}}</p>{{end}}
+
+    <div class="votebar">
+      <button type="button" class="vote up {{if .Votes.MineUp}}on{{end}}"
+              data-target="node" data-id="{{.Node.ID}}" data-vote="up">
+        <span class="ico">▲</span> 顶 <b data-count="up">{{.Votes.Up}}</b>
+      </button>
+      <button type="button" class="vote down {{if .Votes.MineDown}}on{{end}}"
+              data-target="node" data-id="{{.Node.ID}}" data-vote="down">
+        <span class="ico">▼</span> 踩 <b data-count="down">{{.Votes.Down}}</b>
+      </button>
+      <span class="score">净 {{.Votes.Score}}</span>
+    </div>
+  </div>
+
+  {{if .Latest}}
+  <section class="panel">
+    <div class="kpis">
+      <div class="kpi"><span>CPU</span><b data-field="cpu">{{printf "%.1f" .CPUPct}}%</b></div>
+      <div class="kpi"><span>内存</span><b data-field="mem">{{printf "%.0f" .MemPct}}%</b>
+        <small>{{fmtBytes .Latest.Mem.Used}} / {{fmtBytes .Latest.Mem.Total}}</small></div>
+      <div class="kpi"><span>磁盘</span><b data-field="disk">{{printf "%.0f" .DiskPct}}%</b>
+        <small>{{fmtBytes .Latest.Disk.Used}} / {{fmtBytes .Latest.Disk.Total}}</small></div>
+      <div class="kpi"><span>↑ 上行</span><b data-field="up">{{fmtRate .Latest.Net.Up}}</b></div>
+      <div class="kpi"><span>↓ 下行</span><b data-field="down">{{fmtRate .Latest.Net.Down}}</b></div>
+      <div class="kpi"><span>负载</span><b>{{printf "%.2f" .Latest.CPU.Load1}}</b>
+        <small>{{printf "%.2f" .Latest.CPU.Load5}} / {{printf "%.2f" .Latest.CPU.Load15}}</small></div>
+      <div class="kpi"><span>开机</span><b>{{fmtDur .Latest.Host.Uptime}}</b></div>
+      <div class="kpi"><span>总流量</span><b>{{fmtBytes .Latest.Net.TotalUp}}</b>
+        <small>↑ / ↓ {{fmtBytes .Latest.Net.TotalDown}}</small></div>
+    </div>
+  </section>
+
+  {{if .Points}}
+  <section class="panel">
+    <h3>最近一小时</h3>
+    <div class="charts">
+      <div class="chart"><span class="chart-label">CPU %</span><svg class="spark cpu" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="cpu"></svg></div>
+      <div class="chart"><span class="chart-label">内存用量</span><svg class="spark mem" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="mem"></svg></div>
+      <div class="chart"><span class="chart-label">↑ 上行 B/s</span><svg class="spark up" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="up"></svg></div>
+      <div class="chart"><span class="chart-label">↓ 下行 B/s</span><svg class="spark down" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="down"></svg></div>
+    </div>
+  </section>
+  {{end}}
+  {{else}}
+  <section class="panel"><p class="empty">这台小鸡还没有上报数据。</p></section>
+  {{end}}
+
+  <section class="panel prose">
+    <h3>关于这台机器</h3>
+    {{if .Profile.ContentMD}}
+    <div class="md">{{md .Profile.ContentMD}}</div>
+    {{else}}
+    <p class="empty">主人还没写介绍。</p>
+    {{end}}
+  </section>
+
+  {{if .NetQ}}{{template "netq.html" .NetQ}}{{end}}
+
+  <section class="panel" id="comments">
+    <h3>留言 <small class="muted">{{.CommentN}} 条</small></h3>
+
+    {{if .CommentErr}}<p class="err">{{.CommentErr}}</p>{{end}}
+    {{if .CommentOK}}<p class="ok">留言已发出{{if not .IsAdmin}}，谢谢{{end}}。</p>{{end}}
+
+    {{if .Comments}}
+    <ul class="cmts">
+      {{range .Comments}}
+      <li class="cmt" id="cmt-{{.ID}}">
+        <div class="cmt-head">
+          <b>{{.Author}}</b>
+          <time>{{tsShort .CreatedAt}}</time>
+          {{if .ReplyTo}}<span class="reply">回复 {{.ReplyTo}}</span>{{end}}
+          {{if ne .Status "approved"}}<span class="tag warn">待审核</span>{{end}}
+        </div>
+        <div class="cmt-body">{{.Content}}</div>
+        {{if .Contact}}<div class="cmt-contact">联系方式：{{.Contact}}<span class="muted">（仅站长可见）</span></div>{{end}}
+        <div class="cmt-actions">
+          <button type="button" class="vote mini up {{if .Votes.MineUp}}on{{end}}"
+                  data-target="comment" data-id="{{.ID}}" data-vote="up">
+            ▲ <b data-count="up">{{.Votes.Up}}</b>
+          </button>
+          <button type="button" class="vote mini down {{if .Votes.MineDown}}on{{end}}"
+                  data-target="comment" data-id="{{.ID}}" data-vote="down">
+            ▼ <b data-count="down">{{.Votes.Down}}</b>
+          </button>
+          <button type="button" class="link" data-reply="{{.ID}}" data-author="{{.Author}}">回复</button>
+          {{if $.IsAdmin}}
+          <form method="post" action="/admin/comments" class="inline">
+            <input type="hidden" name="id" value="{{.ID}}">
+            {{if ne .Status "approved"}}<button class="link ok" name="action" value="approve">通过</button>{{end}}
+            <button class="link bad" name="action" value="spam">垃圾</button>
+            <button class="link bad" name="action" value="delete">删除</button>
+          </form>
+          {{end}}
+        </div>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="empty">还没有人留言。看上这台机器？留个话，想交易也可以在留言里写清楚。</p>
+    {{end}}
+
+    {{if .CommentOn}}
+    <form class="cform" method="post" action="/n/{{.Node.Slug}}/comment">
+      <input type="hidden" name="parent_id" id="parent_id" value="">
+      <div class="cform-row">
+        <input name="author" placeholder="昵称（可留空）" maxlength="32">
+        <input name="contact" placeholder="联系方式，可选 —— 只有站长看得到，想交易就填这里" maxlength="120">
+      </div>
+      <textarea name="content" rows="4" placeholder="说点什么… 想收/出这台机器也可以直接写在这里" required maxlength="2000"></textarea>
+      <div class="cform-foot">
+        <span class="hint" id="reply-hint" hidden></span>
+        <button class="btn" type="submit">发出留言</button>
+      </div>
+    </form>
+    {{else}}
+    <p class="empty">这台小鸡的主人关闭了留言。</p>
+    {{end}}
+  </section>
+
+  {{if .Owner.Has}}
+  <section class="panel owner">
+    {{if .Owner.Avatar}}<img class="avatar" src="{{.Owner.Avatar}}" alt="{{.Owner.Name}} 的头像" width="52" height="52">{{end}}
+    <div class="owner-txt">
+      <b>{{.Owner.Name}}</b>
+      {{if .Owner.Bio}}<p class="bio">{{.Owner.Bio}}</p>{{end}}
+    </div>
+  </section>
+  {{end}}
+</main>
+
+<footer class="wrap foot-page">
+  <span>Kokoro · {{.Year}} · 浏览 {{.Profile.PV}} 次</span>
+</footer>
+<script>
+window.__POINTS__ = [{{range .Points}}{"t":{{.Ts}},"cpu":{{.CPU}},"mu":{{.MemUsed}},"up":{{.NetUp}},"down":{{.NetDown}}},{{end}}];
+window.__SLUG__ = {{.Node.Slug | js}};
+</script>
+<script src="/static/app.js?v=24"></script>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,124 @@
+{{define "netq.html"}}
+<section class="panel netq">
+<style>
+.netq .nq-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.netq .nq-head h3 { margin: 0; }
+.netq .nq-sum { color: var(--muted); font-size: 12.5px; }
+.netq .nq-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 14px 0; }
+.netq .nq-isp {
+  background: var(--bg-soft); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.netq .nq-isp .nm { color: var(--muted); font-size: 12px; }
+.netq .nq-isp .big { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.netq .nq-isp .big small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.netq .nq-isp .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.netq .nq-ext { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin: 0 0 14px; }
+.netq table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.netq th, .netq td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.netq th { color: var(--muted); font-weight: 500; font-size: 12px; }
+.netq td.p { font-weight: 500; }
+.netq .ok { color: var(--ok); }
+.netq .warn { color: var(--warn); }
+.netq .bad { color: var(--bad); }
+.netq .miss { color: var(--muted); }
+.netq .nq-more { margin-top: 10px; }
+.netq .nq-hidden { display: none; }
+.netq .nq-note { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 12px 0 0; }
+.netq .nq-stale { color: var(--warn); font-size: 12.5px; }
+</style>
+
+  <div class="nq-head">
+    <h3>网络质量 · 三网分省</h3>
+    <span class="nq-sum">
+      探测方式 {{.ModeLabel}} · 更新于 {{.Age}} · 覆盖 {{.Provinces}} 省 / {{.Total}} 个探测点（通 {{.OKN}}）
+    </span>
+    {{if .Stale}}<span class="nq-stale">数据偏旧，agent 可能没在跑</span>{{end}}
+  </div>
+
+  <div class="nq-cards">
+    {{range .ISPs}}
+    <div class="nq-isp">
+      <div class="nm">{{.Label}}</div>
+      <div class="big {{latClass .Latency}}">{{if .Latency}}{{fmtMS .Latency}}<small>ms</small>{{else}}<span class="miss">—</span>{{end}}</div>
+      <div class="sub">丢包 {{printf "%.0f" .Loss}}% · 抖动 {{fmtMS .Jitter}}ms · 通 {{.OKN}}/{{.Total}}</div>
+    </div>
+    {{end}}
+  </div>
+
+  {{if .Best}}
+  <div class="nq-ext">
+    <span>最快：
+      {{range $i, $r := .Best}}{{if $i}} · {{end}}{{$r.Province}} <b class="ok">{{fmtMS $r.Avg}}ms</b>{{end}}
+    </span>
+    <span>最慢：
+      {{range $i, $r := .Worst}}{{if $i}} · {{end}}{{$r.Province}} <b class="bad">{{fmtMS $r.Avg}}ms</b>{{end}}
+    </span>
+  </div>
+  {{end}}
+
+  <table>
+    <thead>
+      <tr><th>省份</th><th>电信</th><th>联通</th><th>移动</th><th>平均</th></tr>
+    </thead>
+    <tbody>
+      {{range $i, $r := .Rows}}
+      <tr{{if ge $i 12}} class="nq-hidden nq-extra"{{end}}>
+        <td class="p">{{$r.Province}}</td>
+        <td>{{if $r.Telecom}}{{if $r.Telecom.OK}}<span class="{{latClass $r.Telecom.Latency}}">{{fmtMS $r.Telecom.Latency}}</span>{{else}}<span class="miss">不通</span>{{end}}{{else}}<span class="miss">—</span>{{end}}</td>
+        <td>{{if $r.Unicom}}{{if $r.Unicom.OK}}<span class="{{latClass $r.Unicom.Latency}}">{{fmtMS $r.Unicom.Latency}}</span>{{else}}<span class="miss">不通</span>{{end}}{{else}}<span class="miss">—</span>{{end}}</td>
+        <td>{{if $r.Mobile}}{{if $r.Mobile.OK}}<span class="{{latClass $r.Mobile.Latency}}">{{fmtMS $r.Mobile.Latency}}</span>{{else}}<span class="miss">不通</span>{{end}}{{else}}<span class="miss">—</span>{{end}}</td>
+        <td>{{if $r.Avg}}<b>{{fmtMS $r.Avg}}</b>{{else}}<span class="miss">—</span>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+
+  {{if gt (len .Rows) 12}}
+  <div class="nq-more">
+    <button class="link" id="nq-toggle" type="button">展开全部 {{len .Rows}} 个省 ▾</button>
+  </div>
+  {{end}}
+
+  {{if .Overseas}}
+  <table style="margin-top:14px">
+    <thead><tr><th>境外 / 港澳台</th><th>延迟</th></tr></thead>
+    <tbody>
+      {{range .Overseas}}
+      <tr>
+        <td class="p">{{.Province}}</td>
+        <td>{{if .Telecom}}{{if .Telecom.OK}}<span class="{{latClass .Telecom.Latency}}">{{fmtMS .Telecom.Latency}}</span>{{else}}<span class="miss">不通</span>{{end}}{{else}}<span class="miss">—</span>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  <p class="nq-note">
+    延迟单位毫秒。国内数值＝该小鸡到<b>「该行省份 + 该列运营商」</b>的递归 DNS 的 ICMP 往返时延。<br>
+    所以表头的「电信」不是「中国电信整体」，而是各省电信各自的节点——同一台小鸡到北京电信
+    和到西藏电信可能差一倍以上，跨省平均没有意义，<b>请按行（省）看</b>。<br>
+    境外 / 港澳台的测试点已换成<b>落地在当地的单点主机</b>（非全球任播），数字反映真实地理距离；
+    若拿 8.8.8.8 这类全球任播服务当目标，各地测出来都只有几毫秒，没有参考价值。<br>
+    运营商 DNS 普遍只对本网开放递归，跨网或境外发出的 ICMP 常被丢弃，
+    所以「不通」只说明该点不响应本机，不代表线路一定有问题。
+  </p>
+
+  {{if gt (len .Rows) 12}}
+  <script>
+  (function () {
+    var btn = document.getElementById('nq-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var rows = document.querySelectorAll('.nq-extra');
+      var open = rows.length && rows[0].classList.contains('nq-hidden');
+      for (var i = 0; i < rows.length; i++) {
+        rows[i].classList.toggle('nq-hidden', !open);
+      }
+      btn.textContent = open ? '收起 ▴' : '展开全部 {{len .Rows}} 个省 ▾';
+    });
+  })();
+  </script>
+  {{end}}
+</section>
+{{end}}

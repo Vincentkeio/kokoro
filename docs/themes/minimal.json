@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "example.minimal",
+  "name": "最小示例",
+  "version": "1.0.0",
+  "description": "一份能直接通过校验的最小主题。只改颜色，其他全走默认。",
+  "author": "docs",
+  "license": "MIT",
+  "tokensSchemaVersion": 2,
+  "tokens": {
+    "--kokoro-color-primary": "#2f6feb",
+    "--kokoro-color-accent": "#7c5cff",
+    "--kokoro-color-bg": "#ffffff",
+    "--kokoro-color-text": "#1f2328",
+    "--kokoro-radius-md": "8px",
+    "--kokoro-font-sans": "system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+  },
+  "mode": {
+    "default": "auto",
+    "supportsDark": true
+  },
+  "layoutSchemaVersion": 1,
+  "layout": {
+    "shell": {
+      "header": {
+        "variant": "solid"
+      }
+    },
+    "home": {
+      "list": {
+        "mode": "card"
+      }
+    },
+    "charts": {
+      "type": "area"
+    },
+    "detail": {
+      "header": {
+        "variant": "compact"
+      }
+    }
+  }
+}

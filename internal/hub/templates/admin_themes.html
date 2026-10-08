@@ -1,0 +1,187 @@
+{{define "admin_themes.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>皮肤 · {{.SiteName}} 后台</title>
+{{template "head.html" .}}
+<style>
+.th-intro { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 0 0 var(--s4); max-width: 62ch; }
+.th-grid {
+  display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  margin: var(--s4) 0;
+}
+.th-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s4);
+  display: flex; flex-direction: column; gap: var(--s2);
+  position: relative;
+  transition: border-color var(--t) var(--ease), transform var(--t) var(--ease);
+}
+.th-card:hover { transform: translateY(-2px); }
+.th-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.th-swatch { display: flex; gap: 0; height: 34px; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--line); }
+.th-swatch i { flex: 1; }
+.th-name { display: flex; align-items: baseline; gap: var(--s2); }
+.th-name b { font-size: 15px; }
+.th-ver { color: var(--faint); font-size: 11.5px; font-family: var(--mono); }
+.th-desc { color: var(--muted); font-size: 12.5px; line-height: 1.6; margin: 0; flex: 1; }
+.th-sum {
+  font-size: 11.5px; color: var(--faint);
+  background: var(--sunken); border-radius: var(--r-sm);
+  padding: 3px 7px; line-height: 1.5;
+}
+.th-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+.th-tags span {
+  font-size: 11px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 0 7px;
+}
+.th-acts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: auto; padding-top: 4px; }
+.th-on {
+  position: absolute; top: var(--s3); right: var(--s3);
+  background: var(--accent); color: var(--accent-fg);
+  font-size: 11px; padding: 1px 8px; border-radius: 999px;
+}
+.th-msg { border-radius: var(--r); padding: var(--s2) var(--s3); font-size: 13px; margin: var(--s3) 0; }
+.th-msg.ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.th-msg.err { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.th-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--s4); }
+.th-tok {
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.9;
+  columns: 3; column-gap: var(--s4);
+  background: var(--sunken); border-radius: var(--r);
+  padding: var(--s3); margin: var(--s2) 0 0;
+  max-height: 340px; overflow: auto;
+}
+@media (max-width: 780px) { .th-tok { columns: 2; } }
+@media (max-width: 520px) { .th-tok { columns: 1; } }
+.th-form { display: flex; flex-direction: column; gap: var(--s2); }
+.th-form textarea { min-height: 120px; font-family: var(--mono); font-size: 12px; }
+details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.5px; margin-top: var(--s3); }
+</style>
+</head>
+<body {{.Theme.Attrs}} data-admin="1">
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">{{.SiteName}} 后台</a>
+    <div class="top-tools">
+      <a class="btn ghost small" href="/admin">← 后台</a>
+      {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode>{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
+      <a class="btn ghost small" href="/">← 前台</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panel">
+    <h3>皮肤</h3>
+    <p class="th-intro">
+      皮肤分两层：<b>变量</b>管颜色、圆角、阴影、字体、间距；<b>布局</b>管列表形态、
+      顶栏样式、图表类型、详情页头图。所以换皮肤不只是换颜色——列表会从卡片变表格、
+      等宽字体会整个界面换掉。每套皮肤都能导出成 JSON，
+      看到别人的站用了好皮肤，填他的地址就能一键抄过来。
+    </p>
+
+    {{if .Msg}}<p class="th-msg {{if hasPrefix .Msg "导入失败"}}{{"err"}}err{{else}}ok ok{{end}}">{{.Msg}}</p>{{end}}
+
+    <div class="th-grid">
+      {{range .Themes}}
+      <article class="th-card{{if .Active}} on{{end}}">
+        {{if .Active}}<span class="th-on">使用中</span>{{end}}
+        <div class="th-swatch" aria-hidden="true">
+          {{range .Swatch}}<i style="background:{{.}}"></i>{{end}}
+        </div>
+        <div class="th-name">
+          <b>{{.Name}}</b>
+          <span class="th-ver">{{.ID}}@{{.Version}}</span>
+        </div>
+        {{if .Desc}}<p class="th-desc">{{.Desc}}</p>{{end}}
+        <div class="th-sum">{{.Summary}}</div>
+        {{if .Tags}}
+        <div class="th-tags">{{range .Tags}}<span>{{.}}</span>{{end}}</div>
+        {{end}}
+        <div class="th-acts">
+          {{if .Active}}
+            <a class="btn ghost small" href="/">看看前台</a>
+          {{else}}
+            <a class="btn small" href="/theme/{{.ID}}?back={{urlquery "/admin/themes"}}">启用这套</a>
+          {{end}}
+          <a class="btn ghost small" href="/theme-export/{{.ID}}">导出</a>
+          {{if not .Builtin}}
+          <form method="post" action="/admin/themes/delete"
+                onsubmit="return confirm('删除《{{.Name}}》？删除后如果正在使用会自动切回默认皮肤。')">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <button class="btn ghost small" type="submit">删除</button>
+          </form>
+          {{end}}
+        </div>
+      </article>
+      {{end}}
+    </div>
+  </section>
+
+  <div class="th-two">
+    <section class="panel">
+      <h3>一键获取别人的皮肤</h3>
+      <p class="hint" style="line-height:1.7">
+        对方站点的主题是公开的（本来就是给人抄的）。填他的站点地址或
+        <code>/theme.json</code> 完整地址，Hub 会拉下来、逐项校验后再登记——
+        变量名不在白名单、值里带远程图片或分号，都会当场拒绝。
+      </p>
+      <form class="th-form" method="post" action="/admin/themes/grab">
+        <input name="url" placeholder="https://vps.example.com" required
+               value="{{if .Msg}}{{end}}">
+        <div><button class="btn" type="submit">获取并导入</button></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h3>导入主题</h3>
+      <p class="hint" style="line-height:1.7">
+        两种方式：上传 <code>.kokoro-theme</code> 包（能带自定义字体、背景图），
+        或直接粘贴一份 <code>theme.json</code>（改一套「导出」最快）。
+        两者走同一套校验，且都会存进数据库——<strong>重启不会丢</strong>。
+      </p>
+      <form class="th-form" method="post" action="/admin/themes/import"
+            enctype="multipart/form-data">
+        <input type="file" name="bundle" accept=".kokoro-theme,.zip,application/zip"
+               style="font-size:13px">
+        <div style="color:var(--muted);font-size:12px">或者粘贴 theme.json：</div>
+        <textarea name="manifest" placeholder='{"schemaVersion":1,"id":"mine.mytheme", ...}'></textarea>
+        <div><button class="btn" type="submit">校验并导入</button></div>
+      </form>
+      <p class="hint" style="margin-top:10px">
+        包内只允许 <code>theme.json</code>、<code>preview.png</code>、
+        <code>LICENSE</code>、<code>README.md</code> 和 <code>assets/</code>；
+        路径逃逸、符号链接、压缩炸弹都会被拒绝。
+      </p>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h3>主题文件规范</h3>
+    <p class="hint" style="line-height:1.7">
+      想自己写主题，或者把这套规范丢给 AI 让它帮你生成？
+      仓库里的 <code>docs/THEME-FORMAT.md</code> 写清了全部字段、合法变量表、
+      布局枚举、安全边界和一整段可直接复制的 AI 提示词，
+      <code>docs/themes/minimal.json</code> 是能直接用的最小示例。
+    </p>
+  </section>
+
+  <section class="panel">
+    <h3>可用的 CSS 变量</h3>
+    <p class="hint">
+      改主题时用得到。写成 <code>--kokoro-</code> 前缀、值只能是颜色 / 长度 / 数值 / 时间 /
+      字体栈这几类，远程图片和 <code>@import</code> 一律拒绝。
+    </p>
+    <div class="th-tok">{{range .TokenNames}}<div>{{.}}</div>{{end}}</div>
+  </section>
+</main>
+
+<footer class="wrap foot-page"><span>Kokoro · {{.SiteName}}</span></footer>
+<script src="/static/app.js?v=24"></script>
+</body>
+</html>
+{{end}}
