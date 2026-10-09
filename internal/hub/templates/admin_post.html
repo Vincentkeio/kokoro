@@ -106,11 +106,17 @@
         <button type="button" class="mdbtn" data-md-img title="上传图片">🖼</button>
         <button type="button" class="mdbtn" data-md="|---|" title="表格">▦</button>
         <button type="button" class="mdbtn" data-md="\n---\n|" title="分隔线">―</button>
+        <button type="button" class="mdbtn" data-md-preview title="预览 Ctrl+P">👁</button>
         <span class="mdtip" id="md-tip"></span>
       </div>
 
-      <textarea id="p-body" class="body" name="content_md"
-                placeholder="# 标题&#10;&#10;正文…">{{.Profile.ContentMD}}</textarea>
+      <div class="mdwrap">
+        <textarea id="p-body" class="body" name="content_md"
+                  placeholder="# 标题&#10;&#10;正文…">{{.Profile.ContentMD}}</textarea>
+        {{/* 预览面板。**服务端渲染**的结果塞进来 —— 用的就是前台那个 RenderMarkdown，
+             所以预览和访客看到的完全一致（换成前端库必然会有偏差）。 */}}
+        <div id="p-preview" class="mdpreview" hidden></div>
+      </div>
       <input type="file" id="md-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
     </div>
 
@@ -136,7 +142,7 @@
 
 </main>
 
-<script src="/static/app.js?v=63"></script>
+<script src="/static/app.js?v=64"></script>
 </body>
 </html>
 {{end}}

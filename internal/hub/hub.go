@@ -239,6 +239,8 @@ func (h *Hub) routes() {
 	// 文章配图上传。返回 JSON（不是整页跳转）—— 前端在编辑器里异步传，
 	// 整页刷新会把还没保存的正文冲掉。
 	h.adminOnly("/admin/upload", h.handleUpload)
+	// 编辑器的 Markdown 预览。走服务端渲染，保证预览和前台完全一致。
+	h.adminOnly("/admin/preview", h.handlePreview)
 	h.adminOnly("/admin/themes/import", h.handleThemeImport)
 	h.adminOnly("/admin/themes/grab", h.handleThemeGrab)
 	h.adminOnly("/admin/themes/delete", h.handleThemeDelete)

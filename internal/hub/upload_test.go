@@ -4,10 +4,8 @@ package hub
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
-	"image"
-	"image/color"
-	"image/png"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -17,17 +15,26 @@ import (
 	"github.com/Vincentkeio/kokoro/internal/store"
 )
 
-// tinyPNG 造一张真的 1x1 PNG（校验用得到 image.DecodeConfig，
-// 所以必须是真图，不能塞几个魔数字节糊弄）。
+// tinyPNG 是一张**硬编码**的 1×1 红色 PNG（69 字节）。
+//
+// ⚠️ **故意不用 image/png 现编码**。
+//
+// 原因：image.DecodeConfig 只认识「被 import 注册过」的解码器。
+// 如果这里 import 了 image/png 来造图，Go 会把同包文件链在一起 ——
+// **测试文件就成了那个"注册解码器的人"**，于是生产代码漏了
+// `_ "image/png"` 也照样绿。这个 bug 真的发生过：
+// 测试全绿、线上每次上传都报"图片损坏或格式不被支持"。
+//
+// 硬编码字节之后，解码器只可能来自生产代码，测试才测的是真东西。
+const tinyPNGB64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+
 func tinyPNG(t *testing.T) []byte {
 	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
-	img.Set(0, 0, color.RGBA{255, 0, 0, 255})
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		t.Fatal(err)
+	b, err := base64.StdEncoding.DecodeString(tinyPNGB64)
+	if err != nil {
+		t.Fatalf("内置 PNG 解不开（测试自身坏了）: %v", err)
 	}
-	return buf.Bytes()
+	return b
 }
 
 // uploadReq 拼一个带文件的 multipart 请求。
@@ -178,5 +185,83 @@ func TestPostPageHasMarkdownToolbar(t *testing.T) {
 	// 粘贴用的 file input 要在（paste 事件靠它兜底不了，得有真 input 走按钮那条路）
 	if !strings.Contains(page, `id="md-file"`) {
 		t.Error("缺 md-file —— 点「上传图片」按钮会没有反应")
+	}
+}
+
+// TestPreviewRendersMarkdown 预览要把 Markdown 渲染成 HTML。
+func TestPreviewRendersMarkdown(t *testing.T) {
+	h, st := newTestHub(t)
+	sess := loginCookie(t, h, st)
+
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("md", "# 标题\n\n这是**粗体**。")
+	_ = mw.Close()
+	r := httptest.NewRequest(http.MethodPost, "/admin/preview", &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	r.AddCookie(sess)
+	w := httptest.NewRecorder()
+	h.handlePreview(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("预览应成功，实际 %d: %s", w.Code, w.Body.String())
+	}
+	var d struct {
+		OK   bool   `json:"ok"`
+		HTML string `json:"html"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &d); err != nil {
+		t.Fatal(err)
+	}
+	if !d.OK {
+		t.Fatal("返回 ok=false")
+	}
+	// 标题和粗体都要真的渲染出来。
+	//
+	// 注意是 `<h3` 不是 `<h1`：正文标题从 **h3** 起，把 h1/h2 留给页面
+	// （页面标题是 h1、卡片标题是 h2），免得文章里的标题跟页面结构抢层级。
+	// 这个约定是有意的，不是渲染坏了。
+	for _, want := range []string{"<h3", "<strong"} {
+		if !strings.Contains(d.HTML, want) {
+			t.Errorf("预览里缺少 %s（实际: %s）", want, d.HTML[:min(len(d.HTML), 120)])
+		}
+	}
+}
+
+// TestPreviewMatchesFrontend 预览必须和前台**同一个渲染器**。
+//
+// 这一点很重要：换成前端库渲染的话，两边对 Markdown 的支持范围
+// 迟早不同步，预览就会骗人。所以这里直接对比两者的输出。
+func TestPreviewMatchesFrontend(t *testing.T) {
+	h, st := newTestHub(t)
+	sess := loginCookie(t, h, st)
+
+	md := "# T\n\n- a\n- b\n\n`code`"
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("md", md)
+	_ = mw.Close()
+	r := httptest.NewRequest(http.MethodPost, "/admin/preview", &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	r.AddCookie(sess)
+	w := httptest.NewRecorder()
+	h.handlePreview(w, r)
+
+	var d struct{ HTML string }
+	_ = json.Unmarshal(w.Body.Bytes(), &d)
+	if d.HTML != string(RenderMarkdown(md)) {
+		t.Error("预览的输出和 RenderMarkdown 不一致 —— 预览会骗人")
+	}
+}
+
+// TestPreviewNeedsAuth 预览接口必须登录。
+func TestPreviewNeedsAuth(t *testing.T) {
+	h, _ := newTestHub(t)
+	r := httptest.NewRequest(http.MethodPost, "/admin/preview", strings.NewReader("md=x"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.handlePreview(w, r)
+	if w.Code == http.StatusOK {
+		t.Fatal("未登录却能预览 —— 等于把渲染接口开放给所有人")
 	}
 }

@@ -1860,3 +1860,37 @@ details.adv > summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 details.adv > summary:hover { color: var(--fg); }
 details.adv[open] > summary { color: var(--fg-strong); margin-bottom: var(--s3); }
 details.adv .hint { line-height: 1.7; }
+
+/* ---- Markdown 预览 ---- */
+.mdwrap { display: grid; }
+/* 预览和编辑用同一个网格格，切换时只换显示哪一个 ——
+   这样两个面板高度一致，切换时不会跳。 */
+.mdpreview {
+  min-height: 18rem;
+  padding: var(--s4);
+  overflow-y: auto;
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  font-size: 14.5px; line-height: 1.75;
+}
+.mdpreview.hidden { display: none; }
+/* 预览里的正文排版（跟前台 .md 一致） */
+.mdpreview h1, .mdpreview h2, .mdpreview h3 { margin: 1em 0 .5em; line-height: 1.3; }
+.mdpreview h1 { font-size: 1.5em; } .mdpreview h2 { font-size: 1.28em; }
+.mdpreview h3 { font-size: 1.12em; }
+.mdpreview p { margin: 0 0 .85em; }
+.mdpreview ul, .mdpreview ol { margin: 0 0 .85em; padding-left: 1.4em; }
+.mdpreview code { font-family: var(--mono); font-size: .92em;
+  background: var(--sunken); padding: 1px 5px; border-radius: 3px; }
+.mdpreview pre { background: var(--sunken); padding: var(--s3);
+  border-radius: var(--r-sm); overflow-x: auto; margin: 0 0 .9em; }
+.mdpreview pre code { background: none; padding: 0; }
+.mdpreview blockquote { margin: 0 0 .9em; padding-left: var(--s3);
+  border-left: 3px solid var(--line); color: var(--muted); }
+.mdpreview img { max-width: 100%; height: auto; border-radius: var(--r-sm); }
+.mdpreview table { border-collapse: collapse; margin: 0 0 .9em; }
+.mdpreview th, .mdpreview td { border: var(--kokoro-border-width, 1px) solid var(--line);
+  padding: 5px 9px; }
+.mdpreview hr { border: 0; border-top: var(--kokoro-border-width, 1px) solid var(--line); }
+.mdpreview .empty { color: var(--muted); }

@@ -21,6 +21,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	// ⚠️⚠️ 这三个**空导入不能删**。
+	//
+	// image.DecodeConfig 只认识「通过 import 注册过」的解码器。
+	// 只 import "image"（接口）是不够的 —— 那样它对任何图片都返回
+	// "image: unknown format"，而我们的错误文案是"图片损坏或格式不被支持"，
+	// 看起来像用户传了坏图。
+	//
+	// 这个 bug 一度被测试盖住了：upload_test.go 里 import 了 image/png
+	// （用来造测试图），Go 把同包文件链在一起，**解码器被测试注册了**，
+	// 于是测试全绿而线上必挂。所以测试现在也改成不 import 任何解码器。
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+
 	"io"
 	"net/http"
 	"os"
@@ -136,11 +150,18 @@ func (h *Hub) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusRequestEntityTooLarge, "图片不能超过 2MB")
 		return
 	}
-	// 声称是图片但要真能解出来 —— 挡住"前 8 字节是 PNG 魔数、后面是垃圾"这种。
+	// 声称是图片但要**真能解出来** —— 挡住"前 8 字节是 PNG 魔数、后面是垃圾"。
 	// 不做这一步的话，浏览器加载时才报错，而那时站长已经以为传成功了。
-	if cfg, _, err := image.DecodeConfig(bytes.NewReader(body)); err != nil || cfg.Width <= 0 {
-		writeErr(w, http.StatusBadRequest, "图片损坏或格式不被支持")
-		return
+	//
+	// ⚠️ WebP 例外：Go 标准库**没有** WebP 解码器（要加 golang.org/x/image）。
+	// 本项目坚持零外部依赖，所以对 WebP 只做魔数 + RIFF/WEBP 签名校验，
+	// 不做深解。代价是"签名对但内容是坏的 webp"能传上来 ——
+	// 影响很小（那张图加载不出来而已），比引一个依赖划算。
+	if ext != ".webp" {
+		if cfg, _, err := image.DecodeConfig(bytes.NewReader(body)); err != nil || cfg.Width <= 0 {
+			writeErr(w, http.StatusBadRequest, "图片损坏或格式不被支持")
+			return
+		}
 	}
 
 	sum := sha256.Sum256(body)
@@ -220,4 +241,51 @@ func isHex(s string) bool {
 		}
 	}
 	return true
+}
+
+// handlePreview 处理 POST /admin/preview：把一段 Markdown 渲染成 HTML。
+//
+// ⚠️ **刻意走服务端渲染，不在浏览器里用 JS 库渲染**。
+// 两个理由：
+//  1. 用和前台**同一个** RenderMarkdown，预览即所得。
+//     换成前端库的话，两边对 Markdown 的支持范围必然不同步
+//     （表格、任务列表、自动链接…），预览会骗人。
+//  2. 零 CDN 约定 —— 不为一个预览再引一个前端库。
+//
+// 顺便：RenderMarkdown 自带消毒（去掉 script/on* 之类），
+// 所以这里返回的 HTML 是安全的，前端可以放心塞进 innerHTML。
+func (h *Hub) handlePreview(w http.ResponseWriter, r *http.Request) {
+	if !h.adminAuthed(r) {
+		drainBody(w, r)
+		writeErr(w, http.StatusUnauthorized, "未登录")
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "只接受 POST")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 正文上限 1MB
+
+	// ⚠️ **ParseForm 对 multipart/form-data 不解析 body** ——
+	// 那样 FormValue("md") 永远是空串，预览渲染出一片空白，
+	// 而且**不报错**（看起来像"Markdown 没渲染"，而不是"没收到内容"）。
+	// multipart 必须显式 ParseMultipartForm。
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			writeErr(w, http.StatusBadRequest, "内容太大或格式不对")
+			return
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			writeErr(w, http.StatusBadRequest, "内容太大或格式不对")
+			return
+		}
+	}
+	md := r.FormValue("md")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"ok":   true,
+		"html": string(RenderMarkdown(md)),
+	})
 }

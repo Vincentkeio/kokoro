@@ -762,10 +762,47 @@ function renderRateChart(svg, pts) {
   bar.addEventListener('click', function (e) {
     var b = e.target.closest('.mdbtn');
     if (!b) return;
+    if (b.hasAttribute('data-md-preview')) return togglePreview();
     if (b.hasAttribute('data-md-link')) return addLink();
     if (b.hasAttribute('data-md-img')) return file.click();
     if (b.hasAttribute('data-md')) wrap(b.dataset.md);
   });
+
+  // ---- 预览 ----
+  // 结果由**服务端**渲染（/admin/preview），用的是前台同一个 RenderMarkdown，
+  // 所以预览 == 访客看到的。
+  var pv = document.getElementById('p-preview');
+  var inPreview = false;
+
+  function togglePreview() {
+    inPreview = !inPreview;
+    if (inPreview) { renderPreview(); } else { ta.hidden = false; pv.hidden = true; say('已回到编辑'); }
+  }
+
+  function renderPreview() {
+    say('渲染中…');
+    // 用 urlencoded 而不是 FormData：少一层 multipart 解析，
+    // 服务端也不用为了它走 ParseMultipartForm。
+    fetch('/admin/preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+      body: 'md=' + encodeURIComponent(ta.value),
+      credentials: 'same-origin',
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { say('预览失败', 'err'); return; }
+        if (d.html && d.html.trim()) {
+          pv.innerHTML = d.html;
+        } else {
+          pv.innerHTML = '<p class="empty">（还没有内容）</p>';
+        }
+        ta.hidden = true;   // 用 hidden 而不是删掉 —— 删了会丢掉没保存的正文
+        pv.hidden = false;
+        say('预览中（再点一次回到编辑）');
+      })
+      .catch(function () { say('预览失败', 'err'); });
+  }
 
   function addLink() {
     var s = ta.selectionStart, e = ta.selectionEnd;
@@ -845,5 +882,6 @@ function renderRateChart(svg, pts) {
     if (k === 'b') { e.preventDefault(); wrap('**|**'); }
     else if (k === 'i') { e.preventDefault(); wrap('*|*'); }
     else if (k === 'k') { e.preventDefault(); addLink(); }
+    else if (k === 'p') { e.preventDefault(); togglePreview(); }
   });
 })();
