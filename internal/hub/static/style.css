@@ -1633,6 +1633,13 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 }
 @keyframes dfade { from { opacity: 0 } to { opacity: 1 } }
 
+/* ⚠️ **必须显式写 [hidden]**。
+   HTML 的 hidden 属性靠浏览器默认样式表的 `[hidden]{display:none}` 生效，
+   而下面 .drawer 里的 `display:flex` 是作者样式，**优先级更高** ——
+   会把 hidden 盖掉，表现成"侧边栏一直显示、关不掉"。
+   （这就是 boss 看到的现象。） */
+.drawer[hidden], .drawer-scrim[hidden] { display: none; }
+
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 61;
   width: min(30rem, 92vw);
