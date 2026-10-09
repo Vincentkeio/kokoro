@@ -452,11 +452,14 @@ function renderRateChart(svg, pts) {
   });
 })();
 
-/* ---- 侧边栏：文章 / 评论（两个**独立**面板）----
-   点卡片上的「文章 N」出来文章栏，点「评论 N」出来评论栏。
-   默认收起，点遮罩 / ESC / ✕ 收起。数据按需拉。 */
+/* ---- 弹窗：文章 / 评论（两个**独立**弹窗）----
+   点卡片上的「文章 N」弹出文章，点「评论 N」弹出评论。
+   默认关着，点遮罩 / ESC / ✕ 关闭。数据按需拉。
+
+   原来是右侧滑出的侧边栏，改成居中弹窗 ——
+   侧边栏贴着屏幕边缘，正文容易被拉到很窄；居中更好读。 */
 (function () {
-  var scrim = document.getElementById('drawer-scrim');
+  var scrim = document.getElementById('dlg-scrim');
   var panels = {
     art: { el: document.getElementById('d-art'),
            body: document.getElementById('d-art-body'),
@@ -601,9 +604,9 @@ function renderRateChart(svg, pts) {
 
   // 卡片上的入口
   document.addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-drawer]');
-    if (btn) { open(btn.dataset.drawer, btn.dataset.panel); return; }
-    if (e.target.closest('[data-dclose]')) { close(); }
+    var btn = e.target.closest('[data-dlg]');
+    if (btn) { open(btn.dataset.dlg, btn.dataset.panel); return; }
+    if (e.target.closest('[data-dlgclose]')) { close(); }
   });
 
   scrim.addEventListener('click', close);

@@ -1625,67 +1625,67 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   text-align: center;
 }
 
-/* ---- 侧边抽屉 ---- */
-.drawer-scrim {
+/* ---- 居中弹窗（文章 / 评论）----
+   原来是贴右边滑出的侧边栏，改成居中 ——
+   侧边栏会把正文挤到很窄，而且贴着边缘读起来累。 */
+.dlg-scrim {
   position: fixed; inset: 0; z-index: 60;
-  background: rgba(0, 0, 0, .38);
-  animation: dfade .18s var(--ease);
+  background: rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s4);
+  animation: dfade .16s var(--ease);
 }
 @keyframes dfade { from { opacity: 0 } to { opacity: 1 } }
 
+.dlg {
+  display: flex; flex-direction: column;
+  width: min(44rem, 96vw);
+  max-height: min(80vh, 46rem);
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .3);
+  animation: dpop .18s var(--ease);
+}
+@keyframes dpop {
+  from { opacity: 0; transform: translateY(10px) scale(.985) }
+  to   { opacity: 1; transform: none }
+}
 /* ⚠️ **必须显式写 [hidden]**。
    HTML 的 hidden 属性靠浏览器默认样式表的 `[hidden]{display:none}` 生效，
-   而下面 .drawer 里的 `display:flex` 是作者样式，**优先级更高** ——
-   会把 hidden 盖掉，表现成"侧边栏一直显示、关不掉"。
-   （这就是 boss 看到的现象。） */
-.drawer[hidden], .drawer-scrim[hidden] { display: none; }
+   而上面 .dlg 里的 `display:flex` 是作者样式，**优先级更高** ——
+   会把 hidden 盖掉，表现成"弹窗一直显示、关不掉"，且**不报错**。
+   （这个坑踩过一次，样式表里留了静态断言的测试。） */
+.dlg[hidden], .dlg-scrim[hidden] { display: none; }
 
-.drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 61;
-  width: min(30rem, 92vw);
-  display: flex; flex-direction: column;
-  background: var(--panel);
-  border-left: var(--kokoro-border-width, 1px) solid var(--line);
-  box-shadow: -18px 0 48px rgba(0, 0, 0, .22);
-  animation: dslide .22s var(--ease);
-}
-@keyframes dslide { from { transform: translateX(100%) } to { transform: translateX(0) } }
-/* 关的时候往右滑回去 —— 直接 hidden 会"啪"地消失，很突兀 */
-.drawer.closing { animation: dslide .18s var(--ease) reverse forwards; }
-.drawer-scrim.closing { animation: dfade .18s var(--ease) reverse forwards; }
+/* 关的时候反向播一下，别"啪"地消失 */
+.dlg.closing { animation: dpop .14s var(--ease) reverse forwards; }
+.dlg-scrim.closing { animation: dfade .14s var(--ease) reverse forwards; }
 
-.drawer-head {
+.dlg-head {
   display: flex; align-items: center; gap: var(--s2);
   padding: var(--s3) var(--s4);
   border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
   flex: none;
 }
-.drawer-tabs { display: flex; gap: 4px; }
-.dtab {
-  background: none; border: 0; cursor: pointer;
-  padding: 5px 10px; border-radius: var(--r-sm);
-  font: inherit; font-size: 13px; color: var(--muted);
-}
-.dtab:hover { background: var(--sunken); color: var(--fg); }
-.dtab.on { background: var(--accent); color: #fff; }
-.drawer-admin { margin-left: auto; display: flex; gap: 6px; }
-.drawer-x {
+.dlg-admin { margin-left: auto; display: flex; gap: 6px; }
+.dlg-x {
   flex: none; background: none; border: 0; cursor: pointer;
   font-size: 15px; line-height: 1; color: var(--muted);
   padding: 4px 6px; border-radius: var(--r-sm);
 }
-.drawer-x:hover { background: var(--sunken); color: var(--fg); }
+.dlg-x:hover { background: var(--sunken); color: var(--fg); }
 
-.drawer-body { flex: 1; overflow-y: auto; padding: var(--s4); }
-.drawer-foot {
+.dlg-body { flex: 1; overflow-y: auto; padding: var(--s4); }
+.dlg-foot {
   flex: none; padding: var(--s3) var(--s4);
   border-top: var(--kokoro-border-width, 1px) solid var(--line);
   display: flex; align-items: center; gap: var(--s3);
 }
-.drawer-foot:empty { display: none; }
-.drawer-foot .hint { margin: 0; }
+.dlg-foot:empty { display: none; }
+.dlg-foot .hint { margin: 0; }
 
-/* 抽屉里的评论：默认只显示第一条，其余折叠 */
+/* 弹窗里的评论：默认只显示第一条，其余折叠 */
 .dcmt + .dcmt { border-top: var(--kokoro-border-width, 1px) solid var(--line); }
 .dcmt { padding: var(--s3) 0; }
 .dcmt-head { display: flex; align-items: baseline; gap: var(--s2); font-size: 12px; color: var(--muted); }
@@ -1733,9 +1733,6 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
    藏起来的表单不该能被 Tab 键聚焦。 */
 .admin > .panel[data-atab] { display: none; }
 .admin > .panel[data-atab].on { display: block; }
-
-/* ---- 侧边栏的新样式（页签版改成了两个独立面板）---- */
-.drawer-title { font-size: 14px; color: var(--fg-strong); }
 
 /* 卡片上的「文章 / 评论」入口：做成**看得出来能点**的小按钮。
    裸数字（📄 0）看不出能点，试过，反馈是不明显。 */
