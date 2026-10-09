@@ -452,229 +452,159 @@ function renderRateChart(svg, pts) {
   });
 })();
 
-/* ---- 侧边抽屉：文章 / 评论 ----
-   卡片上点「📄 N」「💬 N」从右侧滑出。
-   数据按需拉（articles.json / comments.json），不预先塞进首页。 */
+/* ---- 侧边栏：文章 / 评论（两个**独立**面板）----
+   点卡片上的「文章 N」出来文章栏，点「评论 N」出来评论栏。
+   默认收起，点遮罩 / ESC / ✕ 收起。数据按需拉。 */
 (function () {
-  var dlg = document.getElementById('drawer');
   var scrim = document.getElementById('drawer-scrim');
-  var body = document.getElementById('drawer-body');
-  var foot = document.getElementById('drawer-foot');
-  var adminBox = document.getElementById('drawer-admin');
-  if (!dlg || !scrim || !body) return;
+  var panels = {
+    art: { el: document.getElementById('d-art'),
+           body: document.getElementById('d-art-body'),
+           admin: document.getElementById('d-art-admin'), foot: null },
+    cmt: { el: document.getElementById('d-cmt'),
+           body: document.getElementById('d-cmt-body'),
+           admin: document.getElementById('d-cmt-admin'),
+           foot: document.getElementById('d-cmt-foot') }
+  };
+  if (!scrim || !panels.art.el) return;
 
-  var state = { slug: '', tab: 'articles', page: 1, data: null, expanded: false };
+  var st = { slug: '', kind: 'art', page: 1, expanded: false, cur: null };
 
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  function open(slug, tab) {
-    state.slug = slug;
-    state.tab = tab || 'articles';
-    state.page = 1;
-    state.expanded = false;
-    dlg.hidden = false;
+  function open(slug, kind) {
+    st.slug = slug;
+    st.kind = kind === 'cmt' ? 'cmt' : 'art';
+    st.page = 1;
+    st.expanded = false;
+    st.cur = panels[st.kind];
+    Object.keys(panels).forEach(function (k) { panels[k].el.hidden = true; });
+    st.cur.el.hidden = false;
+    st.cur.el.setAttribute('aria-hidden', 'false');
     scrim.hidden = false;
-    dlg.setAttribute('aria-hidden', 'false');
-    document.body.style.overflow = 'hidden';  // 抽屉开着时锁住背景滚动
-    renderTabs();
+    document.body.style.overflow = 'hidden';  // 栏开着时锁住背景滚动
     load();
   }
 
   function close() {
-    // 先播关闭动画再 hidden —— 直接 hidden 会"啪"地消失
-    dlg.classList.add('closing');
+    if (!st.cur) return;
+    var el = st.cur.el;
+    el.classList.add('closing');
     scrim.classList.add('closing');
     setTimeout(function () {
-      dlg.hidden = true;
+      el.hidden = true;
       scrim.hidden = true;
-      dlg.classList.remove('closing');
+      el.classList.remove('closing');
       scrim.classList.remove('closing');
-      dlg.setAttribute('aria-hidden', 'true');
+      el.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
+      st.cur = null;
     }, 180);
   }
 
-  function renderTabs() {
-    document.querySelectorAll('.dtab').forEach(function (b) {
-      b.classList.toggle('on', b.dataset.dtab === state.tab);
-    });
-  }
-
   function load() {
-    body.innerHTML = '<p class="d-empty">加载中…</p>';
-    foot.innerHTML = '';
-    var url = '/n/' + encodeURIComponent(state.slug) + '/' + state.tab + '.json?page=' + state.page;
+    var cur = st.cur;
+    if (!cur) return;
+    cur.body.innerHTML = '<p class="d-empty">加载中…</p>';
+    if (cur.foot) cur.foot.innerHTML = '';
+    var url = '/n/' + encodeURIComponent(st.slug) + '/' + st.kind + '.json?page=' + st.page;
     fetch(url, { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (!d || !d.ok) { body.innerHTML = '<p class="d-empty">加载失败</p>'; return; }
-        state.data = d;
-        renderAdmin(d);
-        if (state.tab === 'articles') renderArticles(d); else renderComments(d);
+        if (!d || !d.ok) { cur.body.innerHTML = '<p class="d-empty">加载失败</p>'; return; }
+        renderAdmin(cur, d);
+        if (st.kind === 'art') renderArticles(cur, d); else renderComments(cur, d);
       })
-      .catch(function () { body.innerHTML = '<p class="d-empty">加载失败</p>'; });
+      .catch(function () { cur.body.innerHTML = '<p class="d-empty">加载失败</p>'; });
   }
 
-  function renderAdmin(d) {
-    adminBox.innerHTML = '';
+  function renderAdmin(cur, d) {
+    cur.admin.innerHTML = '';
     if (!d.is_admin) return;   // 访客不显示任何管理入口
-    if (state.tab === 'articles' && d.edit_url) {
-      var a = document.createElement('a');
-      a.className = 'btn small ghost';
-      a.href = d.edit_url;
-      a.textContent = d.total ? '编辑文章' : '写文章';
-      adminBox.appendChild(a);
-    } else if (state.tab === 'comments' && d.manage_url) {
-      var b = document.createElement('a');
-      b.className = 'btn small ghost';
-      b.href = d.manage_url;
-      b.textContent = '管理评论';
-      adminBox.appendChild(b);
-    }
+    var href = st.kind === 'art' ? d.edit_url : d.manage_url;
+    if (!href) return;
+    var a = document.createElement('a');
+    a.className = 'btn small ghost';
+    a.href = href;
+    a.textContent = st.kind === 'art' ? (d.total ? '编辑文章' : '写文章') : '管理评论';
+    cur.admin.appendChild(a);
   }
 
-  function renderArticles(d) {
+  function renderArticles(cur, d) {
     if (!d.articles || !d.articles.length) {
-      body.innerHTML = '<p class="d-empty">这台机器还没有文章。</p>';
+      cur.body.innerHTML = '<p class="d-empty">无文章</p>';
       return;
     }
     var a = d.articles[0];
     // HTML 是服务端渲染好的 Markdown（已消毒），直接插入
-    body.innerHTML = '<article class="d-art">' +
+    cur.body.innerHTML = '<article class="d-art">' +
       '<h3>' + esc(a.title) + '</h3>' +
       '<p class="d-when">' + esc(a.when) + '</p>' +
       '<div class="md">' + a.html + '</div></article>';
   }
 
-  function renderComments(d) {
+  function renderComments(cur, d) {
     if (!d.comments || !d.comments.length) {
-      body.innerHTML = '<p class="d-empty">还没有评论。</p>';
+      cur.body.innerHTML = '<p class="d-empty">还没有评论。</p>';
       return;
     }
-    // 默认只显示第一条，其余折叠 —— 评论区一展开就占满整屏，
+    // 默认只显示第一条，其余折叠 —— 评论一展开就占满整屏，
     // 访客多数只想扫一眼最新那条。
-    var show = state.expanded ? d.comments : d.comments.slice(0, 1);
+    var show = st.expanded ? d.comments : d.comments.slice(0, 1);
     var html = '';
-    show.forEach(function (c, i) {
-      html += '<div class="dcmt' + (i === 0 && !state.expanded ? '' : '') + '">' +
+    show.forEach(function (c) {
+      html += '<div class="dcmt">' +
         '<div class="dcmt-head"><b>' + esc(c.author) + '</b><span>' + esc(c.when) + '</span></div>' +
         '<div class="dcmt-body">' + c.html + '</div></div>';
     });
     if (d.comments.length > 1) {
       html += '<button type="button" class="d-expand" data-dexpand>' +
-        (state.expanded ? '收起评论' : '展开本页其余 ' + (d.comments.length - 1) + ' 条') +
+        (st.expanded ? '收起评论' : '展开本页其余 ' + (d.comments.length - 1) + ' 条') +
         '</button>';
     }
-    body.innerHTML = html;
-    var ex = body.querySelector('[data-dexpand]');
+    cur.body.innerHTML = html;
+    var ex = cur.body.querySelector('[data-dexpand]');
     if (ex) ex.addEventListener('click', function () {
-      state.expanded = !state.expanded;
-      renderComments(d);
+      st.expanded = !st.expanded;
+      renderComments(cur, d);
     });
-    renderFoot(d);
+    renderFoot(cur, d);
   }
 
-  function renderFoot(d) {
-    foot.innerHTML = '';
-    if (state.tab !== 'comments' || !d.pages || d.pages <= 1) return;
+  function renderFoot(cur, d) {
+    if (!cur.foot) return;
+    cur.foot.innerHTML = '';
+    if (!d.pages || d.pages <= 1) return;
     var prev = document.createElement('button');
     prev.type = 'button'; prev.className = 'btn small ghost'; prev.textContent = '上一页';
-    prev.disabled = state.page <= 1;
+    prev.disabled = st.page <= 1;
     prev.addEventListener('click', function () {
-      if (state.page > 1) { state.page--; state.expanded = false; load(); }
+      if (st.page > 1) { st.page--; st.expanded = false; load(); }
     });
     var next = document.createElement('button');
     next.type = 'button'; next.className = 'btn small ghost'; next.textContent = '下一页';
-    next.disabled = state.page >= d.pages;
+    next.disabled = st.page >= d.pages;
     next.addEventListener('click', function () {
-      if (state.page < d.pages) { state.page++; state.expanded = false; load(); }
+      if (st.page < d.pages) { st.page++; st.expanded = false; load(); }
     });
     var info = document.createElement('span');
     info.className = 'hint';
-    info.textContent = '第 ' + state.page + ' / ' + d.pages + ' 页 · 共 ' + d.total + ' 条';
-    foot.appendChild(prev); foot.appendChild(next); foot.appendChild(info);
+    info.textContent = '第 ' + st.page + ' / ' + d.pages + ' 页 · 共 ' + d.total + ' 条';
+    cur.foot.appendChild(prev); cur.foot.appendChild(next); cur.foot.appendChild(info);
   }
 
-  // 卡片上的计数按钮
+  // 卡片上的入口
   document.addEventListener('click', function (e) {
     var btn = e.target.closest('[data-drawer]');
-    if (btn) { open(btn.dataset.drawer, btn.dataset.tab); return; }
-    var tab = e.target.closest('.dtab');
-    if (tab && !dlg.hidden) {
-      state.tab = tab.dataset.dtab;
-      state.page = 1;
-      state.expanded = false;
-      renderTabs();
-      load();
-    }
+    if (btn) { open(btn.dataset.drawer, btn.dataset.panel); return; }
+    if (e.target.closest('[data-dclose]')) { close(); }
   });
 
-  document.getElementById('drawer-close').addEventListener('click', close);
   scrim.addEventListener('click', close);
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !dlg.hidden) close();
+    if (e.key === 'Escape' && st.cur) close();
   });
-})();
-
-/* ---- 后台选项卡 ----
-   走 location.hash，所以老链接（#profile / #comments …）仍然能直达某一页。
-   ⚠️ 直接用 hidden 属性而不是 class：这些面板里有表单，
-   藏起来的那些不该能被 Tab 键聚焦到。 */
-(function () {
-  var nav = document.querySelector('.atabs');
-  if (!nav) return;
-  var panels = Array.prototype.slice.call(
-    document.querySelectorAll('.admin > .panel[data-atab]'));
-  var tabs = Array.prototype.slice.call(nav.querySelectorAll('.atab'));
-  if (!panels.length) return;
-
-  var DEFAULT = 'nodes';
-
-  // hash 既可能是页签名（#nodes），也可能是某个区块的 id（#profile 是两者同名，
-  // #hubgeo / #theme-fetch / #account / #hostself 则是区块 id）。
-  // 两种都认，免得老链接失效。
-  function tabOfHash() {
-    var h = (location.hash || '').replace(/^#/, '');
-    if (!h) return DEFAULT;
-    for (var i = 0; i < tabs.length; i++) {
-      if (tabs[i].dataset.goto === h) return h;
-    }
-    var el = document.getElementById(h);
-    if (el && el.dataset && el.dataset.atab) return el.dataset.atab;
-    return DEFAULT;
-  }
-
-  function show(tab, scrollTo) {
-    panels.forEach(function (pn) {
-      pn.classList.toggle('on', pn.dataset.atab === tab);
-    });
-    tabs.forEach(function (t) {
-      t.classList.toggle('on', t.dataset.goto === tab);
-      t.setAttribute('aria-selected', t.dataset.goto === tab ? 'true' : 'false');
-    });
-    if (scrollTo) {
-      var el = document.getElementById(scrollTo);
-      if (el && el.dataset.atab === tab) el.scrollIntoView({ block: 'start' });
-    }
-  }
-
-  function apply() {
-    var h = (location.hash || '').replace(/^#/, '');
-    var tab = tabOfHash();
-    show(tab, h);
-  }
-
-  tabs.forEach(function (t) {
-    t.addEventListener('click', function () {
-      // 换页签时清掉 hash 里的区块锚点，免得刚切过来又被滚走
-      history.replaceState(null, '', '#' + t.dataset.goto);
-      show(t.dataset.goto, null);
-    });
-  });
-
-  window.addEventListener('hashchange', apply);
-  apply();
 })();

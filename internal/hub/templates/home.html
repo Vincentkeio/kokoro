@@ -356,16 +356,17 @@
                 title="踩一下（再点取消）">
           <span class="i">▼</span><span class="n" data-vote-down>{{.VoteDown}}</span>
         </button>
-        {{/* 文章数 / 评论数点了从右侧滑出抽屉看内容。
-             做成 <button> 而不是 <a>：它不跳页，只是打开一个面板 ——
-             用链接会让"在新标签页打开""复制链接"这些菜单项变得没意义。 */}}
-        <button type="button" class="act stat link" data-drawer="{{.Slug}}" data-tab="articles"
+        {{/* 文章 / 评论入口。做成按钮而不是裸数字 ——
+             裸数字看不出能点。也做成 <button> 而不是 <a>：
+             它不跳页，只是打开一个侧边栏，用 <a> 会让"在新标签页打开"
+             "复制链接"这些菜单项变得没意义。 */}}
+        <button type="button" class="act btnlike" data-drawer="{{.Slug}}" data-panel="art"
                 title="看这台机器的文章">
-          <span class="i">📄</span><span class="n">{{.Articles}}</span>
+          📄 {{if .Articles}}文章 {{.Articles}}{{else}}无文章{{end}}
         </button>
-        <button type="button" class="act stat link" data-drawer="{{.Slug}}" data-tab="comments"
+        <button type="button" class="act btnlike" data-drawer="{{.Slug}}" data-panel="cmt"
                 title="看这台机器的评论">
-          <span class="i">💬</span><span class="n">{{.Comments}}</span>
+          💬 评论 {{.Comments}}
         </button>
         {{/* 查看详情并进这一行、靠最右 —— 原来它自己占一行，
            整张卡片白白多出一行高度。
@@ -392,26 +393,35 @@
   {{end}}
 
 
-{{/* ---- 侧边抽屉 ----
-    卡片上点「📄 N」或「💬 N」从右侧滑出来看文章 / 评论。
+{{/* ---- 两个独立的侧边栏 ----
+     文章、评论**各一个**，不共用一个带页签的面板：
+     点「文章」出来的是文章栏，点「评论」出来的是评论栏。
 
-     数据是按需拉的（/n/<slug>/articles.json、/n/<slug>/comments.json），
-     不预先塞进首页 —— 评论可能上百条，而绝大多数访客根本不点。
-     整页只有这一个抽屉，内容由 JS 按 slug 填。 ---- */}}
+     默认都是收起的（hidden），点了才从右侧滑出来；
+     点遮罩、按 ESC、点 ✕ 都能收起 —— 不做常驻侧栏，
+     那会一直占着一块地方，而访客大多数时候不看这两样。
+
+     数据按需拉（/n/<slug>/articles.json、comments.json），
+     不预先塞进首页 —— 评论可能上百条，而绝大多数访客根本不点。 ---- */}}
 <div class="drawer-scrim" id="drawer-scrim" hidden></div>
-<aside class="drawer" id="drawer" hidden aria-hidden="true" role="dialog" aria-label="详情">
+
+<aside class="drawer" id="d-art" hidden aria-hidden="true" role="dialog" aria-label="文章">
   <header class="drawer-head">
-    <div class="drawer-tabs">
-      <button type="button" class="dtab" data-dtab="articles">📄 文章</button>
-      <button type="button" class="dtab" data-dtab="comments">💬 评论</button>
-    </div>
-    {{/* 管理员的入口。访客看不到这两个按钮 ——
-         后端也会再判一次权限，前端只是决定显不显示。 */}}
-    <span class="drawer-admin" id="drawer-admin"></span>
-    <button type="button" class="drawer-x" id="drawer-close" aria-label="关闭">✕</button>
+    <b class="drawer-title">文章</b>
+    <span class="drawer-admin" id="d-art-admin"></span>
+    <button type="button" class="drawer-x" data-dclose aria-label="关闭">✕</button>
   </header>
-  <div class="drawer-body" id="drawer-body"></div>
-  <footer class="drawer-foot" id="drawer-foot"></footer>
+  <div class="drawer-body" id="d-art-body"></div>
+</aside>
+
+<aside class="drawer" id="d-cmt" hidden aria-hidden="true" role="dialog" aria-label="评论">
+  <header class="drawer-head">
+    <b class="drawer-title">评论</b>
+    <span class="drawer-admin" id="d-cmt-admin"></span>
+    <button type="button" class="drawer-x" data-dclose aria-label="关闭">✕</button>
+  </header>
+  <div class="drawer-body" id="d-cmt-body"></div>
+  <footer class="drawer-foot" id="d-cmt-foot"></footer>
 </aside>
 
 </main>
@@ -427,7 +437,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=50"></script>
+<script src="/static/app.js?v=51"></script>
 </body>
 </html>
 {{end}}

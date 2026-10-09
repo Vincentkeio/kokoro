@@ -113,3 +113,48 @@ func TestAdminOldAnchorsStillWork(t *testing.T) {
 		t.Error("后台没引 app.js，页签切换不会工作")
 	}
 }
+
+// TestAdminNodeTableColumnsMatch 节点表格的表头列数要和单元格数一致。
+//
+// 删列时最容易出的错：删了 <th> 忘了删 <td>（或反过来），
+// 表格就会整行错位 —— 而且看起来像"数据串了"，很难往删列上想。
+func TestAdminNodeTableColumnsMatch(t *testing.T) {
+	h, st := newTestHub(t)
+	mkNode(t, st, "东京 zouter", "JP", "日本 · 东京", "")
+	body := adminBody(t, h, st)
+
+	// 找到节点表格
+	i := strings.Index(body, "节点（")
+	if i < 0 {
+		t.Fatal("没找到节点区块")
+	}
+	seg := body[i:]
+
+	head := regexp.MustCompile(`<thead><tr>(.*?)</tr></thead>`).FindStringSubmatch(seg)
+	if head == nil {
+		t.Fatal("节点表格没有表头")
+	}
+	ths := regexp.MustCompile(`<th>`).FindAllString(head[1], -1)
+	t.Logf("表头 %d 列", len(ths))
+
+	// 数全部单元格 —— 它必须是列数的整数倍。
+	// （不逐行匹配：tbody 里的内容跨行，单行正则会漏掉。）
+	rows := seg[strings.Index(seg, "<tbody>"):]
+	if j := strings.Index(rows, "</tbody>"); j > 0 {
+		rows = rows[:j]
+	}
+	tds := regexp.MustCompile(`<td>`).FindAllString(rows, -1)
+	if len(tds) == 0 {
+		t.Fatal("节点表格没有数据行")
+	}
+	if len(tds)%len(ths) != 0 {
+		t.Errorf("表头 %d 列，但单元格总数 %d 不是它的整数倍 —— 表格会错位",
+			len(ths), len(tds))
+	}
+	t.Logf("单元格 %d 个 = %d 行", len(tds), len(tds)/len(ths))
+
+	// 「可见性」下拉已删（展示开关本身就管公开/不公开）
+	if strings.Contains(seg, `name="visibility"`) {
+		t.Error("节点表里不该再有可见性下拉 —— 展示开关已经管了这件事")
+	}
+}

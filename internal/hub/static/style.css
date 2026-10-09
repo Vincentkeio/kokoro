@@ -1726,3 +1726,23 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
    藏起来的表单不该能被 Tab 键聚焦。 */
 .admin > .panel[data-atab] { display: none; }
 .admin > .panel[data-atab].on { display: block; }
+
+/* ---- 侧边栏的新样式（页签版改成了两个独立面板）---- */
+.drawer-title { font-size: 14px; color: var(--fg-strong); }
+
+/* 卡片上的「文章 / 评论」入口：做成**看得出来能点**的小按钮。
+   裸数字（📄 0）看不出能点，试过，反馈是不明显。 */
+.card .act.btnlike {
+  cursor: pointer;
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  background: var(--panel);
+  font-size: 11.5px; padding: 3px 9px;
+  /* 与右侧的「查看详情」拉开，不要挤在一起 */
+  color: var(--muted);
+}
+.card .act.btnlike:hover {
+  border-color: var(--accent); color: var(--accent);
+}
+/* 没有文章时弱化一档，但**仍然可点** —— 点开能看到"无文章"，
+   顺便给管理员一个"写文章"的入口。 */
+.card .act.btnlike:has(+ .act.btnlike) { margin-right: 2px; }

@@ -77,7 +77,7 @@
     <table class="tbl">
       {{/* 没有「架构」列：所有节点都是 amd64，一列全一样的值没有信息量。
          地区/国家码也不在这里编辑 —— 那是 agent 上报的（见 hostFactsOf）。 */}}
-      <thead><tr><th>名称</th><th>地区</th><th>状态</th><th>展示</th><th>可见性</th><th>操作</th></tr></thead>
+      <thead><tr><th>名称</th><th>地区</th><th>状态</th><th>展示</th><th>操作</th></tr></thead>
       <tbody>
       {{range .Nodes}}
       <tr>
@@ -107,22 +107,12 @@
             </button>
           </form>
         </td>
-        <td>
-          <form class="row" method="post" action="/admin/nodes">
-            <input type="hidden" name="action" value="visibility">
-            <input type="hidden" name="id" value="{{.ID}}">
-            <select name="visibility">
-              <option value="public" {{if eq .Visibility "public"}}selected{{end}}>公开</option>
-              {{/* ⚠️ 原名「不索引」，但它跟搜索引擎**没关系**：
-                     unlisted 的实际行为是"首页不列出，但知道链接的人
-                     仍能打开详情页"（private 才是详情页也 404）。
-                     名字起错了，改成能自解释的。 */}}
-              <option value="unlisted" {{if eq .Visibility "unlisted"}}selected{{end}}>不公开列出</option>
-              <option value="private" {{if eq .Visibility "private"}}selected{{end}}>私有</option>
-            </select>
-            <button class="btn small" type="submit">保存</button>
-          </form>
-        </td>
+        {{/* 「可见性」下拉已删 —— boss 说得对：上面那个「展示」开关
+             本身就起到公开 / 不公开的作用，两套控件管同一件事
+             只会让人犹豫该动哪个，而且它们必然有不一致的时候。
+
+             那个开关的语义是 public <-> private（详情页也跟着 404）。
+             model 里还留着 unlisted，但界面上不再有入口。 */}}
         <td>
           <form method="post" action="/admin/nodes" onsubmit="return confirm('确认删除该节点？')">
             <input type="hidden" name="action" value="delete">
@@ -371,7 +361,7 @@
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=50"></script>
+<script src="/static/app.js?v=51"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {
