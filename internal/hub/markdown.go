@@ -22,7 +22,29 @@ var (
 	reItalic     = regexp.MustCompile(`(^|[^*])\*([^*\n]+)\*`)
 	reLink       = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+)\)`)
 	reListItem   = regexp.MustCompile(`^(\s*)([-*+]|\d+[.)])\s+(.*)$`)
+
+	// reSpan 匹配 `{标签}文字{/标签}` —— 字体字号用的。
+	//
+	// Markdown 没有设置字体/字号的语法，而本渲染器**不放行内联 HTML**
+	// （那是它的安全底线）。所以另开一套**白名单标签**：
+	// 只有下面 mdSpans 里列出的几个名字会被翻译成 `<span class>`，
+	// 其它一律原样输出成文字。
+	// ⚠️ 不能用 `\{/\1\}` —— Go 的 regexp 是 RE2，**不支持反向引用**，
+	// MustCompile 会直接 panic（整个包起不来）。改成把开闭标签各捕获一次，
+	// 在代码里比对是否一致。
+	reSpan = regexp.MustCompile(`\{([a-z]+)\}(.*?)\{/([a-z]+)\}`)
 )
+
+// mdSpans 是字体/字号的白名单：标签名 → CSS 类名。
+//
+// ⚠️ 这里是**封闭集合**：值写死成类名，用户没法塞进 style/onclick/url。
+// 想加新样式只能在源码里加，这样"样式"永远不可能变成"脚本"。
+var mdSpans = map[string]string{
+	"lg":    "md-lg",    // 大号
+	"sm":    "md-sm",    // 小号
+	"serif": "md-serif", // 衬线体
+	"mono":  "md-mono",  // 等宽体
+}
 
 // RenderMarkdown 把一小段 Markdown 渲染成安全的 HTML 片段。
 func RenderMarkdown(src string) template.HTML {
@@ -151,6 +173,22 @@ func RenderMarkdown(src string) template.HTML {
 func inlineHTML(s string) string {
 	s = html.EscapeString(s)
 	// 行内代码优先：代码块里的 * 不该被当成强调
+	// 字体/字号：先处理，免得里面的 * 被后面的强调规则吃掉
+	s = reSpan.ReplaceAllStringFunc(s, func(m string) string {
+		sub := reSpan.FindStringSubmatch(m)
+		if len(sub) < 4 {
+			return m
+		}
+		// 开闭标签必须一致（RE2 没有反向引用，只能在这里比）
+		if sub[1] != sub[3] {
+			return m
+		}
+		cls, ok := mdSpans[sub[1]]
+		if !ok {
+			return m // 不在白名单里 → 原样当文字，绝不解释
+		}
+		return `<span class="` + cls + `">` + sub[2] + `</span>`
+	})
 	s = reInlineCode.ReplaceAllString(s, "<code>$1</code>")
 	s = reBold.ReplaceAllString(s, "<strong>$1</strong>")
 	s = reItalic.ReplaceAllString(s, "$1<em>$2</em>")

@@ -1894,3 +1894,27 @@ details.adv .hint { line-height: 1.7; }
   padding: 5px 9px; }
 .mdpreview hr { border: 0; border-top: var(--kokoro-border-width, 1px) solid var(--line); }
 .mdpreview .empty { color: var(--muted); }
+
+/* ---- 正文里的字体 / 字号（编辑器「字体」按钮产出的）---- */
+.md-lg { font-size: 1.18em; }
+.md-sm { font-size: .88em; opacity: .92; }
+.md-serif { font-family: Georgia, "Songti SC", "SimSun", serif; }
+.md-mono { font-family: var(--mono, ui-monospace, Menlo, Consolas, monospace); }
+
+/* ---- 工具条里的图标与下拉菜单 ---- */
+.mdbtn svg { display: block; }
+.mdmenu {
+  position: absolute; z-index: 20; margin-top: 2px;
+  min-width: 9rem; padding: 4px;
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+}
+.mdmenu-i {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 5px 8px; background: none; border: 0; border-radius: var(--r-sm);
+  cursor: pointer; font: inherit; font-size: 13px; color: var(--fg); text-align: left;
+}
+.mdmenu-i:hover { background: var(--sunken); }
+.mdmenu-i > span { width: 1.4em; text-align: center; flex: none; }

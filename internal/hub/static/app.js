@@ -762,6 +762,7 @@ function renderRateChart(svg, pts) {
   bar.addEventListener('click', function (e) {
     var b = e.target.closest('.mdbtn');
     if (!b) return;
+    if (b.hasAttribute('data-md-font')) return toggleFontMenu();
     if (b.hasAttribute('data-md-preview')) return togglePreview();
     if (b.hasAttribute('data-md-link')) return addLink();
     if (b.hasAttribute('data-md-img')) return file.click();
@@ -802,6 +803,35 @@ function renderRateChart(svg, pts) {
         say('预览中（再点一次回到编辑）');
       })
       .catch(function () { say('预览失败', 'err'); });
+  }
+
+  // ---- 字体 / 字号 ----
+  var fmenu = document.getElementById('md-fontmenu');
+
+  function toggleFontMenu() {
+    if (!fmenu) return;
+    fmenu.hidden = !fmenu.hidden;
+    if (!fmenu.hidden) {
+      // 菜单浮在按钮下方：按钮父级要能定位
+      var r = bar.getBoundingClientRect();
+      fmenu.style.top = (window.scrollY + r.bottom + 2) + 'px';
+      fmenu.style.left = (window.scrollX + r.left) + 'px';
+    }
+  }
+
+  if (fmenu) {
+    fmenu.addEventListener('click', function (e) {
+      var i = e.target.closest('.mdmenu-i');
+      if (!i) return;
+      wrap(i.dataset.md);
+      fmenu.hidden = true;
+    });
+    // 点到别处就收起
+    document.addEventListener('click', function (e) {
+      if (fmenu.hidden) return;
+      if (e.target.closest('#md-fontmenu') || e.target.closest('[data-md-font]')) return;
+      fmenu.hidden = true;
+    });
   }
 
   function addLink() {
