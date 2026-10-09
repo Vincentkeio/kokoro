@@ -2010,8 +2010,18 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 			if prof == nil {
 				prof = &model.NodeProfile{NodeID: node.ID}
 			}
+			// 到期日就是 YYYY-MM-DD（<input type="date"> 给什么存什么）
 			prof.ExpireAt = clampRunes(strings.TrimSpace(r.FormValue("expire_at")), 32)
-			prof.Price = clampRunes(strings.TrimSpace(r.FormValue("price")), 64)
+			// 费用从弹窗的三件套拼出来。三件套都没带时（老表单）
+			// 退回读 price 原值，别把已填的清掉。
+			if _, has := r.Form["price_amount"]; has {
+				prof.Price = priceFromForm(
+					r.FormValue("price_amount"),
+					r.FormValue("price_cur"),
+					r.FormValue("price_per"))
+			} else if _, has := r.Form["price"]; has {
+				prof.Price = clampRunes(strings.TrimSpace(r.FormValue("price")), 64)
+			}
 			prof.UpdatedAt = time.Now().UnixMilli()
 			if err := h.store.SaveProfile(prof); err != nil {
 				log.Printf("[hub] 保存到期/费用失败 node=%s: %v", node.ID, err)

@@ -90,10 +90,26 @@
             {{/* 到期日 / 续费费用。这两样跟"这台机器"绑定，
                  和名字、标签是同一类"站长填的资料"，所以放同一栏。
                  （原来藏在文章编辑器里，找起来别扭。） */}}
-            <input name="expire_at" value="{{with index $.Profiles .ID}}{{.ExpireAt}}{{end}}"
-                   placeholder="到期日" style="width:8rem" title="格式随意，如 2027-03-15；留空表示不限">
-            <input name="price" value="{{with index $.Profiles .ID}}{{.Price}}{{end}}"
-                   placeholder="续费费用" style="width:7rem" title="如 100 元/年；留空表示不填">
+            {{/* 到期日：用原生日期选择器。库里存的就是 YYYY-MM-DD，
+                 和 <input type="date"> 需要的格式一致，不用转。 */}}
+            <input name="expire_at" type="date"
+                   value="{{with index $.Profiles .ID}}{{.ExpireAt}}{{end}}"
+                   style="width:9.5rem" title="到期日；留空表示不限">
+            {{/* 续费费用：不在这里直接填，点按钮弹窗里选
+                 （金额 + 货币 + 周期）—— 三个部分挤在表格一行里放不下。 */}}
+            {{$pr := index $.Profiles .ID}}
+            <input type="hidden" name="price"
+                   value="{{with $pr}}{{.Price}}{{end}}" data-price-input>
+            <input type="hidden" name="price_amount" value="" data-price-amount>
+            <input type="hidden" name="price_cur" value="" data-price-cur>
+            <input type="hidden" name="price_per" value="" data-price-per>
+            <button type="button" class="btn small ghost" data-price-open
+                    data-amount="{{with $pr}}{{priceAmount .Price}}{{end}}"
+                    data-cur="{{with $pr}}{{priceCur .Price}}{{end}}"
+                    data-per="{{with $pr}}{{pricePer .Price}}{{end}}"
+                    title="设置续费费用">
+              {{with $pr}}{{if .Price}}{{priceText .Price}}{{else}}设费用{{end}}{{else}}设费用{{end}}
+            </button>
             {{/* ⚠️ 这里**没有**地区和国家的输入框：
                  它们由 agent 上报（从所在网络问 Cloudflare 得到），
                  手填多半会填错 —— 而且 IP 归属库对 VPS 本来就不准
@@ -364,11 +380,36 @@
     <h3>主机远程下发（规划中）</h3>
     <p class="hint">下一步会支持在这里填 IP 与 SSH 凭据，由主机直接把 agent 装到子机上，不用去小鸡上敲命令。</p>
   </section>
+{{/* ---- 续费费用弹窗 ----
+     金额 + 货币 + 周期三件套。做成弹窗而不是三个输入框排在表格里：
+     一行已经放了名字/标签/到期日，再塞三个控件会把表格挤爆。 ---- */}}
+<dialog class="price-dlg" id="price-dlg">
+  <form method="dialog" class="price-form" id="price-form">
+    <h3>续费费用</h3>
+    <p class="hint">留空金额表示不填。</p>
+    <div class="row">
+      <input type="text" id="pd-amount" inputmode="decimal" placeholder="金额，如 100"
+             style="width:9rem" aria-label="金额">
+      <select id="pd-cur" aria-label="货币">
+        {{range priceCursList}}<option value="{{.Code}}">{{.Symbol}} {{.Label}}</option>{{end}}
+      </select>
+      <select id="pd-per" aria-label="周期">
+        {{range pricePersList}}<option value="{{.Code}}">{{.Label}}</option>{{end}}
+      </select>
+    </div>
+    <p class="price-preview" id="pd-preview"></p>
+    <div class="row price-actions">
+      <button type="button" class="btn ghost" id="pd-clear">清除</button>
+      <button type="button" class="btn" id="pd-ok">确定</button>
+    </div>
+  </form>
+</dialog>
+
 </main>
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=54"></script>
+<script src="/static/app.js?v=55"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

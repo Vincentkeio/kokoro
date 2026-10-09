@@ -35,7 +35,7 @@
       {{if .Node.Kernel}}· {{.Node.Kernel}}{{end}}
       {{if .Node.Arch}}· {{.Node.Arch}}{{end}}
     </p>
-    {{if .Profile.Price}}<p class="price">价格：{{.Profile.Price}}{{if .Profile.ExpireAt}} · 到期 {{.Profile.ExpireAt}}{{end}}</p>{{end}}
+    {{if .Profile.Price}}<p class="price">价格：{{priceText .Profile.Price}}{{if .Profile.ExpireAt}} · 到期 {{.Profile.ExpireAt}}{{end}}</p>{{end}}
 
     <div class="votebar">
       <button type="button" class="vote up {{if .Votes.MineUp}}on{{end}}"
@@ -245,7 +245,7 @@
 window.__POINTS__ = [{{range .Points}}{"t":{{.Ts}},"cpu":{{.CPU}},"mu":{{.MemUsed}},"up":{{.NetUp}},"down":{{.NetDown}}},{{end}}];
 window.__SLUG__ = {{.Node.Slug | js}};
 </script>
-<script src="/static/app.js?v=54"></script>
+<script src="/static/app.js?v=55"></script>
 </body>
 </html>
 {{end}}

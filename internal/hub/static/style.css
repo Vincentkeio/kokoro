@@ -1772,3 +1772,29 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   color: var(--faint);
   border-style: dashed;
 }
+
+/* ---- 续费费用弹窗 ---- */
+.price-dlg {
+  width: min(26rem, 92vw);
+  padding: 0; border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); background: var(--panel); color: var(--fg);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, .28);
+}
+.price-dlg::backdrop { background: rgba(0, 0, 0, .35); }
+.price-form { padding: var(--s5); display: flex; flex-direction: column; gap: var(--s3); }
+.price-form h3 { margin: 0; font-size: 15px; }
+.price-form .row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+.price-form select, .price-form input {
+  font: inherit; padding: 6px 9px;
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel); color: var(--fg);
+}
+/* 实时预览拼出来的那句话 —— 免得选完才知道长什么样 */
+.price-preview {
+  margin: 0; padding: var(--s2) var(--s3);
+  background: var(--sunken); border-radius: var(--r-sm);
+  font-size: 13px; font-family: var(--mono); color: var(--muted);
+}
+.price-preview:empty { display: none; }
+.price-actions { justify-content: flex-end; margin-top: var(--s2); }
