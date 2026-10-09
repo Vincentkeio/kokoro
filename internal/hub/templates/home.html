@@ -350,6 +350,30 @@
       {{end}}
       </div>
 
+      {{/* ---- 三网延迟 + 流量 ----
+           紧凑两行，固定高度（跟 IP 卡一个道理：没数据的卡片
+           不该比有数据的矮一截，否则网格参差）。
+
+           三网延迟是**最近一轮探测**的结果，跟详情页口径一致；
+           流量是估算值（窗口平均速率 × 时长），不是精确计数。 ---- */}}
+      {{if or .Net3 .TodayUp .MonthUp}}
+      <div class="netcard">
+        {{if .Net3}}
+        <p class="netrow">
+          <span class="nl">三网延迟</span>
+          {{range .Net3}}<span class="nv {{if .Level}}lv-{{.Level}}{{end}}">{{.Label}} {{.MS}}ms</span>{{end}}
+        </p>
+        {{end}}
+        {{if or .TodayUp .MonthUp}}
+        <p class="netrow">
+          <span class="nl">流量</span>
+          {{if .TodayUp}}<span class="nv" title="本日估算">今 ↑{{.TodayUp}} ↓{{.TodayDown}}</span>{{end}}
+          {{if .MonthUp}}<span class="nv" title="本月估算">月 ↑{{.MonthUp}} ↓{{.MonthDown}}</span>{{end}}
+        </p>
+        {{end}}
+      </div>
+      {{end}}
+
       {{/* 互动条：赞 / 踩 / 文章数 / 评论数。
            投票走 /n/<slug>/vote（和详情页同一套接口、同一个访客 cookie），
            所以这里投完，进详情页看到的也是同一票。 */}}
@@ -445,7 +469,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=57"></script>
+<script src="/static/app.js?v=58"></script>
 </body>
 </html>
 {{end}}

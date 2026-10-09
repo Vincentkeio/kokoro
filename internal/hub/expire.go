@@ -65,3 +65,34 @@ func expireTag(raw string) (text, level string) {
 		return fmt.Sprintf("剩 %d 天", days), "exp-ok"
 	}
 }
+
+// ---- 三网延迟与流量的展示辅助 ----
+
+// netLevel 给延迟分档。**判据与占用率相反**：延迟越低越好。
+//
+// 阈值取自国内到机房的常见体感：<80ms 顺畅，80~160 能用，>160 明显卡。
+func netLevel(ms float64) string {
+	switch {
+	case ms <= 0:
+		return ""
+	case ms < 80:
+		return "ok"
+	case ms < 160:
+		return "warn"
+	default:
+		return "bad"
+	}
+}
+
+// dayStartMS / monthStartMS 给"本日"和"本月"的起点。
+//
+// ⚠️ 用**本机时区**的零点，不是 UTC —— 站长看的是自己那边的"今天"。
+func dayStartMS(now time.Time) int64 {
+	y, m, d := now.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, now.Location()).UnixMilli()
+}
+
+func monthStartMS(now time.Time) int64 {
+	y, m, _ := now.Date()
+	return time.Date(y, m, 1, 0, 0, 0, 0, now.Location()).UnixMilli()
+}

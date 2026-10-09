@@ -1805,3 +1805,20 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 /* 置顶那一行加个左侧色条，扫一眼就知道哪条被顶上去了 */
 .pinned-row > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .pin-badge { margin-right: 4px; }
+
+/* ---- 三网延迟 + 流量（卡片上的紧凑两行）---- */
+.card .netcard {
+  display: flex; flex-direction: column; gap: 3px;
+  margin: var(--s2) 0 0;
+  padding: var(--s2) var(--s3);
+  background: var(--sunken); border-radius: var(--r-sm);
+  font-size: 12px; line-height: 1.5;
+}
+.card .netrow { margin: 0; display: flex; flex-wrap: wrap; gap: 3px 10px; align-items: baseline; }
+/* 「三网延迟」「流量」这两个前缀固定宽度，两行的值才能对齐 */
+.card .netrow .nl { flex: none; width: 4.2em; color: var(--muted); }
+.card .netrow .nv { color: var(--fg); font-family: var(--mono); white-space: nowrap; }
+/* 延迟越低越好 —— 这里 green=快、red=慢，跟占用率条的方向相反 */
+.card .netrow .nv.lv-ok   { color: var(--ok); }
+.card .netrow .nv.lv-warn { color: var(--warn); }
+.card .netrow .nv.lv-bad  { color: var(--bad); }

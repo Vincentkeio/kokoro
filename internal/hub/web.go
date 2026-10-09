@@ -295,6 +295,16 @@ type nodeCard struct {
 	// 空串表示没填到期日 —— 那就不显示这个标签（没填 ≠ 永久）。
 	ExpireText string
 	ExpireLv   string
+
+	// ---- 三网延迟 + 流量（卡片上那两行）----
+	//
+	// 三网延迟用**最近一轮探测**的结果，跟详情页口径一致 ——
+	// 不一致的话卡片写 45ms、点进去写 82ms，站长会以为有一个是错的。
+	Net3 []net3Cell
+	// 流量是**估算值**（窗口平均速率 × 时长），不是精确计数。
+	// 卡片上够用；要精确得另存累计差值。
+	TodayUp, TodayDown string
+	MonthUp, MonthDown string
 	// Specs 是卡片上那行静态规格（CPU 型号/内存/Swap/虚拟化/加速）
 	Specs []specItem
 
@@ -598,6 +608,13 @@ type pointAlias struct {
 }
 
 // modComment 是后台审核列表里的一行：评论 + 它属于哪台小鸡。
+// net3Cell 是卡片上「三网延迟」里的一格。
+type net3Cell struct {
+	Label string // 电信 / 联通 / 移动
+	MS    float64
+	Level string // "" | ok | warn | bad —— 越低越好，判据与占用率相反
+}
+
 // nodeComments 是一台机器下的全部评论，按小鸡分组用。
 type nodeComments struct {
 	NodeID   string
@@ -716,6 +733,13 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 	nodes, err := h.store.ListNodes(false)
 	// 到期倒计时要用名片里的 expire_at。**一次批量查**，别在循环里逐个查。
 	profiles, _ := h.store.ProfilesByNode()
+
+	// 卡片上的三网延迟与流量。同样是批量 —— 一屏几十张卡，
+	// 每张各查一次就是几百次往返。
+	netq, _ := h.store.NetQByNode()
+	now := time.Now()
+	today, _ := h.store.TrafficByNodeSince(dayStartMS(now))
+	month, _ := h.store.TrafficByNodeSince(monthStartMS(now))
 	if err != nil {
 		log.Printf("[hub] 读取节点失败: %v", err)
 		http.Error(w, "内部错误", http.StatusInternalServerError)
@@ -871,6 +895,28 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		// （没填 ≠ 永久，站长可能只是还没填）。
 		if pr := profiles[n.ID]; pr != nil {
 			c.ExpireText, c.ExpireLv = expireTag(pr.ExpireAt)
+		}
+
+		// 三网延迟：固定按 电信 → 联通 → 移动 排，缺哪个就少哪个
+		if lats := netq[n.ID]; len(lats) > 0 {
+			sort.SliceStable(lats, func(i, j int) bool {
+				return ispOrder(lats[i].ISP) < ispOrder(lats[j].ISP)
+			})
+			for _, l := range lats {
+				c.Net3 = append(c.Net3, net3Cell{
+					Label: ispLabel(l.ISP),
+					MS:    math.Round(l.Latency*10) / 10,
+					Level: netLevel(l.Latency),
+				})
+			}
+		}
+
+		// 流量：本日 / 本月。估算值，见 store.TrafficByNodeSince 的注释。
+		if t, ok := today[n.ID]; ok {
+			c.TodayUp, c.TodayDown = FmtBytes(t[0]), FmtBytes(t[1])
+		}
+		if t, ok := month[n.ID]; ok {
+			c.MonthUp, c.MonthDown = FmtBytes(t[0]), FmtBytes(t[1])
 		}
 		c.Lat, c.Lon, c.HasCoord = resolveCoord(n.Country, n.Region, n.City)
 		if n.Online {
