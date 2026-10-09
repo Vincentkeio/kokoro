@@ -1746,3 +1746,14 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 /* 没有文章时弱化一档，但**仍然可点** —— 点开能看到"无文章"，
    顺便给管理员一个"写文章"的入口。 */
 .card .act.btnlike:has(+ .act.btnlike) { margin-right: 2px; }
+
+/* ---- 系统图标 ----
+   fill 走 currentColor：跟着主题变色，深色主题下自动变亮，
+   不用为明暗各维护一套图标。 */
+.card .specs dd .osi {
+  width: 13px; height: 13px; flex: none;
+  fill: currentColor;
+  vertical-align: -2px;
+  margin-right: 4px;
+  opacity: .85;
+}

@@ -1579,3 +1579,32 @@ FROM metrics_5m WHERE bucket >= ?`, since).Scan(&upAvg, &downAvg, &n)
 	const bucketSec = 300.0 // 5 分钟窗口
 	return int64(upAvg * bucketSec), int64(downAvg * bucketSec), nil
 }
+
+// profileCols 是 node_profile 的列清单，供批量查询复用。
+const profileCols = `node_id, cover, summary, content_md, album, price, expire_at,
+specs, pv, uv, updated_at`
+
+// ProfilesByNode 一次性取回所有节点的名片，按 node_id 索引。
+//
+// 后台的节点表每行都要显示价格 / 到期日 —— 逐个查就是 N 次往返。
+func (s *Store) ProfilesByNode() (map[string]*model.NodeProfile, error) {
+	rows, err := s.db.Query(`SELECT ` + profileCols + ` FROM node_profile`)
+	if err != nil {
+		return nil, fmt.Errorf("查名片失败: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]*model.NodeProfile{}
+	for rows.Next() {
+		var (
+			p     model.NodeProfile
+			album string
+			specs string
+		)
+		if err := rows.Scan(&p.NodeID, &p.Cover, &p.Summary, &p.ContentMD, &album,
+			&p.Price, &p.ExpireAt, &specs, &p.PV, &p.UV, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out[p.NodeID] = &p
+	}
+	return out, rows.Err()
+}

@@ -365,6 +365,10 @@ type specItem struct {
 	// Wide 表示独占整行但**不高亮**。给 Swap 这种"不算标题、但太长"的值用：
 	// "104.0 MB / 1024.0 MB（10%）"塞半栏只会显示成"104.0 MB / 1024"。
 	Wide bool
+	// Icon 是值前面那个小图标的 SVG path 数据（目前只有「系统」用得到）。
+	// 传 path 而不是整段 <svg>：外壳在模板里现拼，颜色走 currentColor，
+	// 这样深色主题下自动变亮，不用维护两套图标。
+	Icon string
 }
 
 // nodeSpecs 组装卡片上那行静态规格。
@@ -420,7 +424,9 @@ func nodeSpecs(n model.Node, m *model.Metrics) []specItem {
 		add("磁盘", humanBytes(float64(n.DiskTotal)), "")
 	}
 	if n.OS != "" {
-		add("系统", n.OS, "")
+		// 系统名前面挂个发行版图标 —— 一眼能认出是哪家，
+		// 比读 "Debian GNU/Linux 13 (trixie)" 快得多。
+		out = append(out, specItem{Label: "系统", Value: n.OS, Icon: osIcon(n.OS)})
 	}
 	if n.Virt != "" {
 		add("虚拟化", virtLabel(n.Virt), "")
@@ -620,6 +626,12 @@ type adminData struct {
 	NotifySilent     bool
 	WebhookOn        bool
 	WebhookURL       string
+
+	// Profiles 是每台机器的名片（价格 / 到期日）。
+	//
+	// 放在这里而不是塞进 model.Node：那两样是"站长填的"，不是机器上报的，
+	// 本来就存在 node_profile 里。模板按节点 ID 取。
+	Profiles map[string]*model.NodeProfile
 
 	// ---- 面板主机自身（原来在 /dashboard 上，那个页面删掉后并到这儿）----
 	Host        *model.Metrics
@@ -1638,6 +1650,12 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		nodes = nil
 	}
+	// 每台机器的名片（价格 / 到期日）。一次批量查 ——
+	// 节点表里每行都要显示，逐个查就是 N 次往返。
+	profiles, err := h.store.ProfilesByNode()
+	if err != nil {
+		profiles = nil
+	}
 	tokens, err := h.ListInstallTokens()
 	if err != nil {
 		tokens = nil
@@ -1655,6 +1673,7 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 	data := adminData{
 		SiteName:    h.cfg.SiteName,
 		Nodes:       nodes,
+		Profiles:    profiles,
 		Tokens:      tokens,
 		HubURL:      hubURL,
 		CommentOn:   h.commentEnabled(),
@@ -1980,6 +1999,24 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 		// 实际上就是一律不动。
 		_ = r.FormValue("country")
 		_ = r.FormValue("region")
+
+		// 到期日 / 续费费用存在 node_profile 里（不是 nodes）——
+		// 它们是"站长填的资料"，不是机器上报的。
+		//
+		// ⚠️ 只在表单**真的带了这两个字段**时才写：这个 rename 分支
+		// 还被别处复用（比如只改个名字），无脑覆盖会把已填的抹掉。
+		if _, has := r.Form["expire_at"]; has {
+			prof, _ := h.store.GetProfile(node.ID)
+			if prof == nil {
+				prof = &model.NodeProfile{NodeID: node.ID}
+			}
+			prof.ExpireAt = clampRunes(strings.TrimSpace(r.FormValue("expire_at")), 32)
+			prof.Price = clampRunes(strings.TrimSpace(r.FormValue("price")), 64)
+			prof.UpdatedAt = time.Now().UnixMilli()
+			if err := h.store.SaveProfile(prof); err != nil {
+				log.Printf("[hub] 保存到期/费用失败 node=%s: %v", node.ID, err)
+			}
+		}
 		// 自定义标签：最多 8 个、每个最多 16 字。
 		// 只在表单真的带了 tags 字段时才覆盖——否则别处的 rename 调用
 		// （比如只改名字）会顺手把标签清空。

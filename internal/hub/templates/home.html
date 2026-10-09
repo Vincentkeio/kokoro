@@ -235,7 +235,7 @@
       <dl class="specs">
         {{range .Specs}}
         <div class="{{if .Full}}full {{end}}{{if .Wide}}wide {{end}}{{if .Level}}lv-{{.Level}}{{end}}">
-          <dt>{{.Label}}</dt><dd>{{.Value}}</dd>
+          <dt>{{.Label}}</dt><dd>{{if .Icon}}<svg class="osi" viewBox="0 0 24 24" aria-hidden="true"><path d="{{.Icon}}"/></svg>{{end}}{{.Value}}</dd>
         </div>
         {{end}}
       </dl>
@@ -437,7 +437,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=51"></script>
+<script src="/static/app.js?v=52"></script>
 </body>
 </html>
 {{end}}
