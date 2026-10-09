@@ -17,7 +17,12 @@ import (
 //
 // ⚠️ 必须带会话 —— 不带的话 handleAdmin 返回的是**登录页**，
 // 里面一个 panel 都没有，测试会以"面板数只有 0"这种很误导的形式红。
-func adminBody(t *testing.T, h *Hub, st *store.Store) string {
+// loginCookie 登录并返回会话 cookie。
+//
+// ⚠️ 需要鉴权的接口在测试里**必须带上它**。不带的话拿到的是 401，
+// 而很多断言（"拒绝非法输入"）会因为 401 而**碰巧成立** ——
+// 测试全绿，但被测的那段逻辑一行都没跑到。
+func loginCookie(t *testing.T, h *Hub, st *store.Store) *http.Cookie {
 	t.Helper()
 	if err := SetAdminCredentials(st, "boss", "s3cret-pass"); err != nil {
 		t.Fatalf("设置账号失败: %v", err)
@@ -31,9 +36,16 @@ func adminBody(t *testing.T, h *Hub, st *store.Store) string {
 	if len(cs) == 0 {
 		t.Fatal("登录没拿到会话 cookie")
 	}
-	req = httptest.NewRequest(http.MethodGet, "/admin", nil)
-	req.AddCookie(cs[0])
-	w = httptest.NewRecorder()
+	return cs[0]
+}
+
+// adminBody 登录后台并返回渲染出来的 HTML。
+func adminBody(t *testing.T, h *Hub, st *store.Store) string {
+	t.Helper()
+	sess := loginCookie(t, h, st)
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req.AddCookie(sess)
+	w := httptest.NewRecorder()
 	h.handleAdmin(w, req)
 	return w.Body.String()
 }

@@ -80,8 +80,38 @@
 
     <div>
       <label for="p-body">正文（Markdown）</label>
+
+      {{/* 工具栏是**自己写**的，不引 EasyMDE 那类库 ——
+           本站的约定是零 CDN、部署只有一个二进制，
+           为一个工具栏进几百 KB 依赖不值当。
+
+           每个按钮靠 data-md 带一段「包裹模板」：
+             data-md="**|**"   → 选中「abc」变成 **abc**
+             data-md="## |"    → 行首插入（光标处没选中内容时用）
+           锚点 | 表示光标落点。逻辑见 app.js 的 mdWrap。 */}}
+      <div class="mdbar" role="toolbar" aria-label="Markdown 工具栏">
+        <button type="button" class="mdbtn" data-md="**|**" title="加粗 Ctrl+B"><b>B</b></button>
+        <button type="button" class="mdbtn" data-md="*|*" title="斜体 Ctrl+I"><i>I</i></button>
+        <button type="button" class="mdbtn" data-md="~~|~~" title="删除线"><s>S</s></button>
+        <span class="mdsep"></span>
+        <button type="button" class="mdbtn" data-md="## |" title="二级标题">H2</button>
+        <button type="button" class="mdbtn" data-md="### |" title="三级标题">H3</button>
+        <span class="mdsep"></span>
+        <button type="button" class="mdbtn" data-md="- |" title="无序列表">☰</button>
+        <button type="button" class="mdbtn" data-md="1. |" title="有序列表">1.</button>
+        <button type="button" class="mdbtn" data-md="&gt; |" title="引用">&rdquo;</button>
+        <button type="button" class="mdbtn" data-md="`|`" title="行内代码">&lt;/&gt;</button>
+        <span class="mdsep"></span>
+        <button type="button" class="mdbtn" data-md-link title="插入链接 Ctrl+K">🔗</button>
+        <button type="button" class="mdbtn" data-md-img title="上传图片">🖼</button>
+        <button type="button" class="mdbtn" data-md="|---|" title="表格">▦</button>
+        <button type="button" class="mdbtn" data-md="\n---\n|" title="分隔线">―</button>
+        <span class="mdtip" id="md-tip"></span>
+      </div>
+
       <textarea id="p-body" class="body" name="content_md"
                 placeholder="# 标题&#10;&#10;正文…">{{.Profile.ContentMD}}</textarea>
+      <input type="file" id="md-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
     </div>
 
     <div class="post-row">
@@ -106,7 +136,7 @@
 
 </main>
 
-<script src="/static/app.js?v=60"></script>
+<script src="/static/app.js?v=61"></script>
 </body>
 </html>
 {{end}}

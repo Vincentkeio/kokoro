@@ -1819,3 +1819,24 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 .card .netrow .nv.lv-ok   { color: var(--ok); }
 .card .netrow .nv.lv-warn { color: var(--warn); }
 .card .netrow .nv.lv-bad  { color: var(--bad); }
+
+/* ---- Markdown 工具栏 ---- */
+.mdbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
+  padding: 4px 6px; margin-bottom: 6px;
+  background: var(--sunken); border-radius: var(--r-sm);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.mdbtn {
+  min-width: 28px; height: 26px; padding: 0 6px;
+  background: none; border: 0; border-radius: var(--r-sm);
+  cursor: pointer; font: inherit; font-size: 13px; line-height: 1;
+  color: var(--fg); display: inline-flex; align-items: center; justify-content: center;
+}
+.mdbtn:hover { background: var(--line); }
+.mdbtn:active { transform: translateY(1px); }
+.mdsep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; }
+/* 提示（比如"图片传好了"/"上传中"）跟在按钮后面，不额外占一行 */
+.mdtip { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+.mdtip.err { color: var(--bad); }
+.mdtip.ok { color: var(--ok); }

@@ -694,3 +694,156 @@ function renderRateChart(svg, pts) {
   forever.addEventListener('change', sync);
   sync();
 })();
+
+/* ---- Markdown 工具栏 ----
+   按钮靠 data-md 带一段「包裹模板」，`|` 是光标落点。 */
+(function () {
+  var ta = document.getElementById('p-body');
+  var bar = document.querySelector('.mdbar');
+  var tip = document.getElementById('md-tip');
+  var file = document.getElementById('md-file');
+  if (!ta || !bar) return;
+
+  var tipTimer = null;
+  function say(text, kind) {
+    tip.textContent = text || '';
+    tip.className = 'mdtip' + (kind ? ' ' + kind : '');
+    if (tipTimer) clearTimeout(tipTimer);
+    if (text) tipTimer = setTimeout(function () { tip.textContent = ''; }, 4000);
+  }
+
+  // ⚠️ 用 execCommand('insertText') 而不是直接改 ta.value：
+  // 直接赋值会把浏览器的**撤销历史整个清掉**，站长按 Ctrl+Z 一下
+  // 就退回"打开页面时"的状态，刚刚写的一大段全没了。
+  // execCommand 虽然被标成 deprecated，但它是唯一能保住撤销栈的办法。
+  function insert(text) {
+    ta.focus();
+    var ok = false;
+    try { ok = document.execCommand('insertText', false, text); } catch (e) { ok = false; }
+    if (ok) return;
+    // 退路：老浏览器不支持时手工改，至少功能能用（撤销会丢）
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    ta.value = ta.value.slice(0, s) + text + ta.value.slice(e);
+    ta.selectionStart = ta.selectionEnd = s + text.length;
+  }
+
+  // 把模板套在选中内容上。tpl 里的 | 是光标落点。
+  function wrap(tpl) {
+    var at = tpl.indexOf('|');
+    var head = at < 0 ? tpl : tpl.slice(0, at);
+    var tail = at < 0 ? '' : tpl.slice(at + 1);
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    var sel = ta.value.slice(s, e);
+
+    // 行首类模板（## / - / > ）：光标在行中间时先补个换行，
+    // 否则会接在上一句后面变成正文的一部分。
+    var isLinePrefix = /^(#{1,6} |[-*] |\d+\. |> )/.test(head);
+    if (isLinePrefix && s > 0 && ta.value[s - 1] !== '\n') {
+      head = '\n' + head;
+    }
+    // 选中的是多行时，每行都加前缀
+    if (isLinePrefix && sel.indexOf('\n') >= 0) {
+      sel = sel.split('\n').map(function (l) { return head.replace(/^\n/, '') + l; }).join('\n');
+      head = '';
+    }
+    insert(head + sel + tail);
+    if (!sel) {
+      // 没选中就给个占位词，选着它方便直接改写
+      var ph = isLinePrefix ? '文字' : (head === '**' ? '粗体'
+        : head === '*' ? '斜体' : head === '~~' ? '删除线'
+        : head === '`' ? '代码' : '');
+      if (ph) {
+        insert(ph);
+        ta.setSelectionRange(ta.selectionStart - ph.length, ta.selectionStart);
+      }
+    }
+  }
+
+  bar.addEventListener('click', function (e) {
+    var b = e.target.closest('.mdbtn');
+    if (!b) return;
+    if (b.hasAttribute('data-md-link')) return addLink();
+    if (b.hasAttribute('data-md-img')) return file.click();
+    if (b.hasAttribute('data-md')) wrap(b.dataset.md);
+  });
+
+  function addLink() {
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    var text = ta.value.slice(s, e) || '链接文字';
+    var url = window.prompt('链接地址（https://…）', 'https://');
+    if (!url) return;
+    // 只接受 http(s)：javascript: 之类的伪协议插进 Markdown 里，
+    // 渲染出来就是个能点的 XSS 入口。
+    if (!/^https?:\/\//i.test(url.trim())) {
+      say('只接受 http / https 开头的地址', 'err');
+      return;
+    }
+    insert('[' + text + '](' + url.trim() + ')');
+  }
+
+  // 粘贴图片：截图之后直接 Ctrl+V 是最顺手的流程，
+  // 比"先存到磁盘再点按钮选文件"少两步。
+  //
+  // ⚠️ 要在 paste 事件里**同步**把文件取出来。clipboardData 在事件
+  // 处理返回之后就失效了，异步里再读会拿到空值 ——
+  // 表现成"粘贴没反应"，而且不报错。
+  ta.addEventListener('paste', function (e) {
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    var img = null;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image/') === 0) {
+        img = items[i].getAsFile();
+        break;
+      }
+    }
+    if (!img) return;      // 普通文本粘贴，交给浏览器自己处理
+    e.preventDefault();    // 别让浏览器把图片当二进制塞进文本框
+    upload(img);
+  });
+
+  // 也支持直接往编辑器里**拖文件**
+  ta.addEventListener('drop', function (e) {
+    var dt = e.dataTransfer;
+    if (!dt || !dt.files || !dt.files.length) return;
+    var f = dt.files[0];
+    if (!f.type || f.type.indexOf('image/') !== 0) return;
+    e.preventDefault();
+    upload(f);
+  });
+
+  // upload 是上传 + 插入的共用逻辑，按钮/粘贴/拖拽三条路都走它。
+  function upload(f) {
+    if (f.size > 2 << 20) { say('图片不能超过 2MB', 'err'); return; }
+    say('上传中…');
+    var fd = new FormData();
+    fd.append('file', f);
+    fetch('/admin/upload', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.d.ok) {
+          say((res.d && res.d.error) || '上传失败', 'err');
+          return;
+        }
+        // 粘贴的图没有文件名，给个通用的 alt
+        var alt = (f.name || '图片').replace(/\.[^.]+$/, '') || '图片';
+        insert('![' + alt + '](' + res.d.url + ')');
+        say('已插入 ' + (res.d.size / 1024).toFixed(0) + ' KB', 'ok');
+      })
+      .catch(function () { say('上传失败', 'err'); });
+  }
+
+  file.addEventListener('change', function () {
+    var f = file.files && file.files[0];
+    file.value = '';           // 允许连续上传同一个文件
+    if (f) upload(f);
+  });
+
+  // 快捷键。只在正文框里生效，别影响别处的输入框。
+  ta.addEventListener('keydown', function (e) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    var k = e.key.toLowerCase();
+    if (k === 'b') { e.preventDefault(); wrap('**|**'); }
+    else if (k === 'i') { e.preventDefault(); wrap('*|*'); }
+    else if (k === 'k') { e.preventDefault(); addLink(); }
+  });
+})();

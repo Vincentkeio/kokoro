@@ -210,6 +210,9 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/n/", h.handleNodePage)
 	h.mux.HandleFunc("/i/", h.handleInstallScript)
 	h.mux.HandleFunc("/avatar", h.handleAvatar)
+	// 文章配图：/img/<哈希>。<name> 只允许「32 位十六进制 + 已知后缀」，
+	// 见 handleImage 里的形状校验 —— 不接受用户给的文件名。
+	h.mux.HandleFunc("/img/", h.handleImage)
 
 	// 主题：导出与切换。三个读取端点都公开（主题就是给人抄的）：
 	// /theme.json 给清单，/theme-bundle/<id> 给完整包，/theme-export/<id> 给下载。
@@ -233,6 +236,9 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/admin/themes", h.adminOnlyPage(h.handleAdminThemes))
 	h.mux.HandleFunc("/admin/post", h.adminOnlyPage(h.handleAdminPost))
 	h.mux.HandleFunc("/admin/tasks", h.adminOnlyPage(h.handleAdminTasks))
+	// 文章配图上传。返回 JSON（不是整页跳转）—— 前端在编辑器里异步传，
+	// 整页刷新会把还没保存的正文冲掉。
+	h.adminOnly("/admin/upload", h.handleUpload)
 	h.adminOnly("/admin/themes/import", h.handleThemeImport)
 	h.adminOnly("/admin/themes/grab", h.handleThemeGrab)
 	h.adminOnly("/admin/themes/delete", h.handleThemeDelete)
