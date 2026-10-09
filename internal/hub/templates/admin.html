@@ -18,7 +18,23 @@
 </header>
 
 <main class="wrap admin">
-  <section class="panel">
+  {{/* ---- 选项卡 ----
+       后台原来 10 个区块一路往下堆，找一个设置要滚半天。
+       分组走 hash（#nodes / #sys / …），所以老链接仍然能用：
+       比如「去填名片」指到 #profile，会直接打开"名片"那一页。
+
+       ⚠️ 默认页签是「节点」—— 那是站长最常来的地方。
+       安装令牌虽然排在最前面（新站第一步要用），但日常不常看。 ---- */}}
+  <nav class="atabs" role="tablist">
+    <button type="button" class="atab" data-goto="nodes">节点</button>
+    <button type="button" class="atab" data-goto="comments">互动{{if .PendingN}}<span class="abadge">{{.PendingN}}</span>{{end}}</button>
+    <button type="button" class="atab" data-goto="profile">名片</button>
+    <button type="button" class="atab" data-goto="alerts">告警</button>
+    <button type="button" class="atab" data-goto="site">站点</button>
+    <button type="button" class="atab" data-goto="sys">系统</button>
+  </nav>
+
+  <section class="panel" data-atab="sys">
     <h3>一键安装令牌</h3>
     <p class="hint">生成一条命令，在小鸡上粘贴执行即可接入。令牌可设有效期与使用次数。</p>
     <form class="row" method="post" action="/admin/tokens">
@@ -55,7 +71,7 @@
     {{end}}
   </section>
 
-  <section class="panel">
+  <section class="panel" data-atab="nodes">
     <h3>节点（{{len .Nodes}}）</h3>
     {{if .Nodes}}
     <table class="tbl">
@@ -126,7 +142,7 @@
     {{end}}
   </section>
 
-  <section class="panel" id="alerts">
+  <section class="panel" id="alerts" data-atab="alerts">
     <h3>告警与通知</h3>
 
     <h4 class="sub">Telegram Bot</h4>
@@ -221,7 +237,7 @@
   {{/* 面板自身所在机器的资源占用。
        原来只在 /dashboard 上有，那个页面删掉之后就并在后台这里 ——
        "面板会不会先撑不住"是站长该关心的事，但跟访客无关。 */}}
-  <section class="panel" id="hostself">
+  <section class="panel" id="hostself" data-atab="sys">
     <h3>面板主机自身</h3>
     <p class="hint" style="margin-top:0">Hub 所在机器的资源占用。面板跑不动了，所有小鸡都会显示离线。</p>
     {{if .Host}}
@@ -248,7 +264,7 @@
     {{end}}
   </section>
 
-  <section class="panel" id="hubgeo">
+  <section class="panel" id="hubgeo" data-atab="site">
     <h3>面板位置</h3>
     <form class="row" method="post" action="/admin/settings">
       <label>纬度 <input name="hub_lat" value="{{.HubLat}}" placeholder="例如 34.05" style="width:8rem"></label>
@@ -259,7 +275,7 @@
     </form>
   </section>
 
-  <section class="panel" id="theme-fetch">
+  <section class="panel" id="theme-fetch" data-atab="site">
     <h3>主题获取出口</h3>
     <form class="row" method="post" action="/admin/settings">
       <label class="wide">允许抓回环的域名
@@ -273,7 +289,7 @@
     </form>
   </section>
 
-  <section class="panel" id="comments">
+  <section class="panel" id="comments" data-atab="comments">
     <h3>留言审核{{if .PendingN}} <small class="bad">{{.PendingN}} 条待处理</small>{{end}}</h3>
     <form class="row" method="post" action="/admin/settings">
       <label class="chk"><input type="checkbox" name="comment_enabled" value="1" {{if .CommentOn}}checked{{end}}> 开放留言</label>
@@ -318,7 +334,7 @@
     {{end}}
   </section>
 
-  <section class="panel" id="account">
+  <section class="panel" id="account" data-atab="sys">
     <h3>管理员账号</h3>
     {{if .AccountMsg}}<p class="{{if .AccountBad}}bad{{else}}ok{{end}}">{{.AccountMsg}}</p>{{end}}
     <form class="row" method="post" action="/admin/account">
@@ -331,7 +347,7 @@
     <p class="hint">改密码会把所有已登录的会话全部注销，需要重新登录。密码用 PBKDF2-HMAC-SHA256 加盐存储（10 万次迭代），不存明文。</p>
   </section>
 
-  <section class="panel" id="profile">
+  <section class="panel" id="profile" data-atab="profile">
     <h3>站长名片</h3>
     <p class="hint">头像和签名会显示在首页顶部与每台小鸡的页面底部。头像支持 png / jpg / webp / gif，不超过 2MB。</p>
     <form class="row" method="post" action="/admin/profile" enctype="multipart/form-data">
@@ -347,11 +363,15 @@
     </p>{{end}}
   </section>
 
-  <section class="panel">
+  <section class="panel" data-atab="nodes">
     <h3>主机远程下发（规划中）</h3>
     <p class="hint">下一步会支持在这里填 IP 与 SSH 凭据，由主机直接把 agent 装到子机上，不用去小鸡上敲命令。</p>
   </section>
 </main>
+{{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
+     以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
+     表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
+<script src="/static/app.js?v=50"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

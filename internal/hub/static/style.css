@@ -1695,3 +1695,34 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 
 /* 抽屉页签的计数角标 */
 .dtab .cnt { opacity: .7; font-size: 11px; }
+
+/* ---- 后台选项卡 ----
+   10 个板块一路往下堆，找设置要滚半天。 */
+.atabs {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin: 0 0 var(--s4);
+  padding: 4px;
+  background: var(--sunken);
+  border-radius: var(--r);
+}
+.atab {
+  position: relative;
+  background: none; border: 0; cursor: pointer;
+  padding: 7px 14px; border-radius: var(--r-sm);
+  font: inherit; font-size: 13.5px; color: var(--muted);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.atab:hover { color: var(--fg); }
+.atab.on {
+  background: var(--panel); color: var(--fg-strong); font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+}
+.atab .abadge {
+  display: inline-block; margin-left: 5px; padding: 0 5px;
+  border-radius: 999px; background: var(--bad); color: #fff;
+  font-size: 10.5px; font-weight: 600; line-height: 16px; vertical-align: 1px;
+}
+/* 非当前选项卡的区块整块藏掉。用 display:none 而不是 visibility ——
+   藏起来的表单不该能被 Tab 键聚焦。 */
+.admin > .panel[data-atab] { display: none; }
+.admin > .panel[data-atab].on { display: block; }

@@ -618,3 +618,63 @@ function renderRateChart(svg, pts) {
     if (e.key === 'Escape' && !dlg.hidden) close();
   });
 })();
+
+/* ---- 后台选项卡 ----
+   走 location.hash，所以老链接（#profile / #comments …）仍然能直达某一页。
+   ⚠️ 直接用 hidden 属性而不是 class：这些面板里有表单，
+   藏起来的那些不该能被 Tab 键聚焦到。 */
+(function () {
+  var nav = document.querySelector('.atabs');
+  if (!nav) return;
+  var panels = Array.prototype.slice.call(
+    document.querySelectorAll('.admin > .panel[data-atab]'));
+  var tabs = Array.prototype.slice.call(nav.querySelectorAll('.atab'));
+  if (!panels.length) return;
+
+  var DEFAULT = 'nodes';
+
+  // hash 既可能是页签名（#nodes），也可能是某个区块的 id（#profile 是两者同名，
+  // #hubgeo / #theme-fetch / #account / #hostself 则是区块 id）。
+  // 两种都认，免得老链接失效。
+  function tabOfHash() {
+    var h = (location.hash || '').replace(/^#/, '');
+    if (!h) return DEFAULT;
+    for (var i = 0; i < tabs.length; i++) {
+      if (tabs[i].dataset.goto === h) return h;
+    }
+    var el = document.getElementById(h);
+    if (el && el.dataset && el.dataset.atab) return el.dataset.atab;
+    return DEFAULT;
+  }
+
+  function show(tab, scrollTo) {
+    panels.forEach(function (pn) {
+      pn.classList.toggle('on', pn.dataset.atab === tab);
+    });
+    tabs.forEach(function (t) {
+      t.classList.toggle('on', t.dataset.goto === tab);
+      t.setAttribute('aria-selected', t.dataset.goto === tab ? 'true' : 'false');
+    });
+    if (scrollTo) {
+      var el = document.getElementById(scrollTo);
+      if (el && el.dataset.atab === tab) el.scrollIntoView({ block: 'start' });
+    }
+  }
+
+  function apply() {
+    var h = (location.hash || '').replace(/^#/, '');
+    var tab = tabOfHash();
+    show(tab, h);
+  }
+
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      // 换页签时清掉 hash 里的区块锚点，免得刚切过来又被滚走
+      history.replaceState(null, '', '#' + t.dataset.goto);
+      show(t.dataset.goto, null);
+    });
+  });
+
+  window.addEventListener('hashchange', apply);
+  apply();
+})();
