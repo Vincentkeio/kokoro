@@ -45,6 +45,16 @@ type HostFacts struct {
 	CPUCores int    `json:"cpu_cores,omitempty"`
 	TCPCC    string `json:"tcp_cc,omitempty"`
 	TCPQdisc string `json:"tcp_qdisc,omitempty"`
+	// Country / Region 是 agent **从自己所在的网络**探出来的位置。
+	//
+	// 为什么不由 Hub 按 IP 反查：IP 归属库对 VPS 不准。实测这 5 台里
+	// 就有两台会被判错 —— zouter 的 IP 是美国段但机器在东京，
+	// ByteVirt 的 IP 也是美国段但机器在新加坡。
+	// agent 问 Cloudflare 的 cdn-cgi/trace，那玩意是按真实网络路径判的。
+	//
+	// 只在**探到值**时才带 —— 探不到（没网/被墙）就留空，Hub 侧不动原值。
+	Country string `json:"country,omitempty"`
+	Region  string `json:"region,omitempty"`
 	// LocalIPs 只用于判 NAT，Hub 侧不存、不显示。
 	LocalIPs []string `json:"local_ips,omitempty"`
 }

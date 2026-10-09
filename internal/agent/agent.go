@@ -624,6 +624,9 @@ func hostInfo() hostFacts {
 // 只在启动时调一次（主机名/CPU/虚拟化这些开机后不会变）。
 func hostFactsOf() *model.HostFacts {
 	f := hostInfo()
+	// 位置探测走网络请求，比读 /proc 慢得多，所以**只在第一次**探，
+	// 结果缓存在 geoOnce 里 —— 机器不会跑来跑去。
+	country, region := geoOnce()
 	return &model.HostFacts{
 		Virt:     f.virt,
 		CPUModel: f.cpuModel,
@@ -631,6 +634,8 @@ func hostFactsOf() *model.HostFacts {
 		TCPCC:    f.tcpCC,
 		TCPQdisc: f.tcpQdisc,
 		LocalIPs: f.localIPs,
+		Country:  country,
+		Region:   region,
 	}
 }
 
@@ -653,6 +658,8 @@ func sameFacts(a, b *model.HostFacts) bool {
 		a.CPUCores == b.CPUCores &&
 		a.TCPCC == b.TCPCC &&
 		a.TCPQdisc == b.TCPQdisc &&
+		a.Country == b.Country &&
+		a.Region == b.Region &&
 		sameIPSet(a.LocalIPs, b.LocalIPs)
 }
 

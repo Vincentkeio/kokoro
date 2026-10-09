@@ -59,7 +59,9 @@
     <h3>节点（{{len .Nodes}}）</h3>
     {{if .Nodes}}
     <table class="tbl">
-      <thead><tr><th>名称</th><th>地区</th><th>架构</th><th>状态</th><th>展示</th><th>可见性</th><th>操作</th></tr></thead>
+      {{/* 没有「架构」列：所有节点都是 amd64，一列全一样的值没有信息量。
+         地区/国家码也不在这里编辑 —— 那是 agent 上报的（见 hostFactsOf）。 */}}
+      <thead><tr><th>名称</th><th>地区</th><th>状态</th><th>展示</th><th>可见性</th><th>操作</th></tr></thead>
       <tbody>
       {{range .Nodes}}
       <tr>
@@ -68,14 +70,15 @@
             <input type="hidden" name="action" value="rename">
             <input type="hidden" name="id" value="{{.ID}}">
             <input name="name" value="{{.Name}}" style="width:11rem" title="小鸡名称">
-            <input name="region" value="{{.Region}}" placeholder="地区" style="width:8rem" title="地区，会直接显示在列表上">
-            <input name="country" value="{{.Country}}" placeholder="国家码" list="cc-list" style="width:6rem" title="填 US / JP 或「美国」「日本」，用来显示国旗">
             <input name="tags" value="{{joinTags .Tags}}" placeholder="标签（逗号分隔）" style="width:11rem" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 8 个">
+            {{/* ⚠️ 这里**没有**地区和国家的输入框：
+                 它们由 agent 上报（从所在网络问 Cloudflare 得到），
+                 手填多半会填错 —— 而且 IP 归属库对 VPS 本来就不准
+                 （zouter 的 IP 是美国段、实际在东京）。 */}}
             <button class="btn small" type="submit">保存</button>
           </form>
         </td>
         <td>{{if .Region}}{{.Region}}{{else}}{{.Country}}{{end}}</td>
-        <td>{{.Arch}}</td>
         <td>{{if .Online}}<span class="ok">在线</span>{{else}}<span class="bad">离线</span>{{end}}</td>
         <td>
           {{$shown := ne .Visibility "private"}}
@@ -94,7 +97,11 @@
             <input type="hidden" name="id" value="{{.ID}}">
             <select name="visibility">
               <option value="public" {{if eq .Visibility "public"}}selected{{end}}>公开</option>
-              <option value="unlisted" {{if eq .Visibility "unlisted"}}selected{{end}}>不索引</option>
+              {{/* ⚠️ 原名「不索引」，但它跟搜索引擎**没关系**：
+                     unlisted 的实际行为是"首页不列出，但知道链接的人
+                     仍能打开详情页"（private 才是详情页也 404）。
+                     名字起错了，改成能自解释的。 */}}
+              <option value="unlisted" {{if eq .Visibility "unlisted"}}selected{{end}}>不公开列出</option>
               <option value="private" {{if eq .Visibility "private"}}selected{{end}}>私有</option>
             </select>
             <button class="btn small" type="submit">保存</button>
@@ -118,10 +125,6 @@
     <p class="empty">还没有节点接入。</p>
     {{end}}
   </section>
-
-  <datalist id="cc-list">
-    {{range .CC}}<option value="{{.Code}}">{{.Label}}</option>{{end}}
-  </datalist>
 
   <section class="panel" id="alerts">
     <h3>告警与通知</h3>

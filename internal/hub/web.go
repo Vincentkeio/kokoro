@@ -1956,21 +1956,19 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 		if name := strings.TrimSpace(r.FormValue("name")); name != "" {
 			node.Name = name
 		}
-		// 国家/地区：可填 ISO 代码（US / JP）也可填中文国名（美国），
-		// 归一成两位代码存库，前端才画得出国旗。留空表示不显示国旗。
-		if _, has := r.Form["country"]; has {
-			raw := strings.TrimSpace(r.FormValue("country"))
-			if raw == "" {
-				node.Country = ""
-			} else if code := flags.Normalize(raw); code != "" {
-				node.Country = code
-			} else {
-				node.Country = clampRunes(raw, 16) // 认不出来就原样存，至少不丢输入
-			}
-		}
-		if _, has := r.Form["region"]; has {
-			node.Region = clampRunes(strings.TrimSpace(r.FormValue("region")), 32)
-		}
+		// ⚠️ **国家 / 地区不在这里改**（boss 要求）。
+		// 它们由 agent 上报 —— agent 从自己所在的网络问 Cloudflare
+		// 的 cdn-cgi/trace，拿 loc（国家）和 colo（最近数据中心 → 城市）。
+		//
+		// 为什么不用 IP 归属库：对 VPS 不准。实测这 5 台里就有两台会被判错
+		// ——zouter 的 IP 是美国段但机器在东京，ByteVirt 的 IP 也是美国段
+		// 但机器在新加坡。而 Cloudflare 是按**真实网络路径**判的。
+		//
+		// 表单里已经没有这两个输入框了；这里保留读取是为了兼容老表单
+		// （万一有人用旧页面提交），但**只接受空值以外的忽略** ——
+		// 实际上就是一律不动。
+		_ = r.FormValue("country")
+		_ = r.FormValue("region")
 		// 自定义标签：最多 8 个、每个最多 16 字。
 		// 只在表单真的带了 tags 字段时才覆盖——否则别处的 rename 调用
 		// （比如只改名字）会顺手把标签清空。

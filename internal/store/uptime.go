@@ -177,7 +177,7 @@ func dayPct(dateKey string, samples int64, perBucket, tzOffsetMin int, sinceMS i
 	return pct
 }
 
-// UpdateNodeFacts 更新节点的静态信息（虚拟化 / CPU / 加速 / NAT）。
+// UpdateNodeFacts 更新节点的静态信息（虚拟化 / CPU / 加速 / NAT / 国家地区）。
 //
 // 为什么单独一个方法而不是走 UpdateNode：UpdateNode 会覆盖一大堆字段
 // （名字、坐标、标签…），而上报里只有静态信息 —— 用整条更新会把
@@ -192,13 +192,16 @@ func (s *Store) UpdateNodeFacts(nodeID string, f *model.HostFacts, nat bool) err
 	// 先读当前值，一样就不写
 	var cur struct {
 		virt, cc, qdisc, cpu string
+		country, region      string
 		cores                int
 		nat                  int
 	}
 	err := s.db.QueryRow(
 		`SELECT virt, IFNULL(tcp_cc,''), IFNULL(tcp_qdisc,''), IFNULL(cpu_model,''),
-		        IFNULL(cpu_cores,0), IFNULL(nat,0) FROM nodes WHERE id = ?`, nodeID).
-		Scan(&cur.virt, &cur.cc, &cur.qdisc, &cur.cpu, &cur.cores, &cur.nat)
+		        IFNULL(cpu_cores,0), IFNULL(nat,0),
+		        IFNULL(country,''), IFNULL(region,'') FROM nodes WHERE id = ?`, nodeID).
+		Scan(&cur.virt, &cur.cc, &cur.qdisc, &cur.cpu, &cur.cores, &cur.nat,
+			&cur.country, &cur.region)
 	if err != nil {
 		return err // 节点不存在就算了
 	}
@@ -206,13 +209,30 @@ func (s *Store) UpdateNodeFacts(nodeID string, f *model.HostFacts, nat bool) err
 	if nat {
 		natInt = 1
 	}
+
+	// ⚠️ 位置**只在探到值时才覆盖**。
+	//
+	// agent 那边探测可能失败（没网、Cloudflare 被墙），那时 country/region
+	// 是空串。无脑覆盖会把已经有的位置抹成空 —— 表现成"地区突然变未知"，
+	// 而且下次探成功之前一直是空的。
+	country, region := cur.country, cur.region
+	if f.Country != "" {
+		country = f.Country
+	}
+	if f.Region != "" {
+		region = f.Region
+	}
+
 	if cur.virt == f.Virt && cur.cc == f.TCPCC && cur.qdisc == f.TCPQdisc &&
-		cur.cpu == f.CPUModel && cur.cores == f.CPUCores && cur.nat == natInt {
+		cur.cpu == f.CPUModel && cur.cores == f.CPUCores && cur.nat == natInt &&
+		cur.country == country && cur.region == region {
 		return nil // 一模一样，不写
 	}
 	_, err = s.db.Exec(`UPDATE nodes SET
-virt = ?, tcp_cc = ?, tcp_qdisc = ?, cpu_model = ?, cpu_cores = ?, nat = ?
+virt = ?, tcp_cc = ?, tcp_qdisc = ?, cpu_model = ?, cpu_cores = ?, nat = ?,
+country = ?, region = ?
 WHERE id = ?`,
-		f.Virt, f.TCPCC, f.TCPQdisc, f.CPUModel, f.CPUCores, natInt, nodeID)
+		f.Virt, f.TCPCC, f.TCPQdisc, f.CPUModel, f.CPUCores, natInt,
+		country, region, nodeID)
 	return err
 }
