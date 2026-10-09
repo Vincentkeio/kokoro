@@ -243,7 +243,7 @@
       <dl class="specs">
         {{range .Specs}}
         <div class="{{if .Full}}full {{end}}{{if .Wide}}wide {{end}}{{if .Level}}lv-{{.Level}}{{end}}">
-          <dt>{{.Label}}</dt><dd>{{if .Icon}}<svg class="osi" viewBox="0 0 24 24" aria-hidden="true"><path d="{{.Icon}}"/></svg>{{end}}{{.Value}}</dd>
+          <dt>{{.Label}}</dt><dd{{if .Tip}} title="{{.Tip}}"{{end}}>{{if .Icon}}<svg class="osi" viewBox="0 0 24 24" aria-hidden="true"><path d="{{.Icon}}"/></svg>{{end}}{{.Value}}</dd>
         </div>
         {{end}}
       </dl>

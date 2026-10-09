@@ -374,6 +374,9 @@ type specItem struct {
 	// 传 path 而不是整段 <svg>：外壳在模板里现拼，颜色走 currentColor，
 	// 这样深色主题下自动变亮，不用维护两套图标。
 	Icon string
+	// Tip 是悬停提示。给那些"卡片上放不下、但丢掉又可惜"的解释用 ——
+	// 比如 NAT 的完整含义。**卡片上先求短，长解释挪到悬停**。
+	Tip string
 }
 
 // nodeSpecs 组装卡片上那行静态规格。
@@ -385,6 +388,9 @@ type specItem struct {
 // 不摆一个空值占位置。
 func nodeSpecs(n model.Node, m *model.Metrics) []specItem {
 	var out []specItem
+	addTip := func(label, value, level, tip string) {
+		out = append(out, specItem{Label: label, Value: value, Level: level, Tip: tip})
+	}
 	add := func(label, value, level string) {
 		if strings.TrimSpace(value) != "" {
 			out = append(out, specItem{Label: label, Value: value, Level: level})
@@ -437,7 +443,11 @@ func nodeSpecs(n model.Node, m *model.Metrics) []specItem {
 		add("虚拟化", virtLabel(n.Virt), "")
 	}
 	if n.NAT {
-		add("网络", "NAT（共享公网 IP）", "warn")
+		// 卡片上只写「NAT」。原来写的是「NAT（共享公网 IP）」——
+		// 塞在指标格子里太长，会把那一行撑变形；
+		// 而且能看懂 NAT 的人不需要解释，看不懂的人看了括号也不明白。
+		// 悬停时用 title 给完整解释（模板里那个 specItem.Tip 已经有了）。
+		addTip("网络", "NAT", "warn", "NAT：共享公网 IP")
 	}
 	// TCP 加速：BBR 是 VPS 圈最常被问的一项
 	if n.TCPCC != "" {
