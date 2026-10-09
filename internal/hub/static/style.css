@@ -1609,3 +1609,89 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   overflow-wrap: anywhere;
 }
 .kv-grid b small { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+/* ---- IP 卡：固定两行高 ----
+   有检测结果和没检测结果占同样大小，卡片网格才不会参差。 */
+.card .ipcard {
+  /* 两行的固定高度（行高 1.5 × 12.5px × 2 + 内边距） */
+  min-height: 3.9rem;
+  display: flex; flex-direction: column; justify-content: center;
+  position: relative;
+}
+.card .ip-empty {
+  margin: 0; padding: var(--s2) var(--s3);
+  background: var(--sunken); border-radius: var(--r-sm);
+  font-size: 12.5px; line-height: 1.5; color: var(--faint);
+  text-align: center;
+}
+
+/* ---- 侧边抽屉 ---- */
+.drawer-scrim {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(0, 0, 0, .38);
+  animation: dfade .18s var(--ease);
+}
+@keyframes dfade { from { opacity: 0 } to { opacity: 1 } }
+
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 61;
+  width: min(30rem, 92vw);
+  display: flex; flex-direction: column;
+  background: var(--panel);
+  border-left: var(--kokoro-border-width, 1px) solid var(--line);
+  box-shadow: -18px 0 48px rgba(0, 0, 0, .22);
+  animation: dslide .22s var(--ease);
+}
+@keyframes dslide { from { transform: translateX(100%) } to { transform: translateX(0) } }
+/* 关的时候往右滑回去 —— 直接 hidden 会"啪"地消失，很突兀 */
+.drawer.closing { animation: dslide .18s var(--ease) reverse forwards; }
+.drawer-scrim.closing { animation: dfade .18s var(--ease) reverse forwards; }
+
+.drawer-head {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  flex: none;
+}
+.drawer-tabs { display: flex; gap: 4px; }
+.dtab {
+  background: none; border: 0; cursor: pointer;
+  padding: 5px 10px; border-radius: var(--r-sm);
+  font: inherit; font-size: 13px; color: var(--muted);
+}
+.dtab:hover { background: var(--sunken); color: var(--fg); }
+.dtab.on { background: var(--accent); color: #fff; }
+.drawer-admin { margin-left: auto; display: flex; gap: 6px; }
+.drawer-x {
+  flex: none; background: none; border: 0; cursor: pointer;
+  font-size: 15px; line-height: 1; color: var(--muted);
+  padding: 4px 6px; border-radius: var(--r-sm);
+}
+.drawer-x:hover { background: var(--sunken); color: var(--fg); }
+
+.drawer-body { flex: 1; overflow-y: auto; padding: var(--s4); }
+.drawer-foot {
+  flex: none; padding: var(--s3) var(--s4);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  display: flex; align-items: center; gap: var(--s3);
+}
+.drawer-foot:empty { display: none; }
+.drawer-foot .hint { margin: 0; }
+
+/* 抽屉里的评论：默认只显示第一条，其余折叠 */
+.dcmt + .dcmt { border-top: var(--kokoro-border-width, 1px) solid var(--line); }
+.dcmt { padding: var(--s3) 0; }
+.dcmt-head { display: flex; align-items: baseline; gap: var(--s2); font-size: 12px; color: var(--muted); }
+.dcmt-head b { color: var(--fg-strong); font-size: 13px; }
+.dcmt-body { margin-top: 4px; font-size: 13px; line-height: 1.6; }
+.d-expand {
+  display: block; width: 100%; margin-top: var(--s3);
+  background: var(--sunken); border: 0; border-radius: var(--r-sm);
+  padding: var(--s3); cursor: pointer; font: inherit;
+  font-size: 12.5px; color: var(--accent);
+}
+.d-expand:hover { background: var(--line); }
+.d-empty { margin: 0; font-size: 13px; color: var(--muted); text-align: center; padding: var(--s7) 0; }
+
+/* 抽屉页签的计数角标 */
+.dtab .cnt { opacity: .7; font-size: 11px; }

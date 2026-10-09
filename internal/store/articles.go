@@ -57,7 +57,36 @@ func (s *Store) GetArticle(id string) (*model.Article, error) {
 	return a, err
 }
 
+// SaveArticle 保存这台机器的文章 —— **一台只有一篇**。
+//
+// boss 定的产品形态：一只小鸡一篇文章，评论评的就是这只小鸡。
+// 所以这里是 upsert 语义：已经有了就改那一篇，没有才建。
+//
+// ⚠️ 用这个方法而不是 CreateArticle，是为了让"只有一篇"成为**数据层的
+// 保证**，而不是靠调用方自觉。以后有人不小心调了两次 CreateArticle，
+// 就会出现两台机器各显示半篇文章的糊涂账。
+func (s *Store) SaveArticle(a *model.Article) error {
+	if a == nil || a.NodeID == "" {
+		return errors.New("文章缺少所属节点")
+	}
+	existing, err := s.ListArticles(a.NodeID)
+	if err != nil {
+		return err
+	}
+	if len(existing) > 0 {
+		a.ID = existing[0].ID
+		if a.CreatedAt == 0 {
+			a.CreatedAt = existing[0].CreatedAt
+		}
+		return s.UpdateArticle(a)
+	}
+	return s.CreateArticle(a)
+}
+
 // CreateArticle 新增一篇。
+//
+// ⚠️ 正常情况下请用 SaveArticle —— 这个站在"一台只有一篇"的前提下
+// 是低层接口，直接调它可能造出第二篇。
 func (s *Store) CreateArticle(a *model.Article) error {
 	if a == nil {
 		return errors.New("文章为空")

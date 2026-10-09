@@ -451,3 +451,170 @@ function renderRateChart(svg, pts) {
     renderRateChart(svg, pts);
   });
 })();
+
+/* ---- 侧边抽屉：文章 / 评论 ----
+   卡片上点「📄 N」「💬 N」从右侧滑出。
+   数据按需拉（articles.json / comments.json），不预先塞进首页。 */
+(function () {
+  var dlg = document.getElementById('drawer');
+  var scrim = document.getElementById('drawer-scrim');
+  var body = document.getElementById('drawer-body');
+  var foot = document.getElementById('drawer-foot');
+  var adminBox = document.getElementById('drawer-admin');
+  if (!dlg || !scrim || !body) return;
+
+  var state = { slug: '', tab: 'articles', page: 1, data: null, expanded: false };
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function open(slug, tab) {
+    state.slug = slug;
+    state.tab = tab || 'articles';
+    state.page = 1;
+    state.expanded = false;
+    dlg.hidden = false;
+    scrim.hidden = false;
+    dlg.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';  // 抽屉开着时锁住背景滚动
+    renderTabs();
+    load();
+  }
+
+  function close() {
+    // 先播关闭动画再 hidden —— 直接 hidden 会"啪"地消失
+    dlg.classList.add('closing');
+    scrim.classList.add('closing');
+    setTimeout(function () {
+      dlg.hidden = true;
+      scrim.hidden = true;
+      dlg.classList.remove('closing');
+      scrim.classList.remove('closing');
+      dlg.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }, 180);
+  }
+
+  function renderTabs() {
+    document.querySelectorAll('.dtab').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.dtab === state.tab);
+    });
+  }
+
+  function load() {
+    body.innerHTML = '<p class="d-empty">加载中…</p>';
+    foot.innerHTML = '';
+    var url = '/n/' + encodeURIComponent(state.slug) + '/' + state.tab + '.json?page=' + state.page;
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) { body.innerHTML = '<p class="d-empty">加载失败</p>'; return; }
+        state.data = d;
+        renderAdmin(d);
+        if (state.tab === 'articles') renderArticles(d); else renderComments(d);
+      })
+      .catch(function () { body.innerHTML = '<p class="d-empty">加载失败</p>'; });
+  }
+
+  function renderAdmin(d) {
+    adminBox.innerHTML = '';
+    if (!d.is_admin) return;   // 访客不显示任何管理入口
+    if (state.tab === 'articles' && d.edit_url) {
+      var a = document.createElement('a');
+      a.className = 'btn small ghost';
+      a.href = d.edit_url;
+      a.textContent = d.total ? '编辑文章' : '写文章';
+      adminBox.appendChild(a);
+    } else if (state.tab === 'comments' && d.manage_url) {
+      var b = document.createElement('a');
+      b.className = 'btn small ghost';
+      b.href = d.manage_url;
+      b.textContent = '管理评论';
+      adminBox.appendChild(b);
+    }
+  }
+
+  function renderArticles(d) {
+    if (!d.articles || !d.articles.length) {
+      body.innerHTML = '<p class="d-empty">这台机器还没有文章。</p>';
+      return;
+    }
+    var a = d.articles[0];
+    // HTML 是服务端渲染好的 Markdown（已消毒），直接插入
+    body.innerHTML = '<article class="d-art">' +
+      '<h3>' + esc(a.title) + '</h3>' +
+      '<p class="d-when">' + esc(a.when) + '</p>' +
+      '<div class="md">' + a.html + '</div></article>';
+  }
+
+  function renderComments(d) {
+    if (!d.comments || !d.comments.length) {
+      body.innerHTML = '<p class="d-empty">还没有评论。</p>';
+      return;
+    }
+    // 默认只显示第一条，其余折叠 —— 评论区一展开就占满整屏，
+    // 访客多数只想扫一眼最新那条。
+    var show = state.expanded ? d.comments : d.comments.slice(0, 1);
+    var html = '';
+    show.forEach(function (c, i) {
+      html += '<div class="dcmt' + (i === 0 && !state.expanded ? '' : '') + '">' +
+        '<div class="dcmt-head"><b>' + esc(c.author) + '</b><span>' + esc(c.when) + '</span></div>' +
+        '<div class="dcmt-body">' + c.html + '</div></div>';
+    });
+    if (d.comments.length > 1) {
+      html += '<button type="button" class="d-expand" data-dexpand>' +
+        (state.expanded ? '收起评论' : '展开本页其余 ' + (d.comments.length - 1) + ' 条') +
+        '</button>';
+    }
+    body.innerHTML = html;
+    var ex = body.querySelector('[data-dexpand]');
+    if (ex) ex.addEventListener('click', function () {
+      state.expanded = !state.expanded;
+      renderComments(d);
+    });
+    renderFoot(d);
+  }
+
+  function renderFoot(d) {
+    foot.innerHTML = '';
+    if (state.tab !== 'comments' || !d.pages || d.pages <= 1) return;
+    var prev = document.createElement('button');
+    prev.type = 'button'; prev.className = 'btn small ghost'; prev.textContent = '上一页';
+    prev.disabled = state.page <= 1;
+    prev.addEventListener('click', function () {
+      if (state.page > 1) { state.page--; state.expanded = false; load(); }
+    });
+    var next = document.createElement('button');
+    next.type = 'button'; next.className = 'btn small ghost'; next.textContent = '下一页';
+    next.disabled = state.page >= d.pages;
+    next.addEventListener('click', function () {
+      if (state.page < d.pages) { state.page++; state.expanded = false; load(); }
+    });
+    var info = document.createElement('span');
+    info.className = 'hint';
+    info.textContent = '第 ' + state.page + ' / ' + d.pages + ' 页 · 共 ' + d.total + ' 条';
+    foot.appendChild(prev); foot.appendChild(next); foot.appendChild(info);
+  }
+
+  // 卡片上的计数按钮
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-drawer]');
+    if (btn) { open(btn.dataset.drawer, btn.dataset.tab); return; }
+    var tab = e.target.closest('.dtab');
+    if (tab && !dlg.hidden) {
+      state.tab = tab.dataset.dtab;
+      state.page = 1;
+      state.expanded = false;
+      renderTabs();
+      load();
+    }
+  });
+
+  document.getElementById('drawer-close').addEventListener('click', close);
+  scrim.addEventListener('click', close);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !dlg.hidden) close();
+  });
+})();

@@ -1127,7 +1127,18 @@ func (h *Hub) handleNodePage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// 抽屉的数据接口：卡片上点「文章 3」「评论 5」时按需拉。
+	// 做成 JSON 而不是整页渲染，是因为评论可能上百条 ——
+	// 全塞进首页会让首页体积翻好几倍，而绝大多数访客根本不点开。
 	if len(parts) > 1 {
+		switch parts[1] {
+		case "articles.json":
+			h.handleNodeArticles(w, r, slug)
+			return
+		case "comments.json":
+			h.handleNodeComments(w, r, slug)
+			return
+		}
 		// 认不出的子路径直接回详情页，别渲染成 404
 		http.Redirect(w, r, "/n/"+slug, http.StatusFound)
 		return

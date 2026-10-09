@@ -91,24 +91,22 @@ func (h *Hub) savePost(node *model.Node, form url.Values) {
 		log.Printf("[hub] 保存名片失败 node=%s: %v", node.ID, err)
 	}
 
-	// 正文写透到文章表 —— 详情页读的是这里。
+	// 正文写透到文章表 —— 抽屉和详情页读的是这里。
+	//
+	// ⚠️ 走 SaveArticle（upsert），**不是** CreateArticle：
+	// 产品形态是"一只小鸡一篇文章"，SaveArticle 在数据层保证了这一点。
 	arts, _ := h.store.ListArticles(node.ID)
-	if len(arts) == 0 {
-		if strings.TrimSpace(content) == "" && title == "" {
-			return // 什么都没填，别建空文章
-		}
-		a := &model.Article{NodeID: node.ID, Title: title, Summary: summary, ContentMD: content}
-		if err := h.store.CreateArticle(a); err != nil {
-			log.Printf("[hub] 新建文章失败 node=%s: %v", node.ID, err)
-		}
-		return
+	if len(arts) == 0 && strings.TrimSpace(content) == "" && title == "" {
+		return // 什么都没填，别建空文章
 	}
-	a := arts[0]
-	a.Title, a.ContentMD = title, content
-	if strings.TrimSpace(a.Summary) == "" {
-		a.Summary = summary
+	a := &model.Article{NodeID: node.ID, Title: title, Summary: summary, ContentMD: content}
+	if len(arts) > 0 {
+		a.ID, a.CreatedAt = arts[0].ID, arts[0].CreatedAt
+		if strings.TrimSpace(a.Summary) == "" {
+			a.Summary = arts[0].Summary
+		}
 	}
-	if err := h.store.UpdateArticle(a); err != nil {
+	if err := h.store.SaveArticle(a); err != nil {
 		log.Printf("[hub] 保存文章失败 node=%s: %v", node.ID, err)
 	}
 }

@@ -297,9 +297,18 @@
 
       {{if .Uptime}}{{template "uptime.html" .Uptime}}{{end}}
 
-      {{/* 测试摘要：卡片上只放得下一行，所以完整结果放进悬浮浮窗 ——
-           解锁了哪些服务、是不是机房 IP，这些恰恰是访客最想看的。
-           用 :hover / :focus-within 触发，纯 CSS，不引 JS。 */}}
+      {{/* ---- IP 卡 ----
+           这一块固定**两行**高度，有结果没结果都占同样大小 ——
+           否则有测试结果的卡片会比没结果的高出一截，网格参差不齐。
+
+           内容来自检测脚本上报的静态信息（IP 质量 / 线路 / 性质）。
+           没跑过脚本时显示「未运行检测脚本」，而不是整块消失：
+           消失会让访客以为"这机器没这功能"，显示占位符才是
+           "还缺一道工序"，一看就知道该去跑脚本。
+
+           鼠标悬停/聚焦时弹浮窗给完整结果（解锁了哪些服务等）——
+           卡片上放不下的那些。纯 CSS 触发，不引 JS。 */}}
+      <div class="ipcard"{{if .TaskItems}} tabindex="0"{{end}}>
       {{if .TaskRunning}}
       <p class="task-line running"><span class="spin"></span>测试进行中…</p>
       {{else if .TaskSummary}}
@@ -327,7 +336,11 @@
         </div>
         {{end}}
       </div>
+      {{else}}
+      {{/* 没跑过检测脚本 —— 占位符高度跟有结果时一致 */}}
+      <p class="ip-empty">未运行检测脚本</p>
       {{end}}
+      </div>
 
       {{/* 互动条：赞 / 踩 / 文章数 / 评论数。
            投票走 /n/<slug>/vote（和详情页同一套接口、同一个访客 cookie），
@@ -343,12 +356,17 @@
                 title="踩一下（再点取消）">
           <span class="i">▼</span><span class="n" data-vote-down>{{.VoteDown}}</span>
         </button>
-        <span class="act stat" title="文章数">
+        {{/* 文章数 / 评论数点了从右侧滑出抽屉看内容。
+             做成 <button> 而不是 <a>：它不跳页，只是打开一个面板 ——
+             用链接会让"在新标签页打开""复制链接"这些菜单项变得没意义。 */}}
+        <button type="button" class="act stat link" data-drawer="{{.Slug}}" data-tab="articles"
+                title="看这台机器的文章">
           <span class="i">📄</span><span class="n">{{.Articles}}</span>
-        </span>
-        <span class="act stat" title="评论数">
+        </button>
+        <button type="button" class="act stat link" data-drawer="{{.Slug}}" data-tab="comments"
+                title="看这台机器的评论">
           <span class="i">💬</span><span class="n">{{.Comments}}</span>
-        </span>
+        </button>
         {{/* 查看详情并进这一行、靠最右 —— 原来它自己占一行，
            整张卡片白白多出一行高度。
            明确给一个按钮进详情页：不做"整张卡片可点"，也不做悬停弹详情，
@@ -374,6 +392,28 @@
   {{end}}
 
 
+{{/* ---- 侧边抽屉 ----
+    卡片上点「📄 N」或「💬 N」从右侧滑出来看文章 / 评论。
+
+     数据是按需拉的（/n/<slug>/articles.json、/n/<slug>/comments.json），
+     不预先塞进首页 —— 评论可能上百条，而绝大多数访客根本不点。
+     整页只有这一个抽屉，内容由 JS 按 slug 填。 ---- */}}
+<div class="drawer-scrim" id="drawer-scrim" hidden></div>
+<aside class="drawer" id="drawer" hidden aria-hidden="true" role="dialog" aria-label="详情">
+  <header class="drawer-head">
+    <div class="drawer-tabs">
+      <button type="button" class="dtab" data-dtab="articles">📄 文章</button>
+      <button type="button" class="dtab" data-dtab="comments">💬 评论</button>
+    </div>
+    {{/* 管理员的入口。访客看不到这两个按钮 ——
+         后端也会再判一次权限，前端只是决定显不显示。 */}}
+    <span class="drawer-admin" id="drawer-admin"></span>
+    <button type="button" class="drawer-x" id="drawer-close" aria-label="关闭">✕</button>
+  </header>
+  <div class="drawer-body" id="drawer-body"></div>
+  <footer class="drawer-foot" id="drawer-foot"></footer>
+</aside>
+
 </main>
 
 <footer class="wrap foot-page">
@@ -387,7 +427,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=48"></script>
+<script src="/static/app.js?v=49"></script>
 </body>
 </html>
 {{end}}
