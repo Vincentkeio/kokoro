@@ -115,7 +115,9 @@ func TestAdminOldAnchorsStillWork(t *testing.T) {
 	body := adminBody(t, h, st)
 
 	// 前端靠 id + data-atab 反查页签，所以这两样都得在
-	for _, id := range []string{"profile", "comments", "alerts", "hubgeo", "account"} {
+	// ⚠️ #hubgeo（面板位置）**故意删掉了** —— 别再加回来，
+	// 这个断言就是用来发现"某个锚点悄悄消失"的，删是有意为之。
+	for _, id := range []string{"profile", "comments", "alerts", "account", "theme-fetch"} {
 		if !strings.Contains(body, `id="`+id+`"`) {
 			t.Errorf("老锚点 #%s 的 id 丢了，老链接会失效", id)
 		}

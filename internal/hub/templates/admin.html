@@ -30,7 +30,7 @@
     <button type="button" class="atab" data-goto="comments">互动{{if .PendingN}}<span class="abadge">{{.PendingN}}</span>{{end}}</button>
     <button type="button" class="atab" data-goto="profile">名片</button>
     <button type="button" class="atab" data-goto="alerts">告警</button>
-    <button type="button" class="atab" data-goto="site">站点</button>
+    <button type="button" class="atab" data-goto="theme">主题</button>
     <button type="button" class="atab" data-goto="sys">系统</button>
   </nav>
 
@@ -278,29 +278,33 @@
     {{end}}
   </section>
 
-  <section class="panel" id="hubgeo" data-atab="site">
-    <h3>面板位置</h3>
-    <form class="row" method="post" action="/admin/settings">
-      <label>纬度 <input name="hub_lat" value="{{.HubLat}}" placeholder="例如 34.05" style="width:8rem"></label>
-      <label>经度 <input name="hub_lon" value="{{.HubLon}}" placeholder="例如 -118.24" style="width:8rem"></label>
-      <button class="btn small" type="submit">保存</button>
-      <span class="hint">首页那张全球节点图会从各台小鸡连一条航线到这里。留空就不画航线
-        （不会猜——把线连到错误的大洲比不画更误导）。</span>
-    </form>
-  </section>
-
-  <section class="panel" id="theme-fetch" data-atab="site">
-    <h3>主题获取出口</h3>
-    <form class="row" method="post" action="/admin/settings">
-      <label class="wide">允许抓回环的域名
-        <input type="text" name="theme_fetch_hosts" value="{{.ThemeFetchHosts}}"
-               placeholder="逗号分隔，例如 127.0.0.1, mysite.example.com">
-      </label>
-      <button class="btn small" type="submit">保存</button>
-      <span class="hint">默认禁止抓取本机回环地址（那是这台机器上的所有服务，不只是本站）。
-        本站域名{{if .HubURL}}（<code>{{.HubURL}}</code>）{{end}}已自动放行；
-        只有这里填的域名才会额外允许走回环。精确匹配，不含子域名。</span>
-    </form>
+  <section class="panel" id="theme-fetch" data-atab="theme">
+    {{/* 这块原来叫「主题获取出口」，名字完全看不出是干嘛的 ——
+         它其实是个**安全旋钮**：哪些主机名允许抓本机回环地址。
+         普通站长永远不需要碰它，所以：
+           ① 改成人话名字
+           ② 用 <details> 默认收起，不占视线
+           ③ 解释里说清"什么时候才需要动它" */}}
+    <details class="adv">
+      <summary>高级：抓主题时的本机地址白名单</summary>
+      <p class="hint">
+        「一键获取主题」会去抓你给的那个地址。为了防止它被用来偷看**这台服务器自己**
+        （127.0.0.1 上可能跑着数据库、Docker 面板等等），本机地址默认是**全部拒绝**的。
+      </p>
+      <p class="hint">
+        <b>什么时候需要填这里：</b>你的面板挂在 Nginx 反代后面、而你想从
+        <em>别的域名</em>抓本站主题时。除此之外不用管。
+      </p>
+      <form class="row" method="post" action="/admin/settings">
+        <label class="wide">额外允许的主机名
+          <input type="text" name="theme_fetch_hosts" value="{{.ThemeFetchHosts}}"
+                 placeholder="逗号分隔，例如 mysite.example.com">
+        </label>
+        <button class="btn small" type="submit">保存</button>
+        <span class="hint">{{if .HubURL}}本站域名 <code>{{.HubURL}}</code> 已自动放行；{{end}}
+          精确匹配，不含子域名。留空即只用默认规则。</span>
+      </form>
+    </details>
   </section>
 
   <section class="panel" id="comments" data-atab="comments">
@@ -406,7 +410,7 @@
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=61"></script>
+<script src="/static/app.js?v=62"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {
