@@ -6,7 +6,11 @@
   <div class="uptime-head">
     <h4>在线率</h4>
     <b class="uptime-pct lv-{{.Level}}">{{.Pct}}</b>
-    <span class="uptime-sub">近 {{.Days}} 天</span>
+    {{/* ⚠️ 分母要写清楚。百分比是按「有数据的天」算的 ——
+           一台今天才接入的机器会算出很高的比率（只统计今天），
+           前面全是灰格。只写"近 30 天"会让人以为稳定跑了 30 天。
+           boss 就是这么发现不对的："全灰怎么还有 97%"。 */}}
+    <span class="uptime-sub">近 {{.Days}} 天{{if lt .DataDays .Days}} · 其中 <b>{{.DataDays}}</b> 天有数据{{end}}</span>
   </div>
   <div class="uptime-bar" role="img" aria-label="近 {{.Days}} 天在线率 {{.Pct}}">
     {{range .Cells}}

@@ -25,6 +25,11 @@ type DayUptime struct {
 	Samples int     // 累计上报次数
 	Partial bool    // 这一天只覆盖了一部分（装机当天 / 今天）
 	HasData bool
+	// BeforeStart 表示这一天**整段都在这台机器接入之前**。
+	//
+	// 跟"采集中断"要分开：一片灰格子可能是"机器那时候还不存在"，
+	// 也可能是"机器在那儿但没上报"。前者不是故障，别吓着站长。
+	BeforeStart bool
 }
 
 // DailyUptime 取最近 days 天的在线率。
@@ -119,6 +124,17 @@ ORDER BY d`, mod, nodeID, cutoff)
 			du.HasData = true
 		}
 		du.Label = key[5:] // 10-06
+		// 整天都在接入之前 —— 那天这台机器还不存在。
+		//
+		// ⚠️ 日末尾要取**下一天零点**，不能用 t.AddDate(0,0,1) ——
+		// 那个保留的是"当前时刻"（比如 11:21），于是"昨天"的日末尾
+		// 正好等于今天 11:21，跟创建时间撞在边界上，判断结果随机。
+		// 用零点算，"昨天 24:00" 严格早于"今天 11:21"，稳定成立。
+		if since > 0 && !du.HasData {
+			dayStart := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+			dayEnd := dayStart.AddDate(0, 0, 1).UnixMilli()
+			du.BeforeStart = dayEnd <= since
+		}
 		// 装机当天和今天都只覆盖半天，标出来免得被误读成"那天挂了一半"
 		du.Partial = i == 0 || du.Buckets > 0 && du.Buckets < 280
 		out = append(out, du)

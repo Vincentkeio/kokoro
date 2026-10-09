@@ -30,6 +30,14 @@ type uptimeSummary struct {
 	Cells []uptimeCell
 	First string // 第一个格子的日期标签，给轴用
 	Last  string // 最后一个
+	// DataDays 是**真正有数据**的天数。
+	//
+	// ⚠️ 必须显示出来。百分比是按"有数据的天"算的，所以一台今天刚接入的
+	// 机器会算出很高的在线率（只统计今天，当然接近 100%），
+	// 而前面 29 格是灰的（无数据）。只写"近 30 天"就是在虚报 ——
+	// 看着像"稳定跑了 30 天"，其实是"今天才认识它"。
+	// boss 就是这么发现不对劲的。
+	DataDays int
 }
 
 // hubTZOffsetMin 取面板所在时区的 UTC 偏移（分钟）。
@@ -67,8 +75,15 @@ func (h *Hub) loadUptime(nodeID string) *uptimeSummary {
 		case !d.HasData:
 			cell.Level = "none"
 			cell.Pct = "无数据"
-			cell.Tip = d.Date + " 没有数据"
+			// 灰格子有两种，得分开说 —— 否则站长看到一片灰会以为
+			// "一直在掉线"，其实只是这台机器那会儿还没接入。
+			if d.BeforeStart {
+				cell.Tip = d.Date + " 这台机器还没接入"
+			} else {
+				cell.Tip = d.Date + " 没有采集到数据"
+			}
 		default:
+			sum.DataDays++
 			cell.Level = uptimeLevel(d.Pct)
 			cell.Pct = fmt.Sprintf("%.2f%%", d.Pct)
 			cell.Tip = fmt.Sprintf("%s 在线率 %s", d.Date, cell.Pct)

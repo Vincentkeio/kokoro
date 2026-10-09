@@ -174,3 +174,72 @@ func TestUptimeLevelThresholds(t *testing.T) {
 		}
 	}
 }
+
+// TestUptimeShowsDataDayCount 只有几天数据时，不能只写「近 30 天」。
+//
+// boss 就是这么发现不对的：一台今天才接入的机器，
+// 时间轴前 29 格全灰，上面却写着「97.41% 近 30 天」——
+// 看着像稳定跑了 30 天，其实只统计了 1 天。
+// 百分比的分母是「有数据的天」，所以必须把这个分母标出来。
+func TestUptimeShowsDataDayCount(t *testing.T) {
+	h, st := newTestHub(t)
+	n := mkNode(t, st, "新接入的机器", "JP", "日本 · 东京", "")
+	seedBuckets(t, h, n.ID, 1, 288, 142) // 只有昨天有数据
+
+	sum := h.loadUptime(n.ID)
+	if sum == nil {
+		t.Fatal("时间轴为空")
+	}
+	if sum.DataDays >= sum.Days {
+		t.Fatalf("只有 1 天有数据时 DataDays(%d) 不该等于 Days(%d)", sum.DataDays, sum.Days)
+	}
+	if sum.DataDays != 1 {
+		t.Errorf("DataDays = %d，应为 1", sum.DataDays)
+	}
+
+	// 页面上要把这个分母写出来
+	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(body, "天有数据") {
+		t.Error("只有部分天数有数据时，页面上应写明「其中 N 天有数据」")
+	}
+}
+
+// TestUptimeGrayCellsDistinguishBeforeStart 灰格子要分「接入前」和「没采到」。
+//
+// 两者含义完全不同：前者不是故障（那会儿机器还不存在），
+// 后者才可能是采集出问题。混在一起显示，站长会以为一直在掉线。
+func TestUptimeGrayCellsDistinguishBeforeStart(t *testing.T) {
+	h, st := newTestHub(t)
+	n := mkNode(t, st, "今天才接入", "JP", "日本 · 东京", "")
+	seedBuckets(t, h, n.ID, 0, 288, 142) // 只有今天有数据
+	// ⚠️ seedBuckets 会把 created_at 改成 40 天前（那是别的测试需要的），
+	// 但本测试要验的正是"接入之前"——所以得把它改回**现在**。
+	// 不改的话每格都算"接入之后"，BeforeStart 永远不成立。写这个测试时
+	// 就在这儿绊了一下：以为是代码错，其实是造数据的辅助函数顺手改了。
+	if _, err := h.store.DB().Exec(
+		`UPDATE nodes SET created_at = ? WHERE id = ?`, time.Now().UnixMilli(), n.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	sum := h.loadUptime(n.ID)
+	if sum == nil {
+		t.Fatal("时间轴为空")
+	}
+	before, other := 0, 0
+	for _, c := range sum.Cells {
+		if c.HasData {
+			continue
+		}
+		if strings.Contains(c.Tip, "还没接入") {
+			before++
+		} else if strings.Contains(c.Tip, "没有采集到") {
+			other++
+		}
+	}
+	if before == 0 {
+		t.Error("接入之前的那几天应该标成「还没接入」")
+	}
+	if other != 0 {
+		t.Errorf("今天的机器不该有「没有采集到数据」的格子，实际 %d 个", other)
+	}
+}
