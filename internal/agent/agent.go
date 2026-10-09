@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -110,6 +111,8 @@ type Agent struct {
 	seq        int64
 	buf        []*model.Metrics // 断线缓冲，按时间顺序，最多 replayBufferSize 条
 	factsSent  bool             // Hub 确认收到静态信息前，每条上报都带着它
+	factsTick  int              // 距上次重查静态信息过了几条上报
+	lastFacts  *model.HostFacts // 上次发出去的静态信息，用来比对有没有变
 	lastRTTms  float64
 	cmdCh      chan model.Command
 	cmdDone    chan struct{}
@@ -446,8 +449,21 @@ func (a *Agent) collectOnce() {
 	// 也不只发第一条：那一条可能撞上"Hub 还没升级"或网络抖动 ——
 	// 那就再也补不上了。等 Hub 在响应里回了 facts_ok 才停。
 	// 体积很小（一百来字节），多带几条无所谓。
-	if !a.factsSent {
-		m.Facts = hostFactsOf()
+	//
+	// ⚠️ **但"确认后就再也不发"是错的**：这些字段在机器上会变 ——
+	// 开/关 BBR、加 swap、换内核（虚拟化类型跟着变）、换 CPU 型号。
+	// 只发一次的话，Hub 上永远是接入那天的快照。
+	// （实测踩到：在 wawo 上开了 BBR，卡片上还一直显示 cubic。）
+	// 所以每 factsRecheckEvery 条重查一次，**值变了才重发** ——
+	// 不变就不发，不会白白增加流量。
+	a.factsTick++
+	if !a.factsSent || a.factsTick >= factsRecheckEvery {
+		a.factsTick = 0
+		cur := hostFactsOf()
+		if !a.factsSent || !sameFacts(cur, a.lastFacts) {
+			m.Facts = cur
+			a.lastFacts = cur
+		}
 	}
 	if m.NetQ == nil && a.lastRTTms > 0 {
 		m.NetQ = &model.NetQStat{HubLatencyMS: a.lastRTTms}
@@ -616,6 +632,45 @@ func hostFactsOf() *model.HostFacts {
 		TCPQdisc: f.tcpQdisc,
 		LocalIPs: f.localIPs,
 	}
+}
+
+// factsRecheckEvery 是静态信息的重查间隔（按上报条数算）。
+// 上报默认 2 秒一条，150 条 ≈ 5 分钟 —— 够快能及时发现改动，
+// 又不至于频繁读 /proc。
+const factsRecheckEvery = 150
+
+// sameFacts 比较两份静态信息是否等价。
+//
+// LocalIPs **先排序再比**：网卡枚举顺序本来就不保证稳定，
+// 直接 Join 会让"同一组地址换了个顺序"被误判成变了 ——
+// 后果是白白多发一次上报（不致命，但没必要）。
+func sameFacts(a, b *model.HostFacts) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Virt == b.Virt &&
+		a.CPUModel == b.CPUModel &&
+		a.CPUCores == b.CPUCores &&
+		a.TCPCC == b.TCPCC &&
+		a.TCPQdisc == b.TCPQdisc &&
+		sameIPSet(a.LocalIPs, b.LocalIPs)
+}
+
+// sameIPSet 比较两组地址是不是同一集合（与顺序无关）。
+func sameIPSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	as := append([]string(nil), a...)
+	bs := append([]string(nil), b...)
+	sort.Strings(as)
+	sort.Strings(bs)
+	for i := range as {
+		if as[i] != bs[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // detectTCPCC 读当前生效的 TCP 拥塞控制算法（bbr / cubic / …）。
