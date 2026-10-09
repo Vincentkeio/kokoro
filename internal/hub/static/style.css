@@ -580,11 +580,23 @@ input:focus, select:focus, textarea:focus {
 .flag {
   display: inline-flex; align-items: center; vertical-align: -2px;
   margin-right: 5px; border-radius: 2px; overflow: hidden;
+  /* 这圈 1px 描边是**故意的**：日本、塞浦路斯这类白底旗
+     在浅色背景上没有边就完全看不见。
+     它必须贴着旗子（见下面 svg 的尺寸说明）——盒子比内容大的话，
+     描边会框出一片空白，那才是"白边"的来源。 */
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--line-strong) 55%, transparent);
   flex: none;
 }
-.flag svg { display: block; width: 1.35em; height: 1.05em; }
-.flag.lg svg { width: 1.6em; height: 1.2em; }
+/* ⚠️ 宽高必须**相等**。
+   图标源（flag-icons）的 viewBox 是 `0 0 512 512`（正方形），
+   而每面旗的内容都铺满这个正方形。给它一个非正方的盒子（原来是 1.35×1.05），
+   浏览器按 preserveAspectRatio 默认的 "meet" 缩放 —— 内容缩成一半高、
+   居中，**左右各留一条空档**；外面那圈 1px 描边又把这整个更大的盒子框出来，
+   看起来就是"国旗左右各有一条白边"。（boss 报的"又有白边了"）
+
+   正方形的盒子才能和正方形的 viewBox 严丝合缝对上，空档消失。 */
+.flag svg { display: block; width: 1.15em; height: 1.15em; }
+.flag.lg svg { width: 1.4em; height: 1.4em; }
 
 /* ---- 搜索 ---- */
 .search { display: flex; gap: 6px; }
