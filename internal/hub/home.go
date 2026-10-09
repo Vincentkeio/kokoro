@@ -268,7 +268,7 @@ func specDisk(total int64) string {
 // 改了 CSS/JS 必须同步 +1：宝塔默认给 js/css 设 12 小时缓存，
 // URL 不变浏览器就吃旧文件，表现成"代码改了但页面没变"。
 // 加 ?v= 是唯一能让缓存立即失效的办法。
-const staticVer = "56"
+const staticVer = "57"
 
 // staticAssetURL 给静态资源拼上版本号。
 func staticAssetURL(name string) string {

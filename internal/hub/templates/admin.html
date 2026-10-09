@@ -304,47 +304,68 @@
   </section>
 
   <section class="panel" id="comments" data-atab="comments">
-    <h3>留言审核{{if .PendingN}} <small class="bad">{{.PendingN}} 条待处理</small>{{end}}</h3>
+    <h3>评论审核{{if .PendingN}} <small class="bad">{{.PendingN}} 条待处理</small>{{end}}</h3>
     <form class="row" method="post" action="/admin/settings">
-      <label class="chk"><input type="checkbox" name="comment_enabled" value="1" {{if .CommentOn}}checked{{end}}> 开放留言</label>
+      <label class="chk"><input type="checkbox" name="comment_enabled" value="1" {{if .CommentOn}}checked{{end}}> 开放评论</label>
       <label class="chk"><input type="checkbox" name="comment_auto_approve" value="1" {{if .AutoApprove}}checked{{end}}> 免审核直接上墙</label>
       <button class="btn small" type="submit">保存</button>
-      <span class="hint">关掉免审核后，新留言要先在这里点「通过」才会显示在前台。</span>
+      <span class="hint">关掉免审核后，新评论要先在这里点「通过」才会显示在前台。</span>
     </form>
 
-    {{if .Comments}}
-    <table class="tbl">
-      <thead><tr><th>时间</th><th>小鸡</th><th>留言</th><th>联系方式</th><th>状态</th><th>操作</th></tr></thead>
-      <tbody>
-      {{range .Comments}}
-      <tr>
-        <td class="nowrap">{{tsShort .CreatedAt}}</td>
-        <td>{{if .NodeName}}<a href="/n/{{.NodeSlug}}">{{.NodeName}}</a>{{else}}<span class="muted">{{.NodeID}}</span>{{end}}</td>
-        <td class="cmt-cell">
-          <b>{{.Author}}</b>{{if .ParentID}} <span class="muted">（回复）</span>{{end}}
-          <div class="cmt-text">{{.Content}}</div>
-        </td>
-        <td>{{if .Contact}}<code>{{.Contact}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
-        <td>
-          {{if eq .Status "approved"}}<span class="ok">已通过</span>
-          {{else if eq .Status "spam"}}<span class="bad">垃圾</span>
-          {{else}}<span class="warn">待审核</span>{{end}}
-        </td>
-        <td class="nowrap">
-          <form method="post" action="/admin/comments" class="inline">
-            <input type="hidden" name="id" value="{{.ID}}">
-            {{if ne .Status "approved"}}<button class="btn small" name="action" value="approve">通过</button>{{end}}
-            {{if ne .Status "pending"}}<button class="btn small ghost" name="action" value="pending">退回待审</button>{{end}}
-            <button class="btn small ghost" name="action" value="spam">垃圾</button>
-            <button class="btn small danger" name="action" value="delete">删除</button>
-          </form>
-        </td>
-      </tr>
-      {{end}}
-      </tbody>
-    </table>
+    {{if .CommentsByNode}}
+    {{/* 按小鸡分组显示 —— boss 要求。
+         一个平铺的长表格里，"这条是评哪台机器的"要靠中间那一列去认，
+         留言一多根本对不上。分组之后每台一块，一眼看清。 */}}
+    {{range .CommentsByNode}}
+    <div class="cmt-group">
+      <h4 class="sub">
+        {{if .Name}}<a href="/n/{{.Slug}}">{{.Name}}</a>{{else}}<span class="muted">{{.NodeID}}</span>{{end}}
+        <span class="muted">· {{len .Comments}} 条</span>
+      </h4>
+      <table class="tbl">
+        <thead><tr><th>时间</th><th>评论</th><th>联系方式</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>
+        {{range .Comments}}
+        <tr{{if .Pinned}} class="pinned-row"{{end}}>
+          <td class="nowrap">{{tsShort .CreatedAt}}</td>
+          <td class="cmt-cell">
+            {{if .Pinned}}<span class="pin-badge" title="已置顶">📌</span>{{end}}
+            <b>{{.Author}}</b>{{if .ParentID}} <span class="muted">（回复）</span>{{end}}
+            <div class="cmt-text">{{.Content}}</div>
+          </td>
+          <td>{{if .Contact}}<code>{{.Contact}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>
+            {{if eq .Status "approved"}}<span class="ok">已上墙</span>
+            {{else if eq .Status "spam"}}<span class="bad">垃圾</span>
+            {{else}}<span class="warn">待审核</span>{{end}}
+          </td>
+          <td class="nowrap">
+            <form method="post" action="/admin/comments" class="inline">
+              <input type="hidden" name="id" value="{{.ID}}">
+              {{if ne .Status "approved"}}<button class="btn small" name="action" value="approve">通过</button>{{end}}
+              {{/* 已上墙的评论也能管理：置顶 / 取消置顶 / 退回待审 / 删除。
+                   置顶按钮只对已上墙的显示 —— 置顶一条还没放行的评论没意义。 */}}
+              {{if eq .Status "approved"}}
+                {{if .Pinned}}
+                <button class="btn small ghost" name="action" value="unpin">取消置顶</button>
+                {{else}}
+                <button class="btn small ghost" name="action" value="pin">置顶</button>
+                {{end}}
+                <button class="btn small ghost" name="action" value="pending">下墙</button>
+              {{end}}
+              {{if ne .Status "spam"}}<button class="btn small ghost" name="action" value="spam">垃圾</button>{{end}}
+              <button class="btn small danger" name="action" value="delete"
+                      onclick="return confirm('确认删除这条评论？删了不可恢复。')">删除</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
     {{else}}
-    <p class="empty">还没有留言。</p>
+    <p class="empty">还没有评论。</p>
     {{end}}
   </section>
 
@@ -377,10 +398,6 @@
     </p>{{end}}
   </section>
 
-  <section class="panel" data-atab="nodes">
-    <h3>主机远程下发（规划中）</h3>
-    <p class="hint">下一步会支持在这里填 IP 与 SSH 凭据，由主机直接把 agent 装到子机上，不用去小鸡上敲命令。</p>
-  </section>
 {{/* ---- 续费费用弹窗 ----
      金额 + 货币 + 周期三件套。做成弹窗而不是三个输入框排在表格里：
      一行已经放了名字/标签/到期日，再塞三个控件会把表格挤爆。 ---- */}}
@@ -389,7 +406,7 @@
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=56"></script>
+<script src="/static/app.js?v=57"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

@@ -311,6 +311,9 @@ type Comment struct {
 	Status    CommentStatus `json:"status"`
 	IPHash    string        `json:"-"`
 	CreatedAt int64         `json:"created_at"`
+	// Pinned 表示站长把这条置顶了。置顶的排在最前面，
+	// 无论它的时间多早 —— 这是站长想让人先看到的内容。
+	Pinned bool `json:"pinned"`
 }
 
 // VoteValue 是单张票的取值。

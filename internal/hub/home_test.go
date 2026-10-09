@@ -27,6 +27,10 @@ func mkNode(t *testing.T, st *store.Store, name, country, region, city string) *
 		Visibility: model.VisibilityPublic, CPUCores: 2,
 		MemTotal: 4 << 30, DiskTotal: 40 << 30, OS: "Debian 13", Online: true,
 		Tags: []string{"香港", "CN2"},
+		// ⚠️ token_hash 上有唯一索引。不填的话两台机器都是空串，
+		// 造第二台时会撞唯一约束 —— 报错还很像是"造节点失败"，
+		// 容易以为是别的问题。
+		TokenHash: "th_" + name,
 	}
 	if err := st.CreateNode(n); err != nil {
 		t.Fatalf("造节点失败: %v", err)

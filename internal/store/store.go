@@ -33,7 +33,16 @@ import (
 var schemaSQL string
 
 // schemaVersion 当前 schema 版本，记录在 PRAGMA user_version 中。
-const schemaVersion = 11
+// ⚠️⚠️ 改表结构时**两处都要改**：
+//
+//  1. `schema.sql` —— 全新安装走这条（见下面 migrate 里的 v==0 分支，
+//     它跑完 schemaSQL 就直接把版本设成 schemaVersion，**跳过所有迁移**）
+//  2. 下面的 `migrations` —— 只给**已经存在的老库**升级用
+//
+// 只加 2 不加 1 的后果：新装的库缺列，跑起来报
+// "table xxx has no column named yyy" —— 而且**本地测试会先红**
+// （测试用的都是全新库）。踩过一次。
+const schemaVersion = 12
 
 // 5 分钟聚合窗口长度（毫秒）。
 const bucket5m = int64(5 * 60 * 1000)
@@ -249,6 +258,8 @@ WHERE rowid NOT IN (
         LIMIT 1
     )
 );`},
+	// 评论置顶。默认 0（不置顶），老的评论自动都是未置顶。
+	{version: 12, sql: `ALTER TABLE comments ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;`},
 }
 
 // prepare 预编译高频写入语句。
@@ -874,7 +885,7 @@ ON CONFLICT (node_id) DO UPDATE SET
 // ListComments 列出评论。nodeID 为空表示全部节点；
 // onlyApproved 为 true 时只返回已审核通过的。
 func (s *Store) ListComments(nodeID string, onlyApproved bool) ([]model.Comment, error) {
-	q := `SELECT id, node_id, parent_id, author, contact, content, status, ip_hash, created_at
+	q := `SELECT id, node_id, parent_id, author, contact, content, status, ip_hash, created_at, pinned
 FROM comments`
 	var args []any
 	var conds []string
@@ -888,7 +899,9 @@ FROM comments`
 	if len(conds) > 0 {
 		q += " WHERE " + strings.Join(conds, " AND ")
 	}
-	q += " ORDER BY created_at ASC, id ASC"
+	// 置顶的在最前，其余按时间正序。
+	// ⚠️ 排序键必须**先 pin 后时间**：反过来的话置顶永远排不上来。
+	q += " ORDER BY pinned DESC, created_at ASC, id ASC"
 
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
@@ -900,12 +913,14 @@ FROM comments`
 		var (
 			c      model.Comment
 			status string
+			pinInt int
 		)
 		if err := rows.Scan(&c.ID, &c.NodeID, &c.ParentID, &c.Author, &c.Contact, &c.Content,
-			&status, &c.IPHash, &c.CreatedAt); err != nil {
+			&status, &c.IPHash, &c.CreatedAt, &pinInt); err != nil {
 			return nil, err
 		}
 		c.Status = model.CommentStatus(status)
+		c.Pinned = pinInt != 0
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -926,12 +941,24 @@ func (s *Store) AddComment(c *model.Comment) error {
 		c.Status = model.CommentPending
 	}
 	_, err := s.db.Exec(`INSERT INTO comments
-(id, node_id, parent_id, author, contact, content, status, ip_hash, created_at)
-VALUES (?,?,?,?,?,?,?,?,?)`,
+(id, node_id, parent_id, author, contact, content, status, ip_hash, created_at, pinned)
+VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		c.ID, c.NodeID, c.ParentID, c.Author, c.Contact, c.Content, string(c.Status),
-		c.IPHash, c.CreatedAt)
+		c.IPHash, c.CreatedAt, boolInt(c.Pinned))
 	if err != nil {
 		return fmt.Errorf("新增评论失败: %w", err)
+	}
+	return nil
+}
+
+// PinComment 置顶 / 取消置顶。
+//
+// 只改 pinned，不动 status —— 置顶和审核是两回事，
+// 合在一起写会让"取消置顶"意外地把评论退回待审。
+func (s *Store) PinComment(id string, pinned bool) error {
+	_, err := s.db.Exec("UPDATE comments SET pinned = ? WHERE id = ?", boolInt(pinned), id)
+	if err != nil {
+		return fmt.Errorf("置顶评论失败: %w", err)
 	}
 	return nil
 }
@@ -962,7 +989,7 @@ func (s *Store) ListRecentComments(limit int, status model.CommentStatus) ([]mod
 	if limit <= 0 {
 		limit = 50
 	}
-	q := `SELECT id, node_id, parent_id, author, contact, content, status, ip_hash, created_at
+	q := `SELECT id, node_id, parent_id, author, contact, content, status, ip_hash, created_at, pinned
 FROM comments`
 	var args []any
 	if status != "" {
@@ -979,14 +1006,16 @@ FROM comments`
 	var out []model.Comment
 	for rows.Next() {
 		var (
-			c  model.Comment
-			st string
+			c      model.Comment
+			st     string
+			pinInt int
 		)
 		if err := rows.Scan(&c.ID, &c.NodeID, &c.ParentID, &c.Author, &c.Contact, &c.Content,
-			&st, &c.IPHash, &c.CreatedAt); err != nil {
+			&st, &c.IPHash, &c.CreatedAt, &pinInt); err != nil {
 			return nil, err
 		}
 		c.Status = model.CommentStatus(st)
+		c.Pinned = pinInt != 0
 		out = append(out, c)
 	}
 	return out, rows.Err()

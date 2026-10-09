@@ -588,6 +588,14 @@ type pointAlias struct {
 }
 
 // modComment 是后台审核列表里的一行：评论 + 它属于哪台小鸡。
+// nodeComments 是一台机器下的全部评论，按小鸡分组用。
+type nodeComments struct {
+	NodeID   string
+	Name     string
+	Slug     string
+	Comments []modComment
+}
+
 type modComment struct {
 	model.Comment
 	NodeName string
@@ -603,10 +611,14 @@ type adminData struct {
 	HubURL   string
 	BootPass string
 
-	Comments    []modComment
-	PendingN    int
-	CommentOn   bool
-	AutoApprove bool
+	Comments []modComment
+	// CommentsByNode 是按小鸡分好组的评论。
+	// 一个平铺的长表格里，"这条评的是哪台机器"要靠单独一列去认，
+	// 评论一多根本对不上 —— 分组之后每台一块。
+	CommentsByNode []nodeComments
+	PendingN       int
+	CommentOn      bool
+	AutoApprove    bool
 
 	// ThemeFetchHosts 是「允许抓回环」的主机名白名单（逗号分隔）。
 	// 详见 theme_ssrf.go 顶部的策略说明。
@@ -1746,7 +1758,13 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 		data.NotifyQuietStart = cfg.QuietHoursStart
 		data.NotifyQuietEnd = cfg.QuietHoursEnd
 	}
-	cs, err := h.store.ListRecentComments(50, "")
+	// 按小鸡分组用的桶。评论一次查回来，边装边分。
+	//
+	// ⚠️ 只在这里声明一次。下面别再写 `grouped := ...` ——
+	// 那会遮蔽掉这个，外层永远是空的，表现成"分组一个都不显示"
+	// 而且不报错。（踩过一次）
+	grouped := map[string][]modComment{}
+	cs, err := h.store.ListRecentComments(200, "")
 	if err == nil {
 		ids := make([]string, 0, len(cs))
 		for _, c := range cs {
@@ -1760,10 +1778,31 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 				mc.NodeSlug = slugOf[c.NodeID]
 			}
 			data.Comments = append(data.Comments, mc)
+			grouped[c.NodeID] = append(grouped[c.NodeID], mc)
 		}
 	}
 	if pending, err := h.store.ListRecentComments(200, model.CommentPending); err == nil {
 		data.PendingN = len(pending)
+	}
+
+	// 按小鸡分组。**顺序跟着节点列表走**，不是跟着评论出现顺序 ——
+	// 后台的节点是有固定排序的，评论分组跟着它才不会每次都换位置。
+	//
+	// 没有任何评论的机器不显示分组（空块只会占地方）。
+	for _, n := range nodes {
+		if g := grouped[n.ID]; len(g) > 0 {
+			data.CommentsByNode = append(data.CommentsByNode, nodeComments{
+				NodeID: n.ID, Name: n.Name, Slug: n.Slug, Comments: g,
+			})
+			delete(grouped, n.ID)
+		}
+	}
+	// 剩下的是「评论还在、节点已经删了」的孤儿，兜底也列出来，
+	// 否则那些评论在后台永远看不到、也删不掉。
+	for id, g := range grouped {
+		data.CommentsByNode = append(data.CommentsByNode, nodeComments{
+			NodeID: id, Name: nameOf[id], Slug: slugOf[id], Comments: g,
+		})
 	}
 
 	// 国家/地区候选：把常用机房所在地排前面，其余按代码顺序兜底
@@ -1843,6 +1882,11 @@ func (h *Hub) handleAdminComments(w http.ResponseWriter, r *http.Request) {
 		_ = h.store.ModerateComment(id, model.CommentSpam)
 	case "pending":
 		_ = h.store.ModerateComment(id, model.CommentPending)
+	case "pin":
+		_ = h.store.PinComment(id, true)
+		_ = h.store.AddAudit("admin", "comment.pin", id, "")
+	case "unpin":
+		_ = h.store.PinComment(id, false)
 	case "delete":
 		_ = h.store.DeleteComment(id)
 		_ = h.store.AddAudit("admin", "comment.delete", id, "")
