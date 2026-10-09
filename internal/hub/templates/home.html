@@ -360,7 +360,7 @@
              裸数字看不出能点。也做成 <button> 而不是 <a>：
              它不跳页，只是打开一个侧边栏，用 <a> 会让"在新标签页打开"
              "复制链接"这些菜单项变得没意义。 */}}
-        <button type="button" class="act btnlike" data-drawer="{{.Slug}}" data-panel="art"
+        <button type="button" class="act btnlike{{if not .Articles}} dim{{end}}" data-drawer="{{.Slug}}" data-panel="art"
                 title="看这台机器的文章">
           📄 {{if .Articles}}文章 {{.Articles}}{{else}}无文章{{end}}
         </button>
@@ -437,7 +437,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=53"></script>
+<script src="/static/app.js?v=54"></script>
 </body>
 </html>
 {{end}}

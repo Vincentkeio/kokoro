@@ -33,7 +33,7 @@ import (
 var schemaSQL string
 
 // schemaVersion 当前 schema 版本，记录在 PRAGMA user_version 中。
-const schemaVersion = 10
+const schemaVersion = 11
 
 // 5 分钟聚合窗口长度（毫秒）。
 const bucket5m = int64(5 * 60 * 1000)
@@ -232,6 +232,23 @@ CREATE INDEX IF NOT EXISTS idx_node_votes_node ON node_votes (node_id);`},
 	// 通用的 votes 表（含 target_type/target_id，连评论的赞踩都在用）。
 	// 这张多余的清掉，免得以后有人看着两张表不知道该写哪张。
 	{version: 10, sql: `DROP TABLE IF EXISTS node_votes;`},
+	// 产品形态改成"一台一篇"之后，把历史遗留的多篇收成一堆。
+	//
+	// 留**最近改过的那篇** —— 那最可能是站长当前想展示的内容；
+	// 按 created_at 留最早的会留下最旧的一份。
+	//
+	// ⚠️ 删除是不可逆的，所以用 ROWID 精确定位要删的行，
+	// 不用 `NOT IN (SELECT ...)` 那种容易写错的写法。
+	{version: 11, sql: `DELETE FROM node_articles
+WHERE rowid NOT IN (
+    SELECT rowid FROM node_articles AS a
+    WHERE a.rowid = (
+        SELECT b.rowid FROM node_articles AS b
+        WHERE b.node_id = a.node_id
+        ORDER BY b.updated_at DESC, b.created_at DESC
+        LIMIT 1
+    )
+);`},
 }
 
 // prepare 预编译高频写入语句。

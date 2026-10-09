@@ -1764,3 +1764,11 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   margin-right: 4px;
   opacity: .85;
 }
+
+/* 有文章 = 实心亮，没文章 = 淡一档（但仍然可点，点开是"无文章"）。
+   两者长得一样的话，访客要逐个点才知道哪台有内容。 */
+.card .act.btnlike.dim {
+  background: transparent;
+  color: var(--faint);
+  border-style: dashed;
+}
