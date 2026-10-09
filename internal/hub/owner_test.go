@@ -93,10 +93,11 @@ func TestSkinPickerOnPublicPages(t *testing.T) {
 		t.Fatalf("造节点失败: %v", err)
 	}
 
+	// 只看**访客能进的页面** —— 后台要登录，皮肤切换器对访客没意义。
+	// （/dashboard 原来也在这个列表里，那个页面已经删了。）
 	cases := []struct{ name, path string }{
 		{"首页", "/"},
 		{"详情页", "/n/" + node.Slug},
-		{"仪表盘", "/dashboard"},
 	}
 	for _, c := range cases {
 		body := renderBody(t, h, httptest.NewRequest(http.MethodGet, c.path, nil))

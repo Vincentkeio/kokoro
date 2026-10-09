@@ -1590,3 +1590,22 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
    卡片自然矮一行。顺手把互动条的上下留白收紧一点。 */
 .card .actbar { margin-top: var(--s2); padding-top: var(--s2); gap: 6px; }
 .card .foot { display: none; }   /* 老的那一行彻底不用了 */
+
+/* ---- 后台「面板主机自身」----
+   从 /dashboard 的 .dash-kv 搬过来、改了名。
+   那个页面已经删掉，这块并进后台了。 */
+.kv-grid {
+  display: grid; gap: var(--s4);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.kv-grid > div {
+  border-left: 2px solid var(--line);
+  padding-left: var(--s3);
+  min-width: 0;
+}
+.kv-grid span { display: block; font-size: 12px; color: var(--muted); }
+.kv-grid b {
+  font-size: 17px; font-family: var(--mono); color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.kv-grid b small { font-size: 11px; color: var(--muted); font-weight: 400; }

@@ -9,7 +9,6 @@
 <header class="top">
   <div class="wrap">
     <a class="brand" href="/">{{.SiteName}} 后台</a>
-    <a class="btn ghost" href="/dashboard">仪表盘</a>
     <a class="btn ghost" href="/admin/themes">皮肤</a>
     {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode title="切换深色 / 浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
     <a class="btn ghost" href="/">← 前台</a>
@@ -213,6 +212,36 @@
       {{end}}
       </tbody>
     </table>
+    {{end}}
+  </section>
+
+  {{/* 面板自身所在机器的资源占用。
+       原来只在 /dashboard 上有，那个页面删掉之后就并在后台这里 ——
+       "面板会不会先撑不住"是站长该关心的事，但跟访客无关。 */}}
+  <section class="panel" id="hostself">
+    <h3>面板主机自身</h3>
+    <p class="hint" style="margin-top:0">Hub 所在机器的资源占用。面板跑不动了，所有小鸡都会显示离线。</p>
+    {{if .Host}}
+    <div class="kv-grid">
+      <div>
+        <span>CPU</span>
+        <b>{{printf "%.1f" .Host.CPU.Usage}}%</b>
+      </div>
+      <div>
+        <span>内存</span>
+        <b>{{if gt .Host.Mem.Total 0}}{{printf "%.0f" .HostMemPct}}%{{else}}—{{end}}
+        {{if gt .Host.Mem.Total 0}}<small>{{fmtBytes .Host.Mem.Used}} / {{fmtBytes .Host.Mem.Total}}</small>{{end}}</b>
+      </div>
+      <div>
+        <span>磁盘</span>
+        <b>{{if gt .Host.Disk.Total 0}}{{printf "%.0f" .HostDiskPct}}%{{else}}—{{end}}
+        {{if gt .Host.Disk.Total 0}}<small>{{fmtBytes .Host.Disk.Used}} / {{fmtBytes .Host.Disk.Total}}</small>{{end}}</b>
+      </div>
+      <div><span>负载</span><b>{{printf "%.2f" .Host.CPU.Load1}}<small> {{printf "%.2f" .Host.CPU.Load5}} / {{printf "%.2f" .Host.CPU.Load15}}</small></b></div>
+      <div><span>开机</span><b>{{if gt .Host.Host.Uptime 0}}{{fmtDur .Host.Host.Uptime}}{{else}}—{{end}}</b></div>
+    </div>
+    {{else}}
+    <p class="hint">{{if .HostNote}}{{.HostNote}}{{else}}当前平台不支持读取本机资源{{end}}</p>
     {{end}}
   </section>
 

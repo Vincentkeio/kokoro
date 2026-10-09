@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"net/http"
 	"runtime"
 	"sort"
 	"strings"
@@ -102,16 +101,16 @@ type dashEvent struct {
 // ---- 页面 ----
 
 // handleDashboard 渲染主机仪表盘。路由由外部注册（/dashboard）。
-func (h *Hub) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		http.Error(w, "方法不允许", http.StatusMethodNotAllowed)
-		return
-	}
-
-	data := h.buildDashboard()
-
-	h.render(w, "dashboard.html", &data, r)
-}
+// handleDashboard 已删除 —— boss 要求撤掉仪表盘页面。
+//
+// 内容去向：
+//   总览 / 实时速率 / 一小时曲线 -> 首页（早就并过去了）
+//   最近告警                   -> 后台「告警与通知」区块（本来就有）
+//   主机自身（Hub 资源）        -> 后台「面板主机自身」
+//   负载最高的 5 台             -> 取消（后台的节点列表能看到负载）
+//
+// buildDashboard() 留着 —— 首页的「总览」和「全网速率」还靠它算，
+// 而且首页和后台要看到同一份数字。
 
 // ---- 各块数据 ----
 

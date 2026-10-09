@@ -109,7 +109,10 @@ func TestThemeTokensInjectedIntoEveryPage(t *testing.T) {
 	h, _ := newThemeTestHub(t)
 	cookies := loginAsAdmin(t, h)
 
-	for _, path := range []string{"/", "/dashboard", "/admin", "/admin/themes"} {
+	// ⚠️ /dashboard 已删（boss 要求撤掉仪表盘页面）。
+	// 留着这一行的话，这个测试会以"404"的形式红 —— 而且看起来像是
+	// 「主题令牌注入坏了」，其实是页面没了。
+	for _, path := range []string{"/", "/admin", "/admin/themes"} {
 		req := withCookies(httptest.NewRequest(http.MethodGet, path, nil), cookies)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, req)

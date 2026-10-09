@@ -621,6 +621,12 @@ type adminData struct {
 	WebhookOn        bool
 	WebhookURL       string
 
+	// ---- 面板主机自身（原来在 /dashboard 上，那个页面删掉后并到这儿）----
+	Host        *model.Metrics
+	HostMemPct  float64
+	HostDiskPct float64
+	HostNote    string
+
 	CC []ccOption // 国家/地区代码候选，给输入框做 datalist
 
 	AdminUser  string
@@ -1678,6 +1684,15 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 			data.AlertEvents = append(data.AlertEvents, v)
 		}
 	}
+	// 面板主机自身（Hub 所在机器）的资源占用。
+	// 原来在 /dashboard 上，那个页面删掉后并到后台 ——
+	// "面板会不会先撑不住"是站长该关心的事，跟访客无关。
+	data.Host, data.HostNote = h.collectHostSelf()
+	if data.Host != nil {
+		data.HostMemPct = Pct(float64(data.Host.Mem.Used), float64(data.Host.Mem.Total))
+		data.HostDiskPct = Pct(float64(data.Host.Disk.Used), float64(data.Host.Disk.Total))
+	}
+
 	if cfg, err := notify.LoadConfig(h.store); err == nil {
 		data.NotifyOn = cfg.TelegramEnabled
 		data.NotifyChat = cfg.TelegramChatID

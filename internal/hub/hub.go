@@ -200,7 +200,6 @@ func (h *Hub) routes() {
 	// 页面
 	h.mux.HandleFunc("/", h.handleHome)
 	h.mux.HandleFunc("/search", h.handleSearch)
-	h.mux.HandleFunc("/dashboard", h.handleDashboard)
 	h.mux.HandleFunc("/n/", h.handleNodePage)
 	h.mux.HandleFunc("/i/", h.handleInstallScript)
 	h.mux.HandleFunc("/avatar", h.handleAvatar)
