@@ -10,10 +10,25 @@ import (
 	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
+// testScriptView 是模板用的测试项：原始定义 + 拼好的命令。
+//
+// ⚠️ **命令必须在这里拼好放进视图**，不能让模板直接取 `.Cmd` ——
+// `testScript` 上**没有** Cmd 这个字段，而 Go 模板遇到不存在的字段
+// 会**中止整个渲染**：输出截断在那里，后面全没了。
+//
+// 这个坑在本站躺了很久：模板从第一个提交起就写着 `{{.Cmd}}`，
+// 于是这个页面**永远只显示第一张卡、而且那张卡是断的**
+// （只有标题和说明，没有命令、没有「下发」按钮）。
+// 不报错、不标红，看起来就像"另外两个测试项没做"。
+type testScriptView struct {
+	testScript
+	Cmd string
+}
+
 type adminTasksData struct {
 	adminData
 	Node    *model.Node
-	Scripts []testScript
+	Scripts []testScriptView
 	Tasks   []model.NodeTask
 	Msg     string
 	Err     string
@@ -67,10 +82,11 @@ func (h *Hub) handleAdminTasks(w http.ResponseWriter, r *http.Request, authed bo
 		return
 	}
 	tasks, _ := h.store.ListTasks(node.ID, 20)
+
 	h.render(w, "admin_tasks.html", &adminTasksData{
 		adminData: h.adminBase(r),
 		Node:      node,
-		Scripts:   testScripts,
+		Scripts:   h.scriptViews(),
 		Tasks:     tasks,
 		Msg:       strings.TrimSpace(r.URL.Query().Get("msg")),
 		Err:       strings.TrimSpace(r.URL.Query().Get("err")),
@@ -93,4 +109,16 @@ func urlQueryEscape(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// scriptViews 把内置测试项转成模板用的视图（带上拼好的命令）。
+//
+// 抽成方法是为了让**测试也能拿到同一份数据** —— 之前测试手拼，
+// 和线上跑的不是一回事，就漏掉了"命令为空"这种情况。
+func (h *Hub) scriptViews() []testScriptView {
+	out := make([]testScriptView, 0, len(testScripts))
+	for _, sc := range testScripts {
+		out = append(out, testScriptView{testScript: sc, Cmd: h.benchCmd(sc.Only)})
+	}
+	return out
 }
