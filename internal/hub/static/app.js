@@ -671,63 +671,18 @@ function renderRateChart(svg, pts) {
   apply();
 })();
 
-/* ---- 续费费用弹窗 ----
-   金额 + 货币 + 周期三件套，确定后写回那一行的隐藏字段。 */
+/* ---- 到期日：「永久」勾选框 ----
+   勾上就禁掉日期框（禁用的控件浏览器不提交，所以后端只认勾选框）。
+   同时把日期框清空 —— 留着旧日期会让人以为两个值都生效。 */
 (function () {
-  var dlg = document.getElementById('price-dlg');
-  if (!dlg) return;
-  var amount = document.getElementById('pd-amount');
-  var cur = document.getElementById('pd-cur');
-  var per = document.getElementById('pd-per');
-  var prev = document.getElementById('pd-preview');
-  var tr = null;  // 当前在编辑哪一行
+  var forever = document.querySelector('[data-exp-forever]');
+  var date = document.querySelector('[data-exp-date]');
+  if (!forever || !date) return;
 
-  var SYM = {}, SUF = {};
-  document.querySelectorAll('#pd-cur option').forEach(function (o) {
-    SYM[o.value] = o.textContent.trim().split(' ')[0];
-  });
-  document.querySelectorAll('#pd-per option').forEach(function (o) {
-    // 「每年」→「/年」这种后缀，先从选项文案里推不出来，
-    // 所以用固定表 —— 简单直接，别为了少写几行去解析中文。
-    SUF[o.value] = { year: ' /年', quarter: ' /季', month: ' /月', once: '' }[o.value] || '';
-  });
-
-  function render() {
-    var a = amount.value.trim();
-    prev.textContent = a ? (SYM[cur.value] || cur.value) + a + (SUF[per.value] || '') : '';
+  function sync() {
+    date.disabled = forever.checked;
+    if (forever.checked) date.value = '';
   }
-  [amount, cur, per].forEach(function (el) { el.addEventListener('input', render); });
-
-  document.addEventListener('click', function (e) {
-    var open = e.target.closest('[data-price-open]');
-    if (open) {
-      tr = open.closest('tr');
-      amount.value = open.dataset.amount || '';
-      if (open.dataset.cur) cur.value = open.dataset.cur;
-      if (open.dataset.per) per.value = open.dataset.per;
-      render();
-      if (typeof dlg.showModal === 'function') dlg.showModal();
-      else dlg.setAttribute('open', '');
-      return;
-    }
-    if (e.target.id === 'pd-clear') {
-      amount.value = '';
-      render();
-      return;
-    }
-    if (e.target.id === 'pd-ok') {
-      if (!tr) { dlg.close(); return; }
-      var a = amount.value.trim();
-      tr.querySelector('[data-price-amount]').value = a;
-      tr.querySelector('[data-price-cur]').value = a ? cur.value : '';
-      tr.querySelector('[data-price-per]').value = a ? per.value : '';
-      // 按钮文案也顺手更新，不然选完了看不到变化
-      var btn = tr.querySelector('[data-price-open]');
-      if (btn) btn.textContent = a ? (SYM[cur.value] || cur.value) + a + (SUF[per.value] || '') : '设费用';
-      dlg.close();
-    }
-  });
-
-  // 点遮罩关闭
-  dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+  forever.addEventListener('change', sync);
+  sync();
 })();

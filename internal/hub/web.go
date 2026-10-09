@@ -290,6 +290,11 @@ type nodeCard struct {
 	TaskItems []nodeTaskItem
 	// Uptime 是状态时间轴（近 30 天，一天一格）
 	Uptime *uptimeSummary
+
+	// ExpireText / ExpireLv 是到期倒计时的标签，如「剩 45 天」。
+	// 空串表示没填到期日 —— 那就不显示这个标签（没填 ≠ 永久）。
+	ExpireText string
+	ExpireLv   string
 	// Specs 是卡片上那行静态规格（CPU 型号/内存/Swap/虚拟化/加速）
 	Specs []specItem
 
@@ -687,6 +692,8 @@ func (h *Hub) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 	nodes, err := h.store.ListNodes(false)
+	// 到期倒计时要用名片里的 expire_at。**一次批量查**，别在循环里逐个查。
+	profiles, _ := h.store.ProfilesByNode()
 	if err != nil {
 		log.Printf("[hub] 读取节点失败: %v", err)
 		http.Error(w, "内部错误", http.StatusInternalServerError)
@@ -838,6 +845,11 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		}
 		c.Specs = nodeSpecs(n, m)
 		c.Uptime = h.loadUptime(n.ID)
+		// 到期倒计时的标签。没填到期日就空着，不显示
+		// （没填 ≠ 永久，站长可能只是还没填）。
+		if pr := profiles[n.ID]; pr != nil {
+			c.ExpireText, c.ExpireLv = expireTag(pr.ExpireAt)
+		}
 		c.Lat, c.Lon, c.HasCoord = resolveCoord(n.Country, n.Region, n.City)
 		if n.Online {
 			online++
@@ -2010,8 +2022,15 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 			if prof == nil {
 				prof = &model.NodeProfile{NodeID: node.ID}
 			}
-			// 到期日就是 YYYY-MM-DD（<input type="date"> 给什么存什么）
-			prof.ExpireAt = clampRunes(strings.TrimSpace(r.FormValue("expire_at")), 32)
+			// 到期日：勾了「永久」就存固定词，否则存 YYYY-MM-DD。
+			//
+			// ⚠️ 勾了永久时浏览器**不会提交**被禁用的日期框，
+			// 所以不能只看 expire_at —— 会变成空串（= 没填）。
+			if r.FormValue("expire_forever") != "" {
+				prof.ExpireAt = expireForever
+			} else {
+				prof.ExpireAt = clampRunes(strings.TrimSpace(r.FormValue("expire_at")), 32)
+			}
 			// 费用从弹窗的三件套拼出来。三件套都没带时（老表单）
 			// 退回读 price 原值，别把已填的清掉。
 			if _, has := r.Form["price_amount"]; has {

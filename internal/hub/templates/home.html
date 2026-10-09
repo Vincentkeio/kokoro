@@ -224,7 +224,15 @@
            两处都写「延迟 xx ms」属于同一个数字看两遍。 */}}
       <p class="meta">{{.RegionLabel}}</p>
 
-      {{if .Tags}}<div class="tags">{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</div>{{end}}
+      {{/* 标签行：自定义标签 + **到期倒计时**。
+           倒计时放最后 —— 它每天都在变，放前面会让整行看起来在动。
+           没填到期日就不显示（没填 ≠ 永久）。 */}}
+      {{if or .Tags .ExpireText}}
+      <div class="tags">
+        {{range .Tags}}<span class="tag">{{.}}</span>{{end}}
+        {{if .ExpireText}}<span class="tag {{.ExpireLv}}">{{.ExpireText}}</span>{{end}}
+      </div>
+      {{end}}
 
       {{/* 机器规格：CPU 型号（独占一行）/ 核心数 / 内存 / Swap / 磁盘 /
            系统 / 虚拟化 / 加速 / 运行。
@@ -437,7 +445,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=55"></script>
+<script src="/static/app.js?v=56"></script>
 </body>
 </html>
 {{end}}

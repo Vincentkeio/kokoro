@@ -1773,28 +1773,28 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   border-style: dashed;
 }
 
-/* ---- 续费费用弹窗 ---- */
-.price-dlg {
-  width: min(26rem, 92vw);
-  padding: 0; border: var(--kokoro-border-width, 1px) solid var(--line);
-  border-radius: var(--r); background: var(--panel); color: var(--fg);
-  box-shadow: 0 20px 56px rgba(0, 0, 0, .28);
-}
-.price-dlg::backdrop { background: rgba(0, 0, 0, .35); }
-.price-form { padding: var(--s5); display: flex; flex-direction: column; gap: var(--s3); }
-.price-form h3 { margin: 0; font-size: 15px; }
-.price-form .row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
-.price-form select, .price-form input {
-  font: inherit; padding: 6px 9px;
+/* 续费费用弹窗已删（boss 要求），相关样式一并清掉 ——
+   留着死 CSS 会让人以为这个功能还在。 */
+
+/* ---- 到期倒计时标签 ----
+   分三档：>30 天正常（跟普通标签一样）、≤30 天提醒、≤7 天或已过期告警。 */
+.tag.exp-ok   { color: var(--muted); }
+.tag.exp-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.tag.exp-bad  { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, transparent); font-weight: 600; }
+
+/* 后台节点表里带文字标签的小字段（到期日）。
+   光一个空日期框看不出是干吗的。 */
+.fld { display: inline-flex; flex-direction: column; gap: 2px; }
+.fld > span { font-size: 10.5px; color: var(--muted); line-height: 1.2; }
+.fld input { font: inherit; font-size: 12.5px; padding: 3px 6px;
   border: var(--kokoro-border-width, 1px) solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--panel); color: var(--fg);
-}
-/* 实时预览拼出来的那句话 —— 免得选完才知道长什么样 */
-.price-preview {
-  margin: 0; padding: var(--s2) var(--s3);
-  background: var(--sunken); border-radius: var(--r-sm);
-  font-size: 13px; font-family: var(--mono); color: var(--muted);
-}
-.price-preview:empty { display: none; }
-.price-actions { justify-content: flex-end; margin-top: var(--s2); }
+  border-radius: var(--r-sm); background: var(--panel); color: var(--fg); }
+
+/* 「永久」用中性的成功色 —— 它是个"没问题"的状态，
+   但不该跟"剩 300 天"长得一模一样，否则一眼扫过去分不出。 */
+.tag.exp-perm { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+
+/* 到期日：日期框和「永久」并排 */
+.fld-row { display: inline-flex; align-items: center; gap: 6px; }
+.fld .chk { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.fld input[type="date"]:disabled { opacity: .4; }
