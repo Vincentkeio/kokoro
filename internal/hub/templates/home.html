@@ -438,25 +438,31 @@
 
      数据按需拉（/n/<slug>/articles.json、comments.json），
      不预先塞进首页 —— 评论可能上百条，而绝大多数访客根本不点。 ---- */}}
-<div class="dlg-scrim" id="dlg-scrim" hidden></div>
+{{/* ⚠️ 弹窗必须**放在遮罩里面**。
+     遮罩是 flex 容器，靠它把弹窗居中；放成兄弟节点的话
+     弹窗没有定位、会作为一个普通块级元素沉到页面底部 ——
+     表现是"点开只有一片灰背景，看不到内容"。（踩过一次） */}}
+<div class="dlg-scrim" id="dlg-scrim" hidden>
 
-<div class="dlg" id="d-art" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="文章">
-  <header class="dlg-head">
-    <b class="dlg-title">文章</b>
-    <span class="dlg-admin" id="d-art-admin"></span>
-    <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
-  </header>
-  <div class="dlg-body" id="d-art-body"></div>
-</aside>
+  <div class="dlg" id="d-art" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="文章">
+    <header class="dlg-head">
+      <b class="dlg-title">文章</b>
+      <span class="dlg-admin" id="d-art-admin"></span>
+      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body" id="d-art-body"></div>
+  </div>
 
-<div class="dlg" id="d-cmt" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="评论">
-  <header class="dlg-head">
-    <b class="dlg-title">评论</b>
-    <span class="dlg-admin" id="d-cmt-admin"></span>
-    <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
-  </header>
-  <div class="dlg-body" id="d-cmt-body"></div>
-  <footer class="dlg-foot" id="d-cmt-foot"></footer>
+  <div class="dlg" id="d-cmt" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="评论">
+    <header class="dlg-head">
+      <b class="dlg-title">评论</b>
+      <span class="dlg-admin" id="d-cmt-admin"></span>
+      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body" id="d-cmt-body"></div>
+    <footer class="dlg-foot" id="d-cmt-foot"></footer>
+  </div>
+
 </div>
 
 </main>
@@ -472,7 +478,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=59"></script>
+<script src="/static/app.js?v=60"></script>
 </body>
 </html>
 {{end}}

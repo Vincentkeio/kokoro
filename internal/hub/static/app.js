@@ -609,7 +609,12 @@ function renderRateChart(svg, pts) {
     if (e.target.closest('[data-dlgclose]')) { close(); }
   });
 
-  scrim.addEventListener('click', close);
+  // ⚠️ 只有点在**遮罩本身**时才关。
+  // 弹窗是遮罩的子元素，不判 target 的话点弹窗内部也会冒泡上来关掉它 ——
+  // 表现成"点哪儿都关"，正文根本没法看。
+  scrim.addEventListener('click', function (e) {
+    if (e.target === scrim) close();
+  });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && st.cur) close();
   });

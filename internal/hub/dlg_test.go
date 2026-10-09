@@ -139,3 +139,42 @@ func TestDlgPrivateNodeHidden(t *testing.T) {
 		t.Errorf("私有节点的抽屉接口应 404，实际 %d", w.Code)
 	}
 }
+
+// TestDlgIsInsideScrim 弹窗必须在遮罩**里面**。
+//
+// 遮罩是 flex 容器，靠它居中弹窗。放成兄弟节点的话弹窗没有定位，
+// 会作为一个普通块级元素沉到页面底部 —— 表现是
+// "点开只有一片灰背景，看不到内容"，而且浏览器不报任何错。
+//
+// 我第一版就是这么写的，boss 直接看到了一片灰。
+func TestDlgIsInsideScrim(t *testing.T) {
+	h, st := newTestHub(t)
+	mkNode(t, st, "东京", "JP", "日本", "")
+	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	si := strings.Index(body, `id="dlg-scrim"`)
+	if si < 0 {
+		t.Fatal("找不到遮罩")
+	}
+	// 从遮罩开始，往前找最近的一个闭合标签，确认两个弹窗都在它之前闭合
+	for _, id := range []string{`id="d-art"`, `id="d-cmt"`} {
+		di := strings.Index(body, id)
+		if di < si {
+			t.Errorf("%s 出现在遮罩**之前** —— 应该放在里面", id)
+		}
+	}
+	// 遮罩块里应该包含两个弹窗
+	rest := body[si:]
+	if end := strings.Index(rest, "</main>"); end > 0 {
+		rest = rest[:end]
+	}
+	for _, id := range []string{`id="d-art"`, `id="d-cmt"`} {
+		if !strings.Contains(rest, id) {
+			t.Errorf("%s 不在遮罩块内 —— 遮罩居中不了它，会沉到页面底部", id)
+		}
+	}
+	// 不许有没配对的 </aside>（我把 aside 改成 div 时漏过一个）
+	if strings.Contains(rest, "</aside>") {
+		t.Error("弹窗块里还有 </aside> —— 标签没配对，HTML 会错乱")
+	}
+}
