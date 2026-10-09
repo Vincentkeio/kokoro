@@ -18,7 +18,7 @@ import (
 	"testing"
 )
 
-func TestDrawerHiddenRuleExists(t *testing.T) {
+func TestDlgHiddenRuleExists(t *testing.T) {
 	b, err := fs.ReadFile(staticFS, "static/style.css")
 	if err != nil {
 		t.Fatalf("读样式表失败: %v", err)
@@ -39,8 +39,8 @@ func TestDrawerHiddenRuleExists(t *testing.T) {
 	}
 }
 
-// TestDrawerMarkupStartsHidden 两个弹窗在 HTML 里必须是 hidden 的。
-func TestDrawerMarkupStartsHidden(t *testing.T) {
+// TestDlgMarkupStartsHidden 两个弹窗在 HTML 里必须是 hidden 的。
+func TestDlgMarkupStartsHidden(t *testing.T) {
 	h, st := newTestHub(t)
 	mkNode(t, st, "东京 zouter", "JP", "日本 · 东京", "")
 	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))

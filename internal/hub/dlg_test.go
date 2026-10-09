@@ -1,6 +1,6 @@
 package hub
 
-// 侧边抽屉的数据接口：文章 / 评论，以及权限。
+// 弹窗的数据接口：文章 / 评论，以及权限。
 
 import (
 	"encoding/json"
@@ -12,22 +12,22 @@ import (
 	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
-func getDrawer(t *testing.T, h *Hub, path string) drawerResp {
+func getDlg(t *testing.T, h *Hub, path string) dlgResp {
 	t.Helper()
 	w := httptest.NewRecorder()
 	h.handleNodePage(w, httptest.NewRequest(http.MethodGet, path, nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("%s 返回 %d: %s", path, w.Code, w.Body.String())
 	}
-	var d drawerResp
+	var d dlgResp
 	if err := json.Unmarshal(w.Body.Bytes(), &d); err != nil {
 		t.Fatalf("解析失败: %v (%s)", err, w.Body.String())
 	}
 	return d
 }
 
-// TestDrawerArticleIsSingle 一台只有一篇文章 —— 接口也只返回一篇。
-func TestDrawerArticleIsSingle(t *testing.T) {
+// TestDlgArticleIsSingle 一台只有一篇文章 —— 接口也只返回一篇。
+func TestDlgArticleIsSingle(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "东京 zouter", "JP", "日本 · 东京", "")
 	// 就算被塞了两篇（旧数据 / 手滑），也只给第一篇
@@ -38,7 +38,7 @@ func TestDrawerArticleIsSingle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	d := getDrawer(t, h, "/n/"+n.Slug+"/articles.json")
+	d := getDlg(t, h, "/n/"+n.Slug+"/articles.json")
 	if len(d.Articles) != 1 {
 		t.Fatalf("应只返回 1 篇，实际 %d", len(d.Articles))
 	}
@@ -54,8 +54,8 @@ func TestDrawerArticleIsSingle(t *testing.T) {
 	}
 }
 
-// TestDrawerCommentsPaged 评论要分页。
-func TestDrawerCommentsPaged(t *testing.T) {
+// TestDlgCommentsPaged 评论要分页。
+func TestDlgCommentsPaged(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "东京 zouter", "JP", "日本 · 东京", "")
 	total := drawerCommentPage + 5
@@ -66,7 +66,7 @@ func TestDrawerCommentsPaged(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	p1 := getDrawer(t, h, "/n/"+n.Slug+"/comments.json")
+	p1 := getDlg(t, h, "/n/"+n.Slug+"/comments.json")
 	if p1.Total != total {
 		t.Errorf("总数 = %d，应为 %d", p1.Total, total)
 	}
@@ -77,20 +77,20 @@ func TestDrawerCommentsPaged(t *testing.T) {
 		t.Errorf("应分 2 页，实际 %d", p1.Pages)
 	}
 
-	p2 := getDrawer(t, h, "/n/"+n.Slug+"/comments.json?page=2")
+	p2 := getDlg(t, h, "/n/"+n.Slug+"/comments.json?page=2")
 	if len(p2.Comments) != 5 {
 		t.Errorf("第二页应给 5 条，实际 %d", len(p2.Comments))
 	}
 
 	// 页码越界要夹到最后一页，不是 400 —— URL 是手改得出来的
-	p9 := getDrawer(t, h, "/n/"+n.Slug+"/comments.json?page=99")
+	p9 := getDlg(t, h, "/n/"+n.Slug+"/comments.json?page=99")
 	if p9.Page != 2 {
 		t.Errorf("越界页码应夹到最后一页，实际 %d", p9.Page)
 	}
 }
 
-// TestDrawerHidesPendingForVisitors 未审核的评论访客看不到，管理员看得到。
-func TestDrawerHidesPendingForVisitors(t *testing.T) {
+// TestDlgHidesPendingForVisitors 未审核的评论访客看不到，管理员看得到。
+func TestDlgHidesPendingForVisitors(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "东京 zouter", "JP", "日本 · 东京", "")
 	_ = st.AddComment(&model.Comment{
@@ -98,7 +98,7 @@ func TestDrawerHidesPendingForVisitors(t *testing.T) {
 	_ = st.AddComment(&model.Comment{
 		NodeID: n.ID, Author: "待审核", Content: "买茶叶加微信", Status: model.CommentPending})
 
-	d := getDrawer(t, h, "/n/"+n.Slug+"/comments.json")
+	d := getDlg(t, h, "/n/"+n.Slug+"/comments.json")
 	if d.Total != 1 {
 		t.Errorf("访客只该看到 1 条已审核的，实际 %d", d.Total)
 	}
@@ -112,20 +112,20 @@ func TestDrawerHidesPendingForVisitors(t *testing.T) {
 	}
 }
 
-// TestDrawerAdminGetsEditLinks 只有管理员才拿到编辑入口。
-func TestDrawerAdminGetsEditLinks(t *testing.T) {
+// TestDlgAdminGetsEditLinks 只有管理员才拿到编辑入口。
+func TestDlgAdminGetsEditLinks(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "东京 zouter", "JP", "日本 · 东京", "")
 
 	// 访客：没有任何管理链接
-	guest := getDrawer(t, h, "/n/"+n.Slug+"/articles.json")
+	guest := getDlg(t, h, "/n/"+n.Slug+"/articles.json")
 	if guest.EditURL != "" || guest.ManageURL != "" {
 		t.Error("访客不该拿到编辑 / 管理链接")
 	}
 }
 
-// TestDrawerPrivateNodeHidden 私有节点对访客连抽屉都不能开。
-func TestDrawerPrivateNodeHidden(t *testing.T) {
+// TestDlgPrivateNodeHidden 私有节点对访客连抽屉都不能开。
+func TestDlgPrivateNodeHidden(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "隐藏机", "JP", "日本 · 东京", "")
 	// 改可见性走更新，不能 CreateNode —— 那个会撞 slug 唯一索引

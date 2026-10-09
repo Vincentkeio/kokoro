@@ -1,11 +1,11 @@
 package hub
 
-// 卡片右侧「侧边弹窗」的数据接口。
+// 卡片上「文章 / 评论」弹窗的数据接口。
 //
 // 点卡片上的「文章 3」「评论 5」时，前端按 slug 拉这两个端点，
-// 填进抽屉里。为什么不做成服务端一次渲染好整页：
+// 填进弹窗里。为什么不做成服务端一次渲染好整页：
 //   1) 评论可能上百条，全塞进首页会让首页体积翻好几倍
-//   2) 抽屉只在真的点开时才需要数据，绝大多数访客不点
+//   2) 弹窗只在真的点开时才需要数据，绝大多数访客不点
 // 所以按需拉，并且**分页**。
 
 import (
@@ -18,14 +18,14 @@ import (
 	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
-// 抽屉里每页的条数。
+// 弹窗里每页的条数。
 //
 // 文章**没有分页** —— 产品形态是"一只小鸡一篇文章"（boss 定的），
 // 一篇就是全部，给个翻页按钮反而是凭空多出来一个一直是"1/1"的控件。
 // 评论会很多，所以分页。
 const drawerCommentPage = 20
 
-// drawerArticle 是抽屉里的一篇文章。
+// drawerArticle 是弹窗里的一篇文章。
 type drawerArticle struct {
 	Title   string `json:"title"`
 	Summary string `json:"summary"`
@@ -34,7 +34,7 @@ type drawerArticle struct {
 	Index   int    `json:"index"` // 第几篇，从 1 数，给"第 2/5 篇"用
 }
 
-// drawerComment 是抽屉里的一条评论。
+// drawerComment 是弹窗里的一条评论。
 type drawerComment struct {
 	Author  string `json:"author"`
 	Content string `json:"content"`
@@ -42,8 +42,8 @@ type drawerComment struct {
 	HTML    string `json:"html"` // 已审核的才带；未审核的只有管理员看得到
 }
 
-// drawerResp 是抽屉接口的统一响应。
-type drawerResp struct {
+// dlgResp 是弹窗接口的统一响应。
+type dlgResp struct {
 	OK    bool `json:"ok"`
 	Total int  `json:"total"`
 	Page  int  `json:"page"`
@@ -66,7 +66,7 @@ func (h *Hub) handleNodeArticles(w http.ResponseWriter, r *http.Request, slug st
 		writeErr(w, http.StatusNotFound, "节点不存在")
 		return
 	}
-	// 私有节点对访客完全不可见，抽屉也不能漏
+	// 私有节点对访客完全不可见，弹窗也不能漏
 	admin := h.adminAuthed(r)
 	if node.Visibility == model.VisibilityPrivate && !admin {
 		writeErr(w, http.StatusNotFound, "节点不存在")
@@ -80,7 +80,7 @@ func (h *Hub) handleNodeArticles(w http.ResponseWriter, r *http.Request, slug st
 	}
 
 	// 一台只有一篇 —— 有就给它，没有就是空列表（前端显示"还没写文章"）
-	resp := drawerResp{OK: true, Total: len(arts), Page: 1, Pages: 1, IsAdmin: admin}
+	resp := dlgResp{OK: true, Total: len(arts), Page: 1, Pages: 1, IsAdmin: admin}
 	if admin {
 		resp.EditURL = "/admin/post?node=" + node.ID
 	}
@@ -111,7 +111,7 @@ func (h *Hub) handleNodeComments(w http.ResponseWriter, r *http.Request, slug st
 	}
 
 	// 访客只看已审核的；管理员能看到全部（含待审），
-	// 否则他在抽屉里没法判断"这条该不该放出去"。
+	// 否则他在弹窗里没法判断"这条该不该放出去"。
 	cs, err := h.store.ListComments(node.ID, !admin)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "读取评论失败")
@@ -119,7 +119,7 @@ func (h *Hub) handleNodeComments(w http.ResponseWriter, r *http.Request, slug st
 	}
 
 	page, pages := pagedIndex(r, len(cs), drawerCommentPage)
-	resp := drawerResp{OK: true, Total: len(cs), Page: page, Pages: pages, IsAdmin: admin}
+	resp := dlgResp{OK: true, Total: len(cs), Page: page, Pages: pages, IsAdmin: admin}
 	if admin {
 		resp.ManageURL = "/admin#comments"
 	}
