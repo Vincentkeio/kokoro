@@ -877,11 +877,20 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
     color-mix(in srgb, var(--accent) 7%, transparent), transparent 72%);
 }
 /* 画布的**显示尺寸由 CSS 决定**，永远等于容器；globe.js 只管绘制分辨率
-   （canvas.width/height）。反过来让 JS 写死 style 宽高的话，容器一变矮，
-   画布就停在旧尺寸上、下半部分被 .globe 的 overflow:hidden 裁掉。
-   用 left/top + 100% 而不是 inset:0 —— 后者和显式 width/height 同时存在时
-   会互相打架，写清楚更不容易被后人改坏。 */
-.globe canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+   （canvas.width/height）。
+   为什么用 left/top + 100% 而不是 inset:0：后者和显式 width/height 同时
+   存在时会互相打架，写清楚更不容易被后人改坏。
+   ⚠️ 这里的 `!important` 不是随手加的：inline style（JS 里写
+   `canvas.style.height = n + 'px'`）的优先级高于普通作者样式，只有带
+   !important 的作者样式才能压过它。旧版 globe.js 就是这么写死的，而
+   用户浏览器里的 JS 有可能还是缓存里那份 —— 加了 !important 之后，
+   即便跑的是旧 JS，画布也照样撑满容器，不会出现"只有上面一条、
+   下面一片空白"。 */
+.globe canvas {
+  position: absolute; left: 0; top: 0;
+  width: 100% !important; height: 100% !important;
+  display: block;
+}
 .globe-ov { cursor: grab; }
 .globe-ov.grabbing { cursor: grabbing; }
 .globe-tip {
@@ -1017,9 +1026,16 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 .home-band .map-card {
   margin: 0;
   height: var(--band-h);
+  /* 保底高度。--band-h 里含 vh，窗口一矮它就跟着缩；缩过头时
+     globe（flex:1 + 原来的 min-height:0）会被压成薄薄一条，
+     地球被压扁、看着就像"只显示了上半部分"。320px 是"地球还能看清"
+     的下限 —— 头部 + 脚注 + 内边距约 81px，剩下的留给画布。 */
+  min-height: 320px;
   display: flex; flex-direction: column;
 }
-.home-band .globe { flex: 1; min-height: 0; }
+/* ⚠️ min-height 从 0 改成 240px：0 允许画布被压到没有高度，
+   那正是"地球被截成一条"的另一半成因。 */
+.home-band .globe { flex: 1; min-height: 240px; }
 
 /* 左侧动态流：同样占满整行高度，列表区内部滚动。
    最新的在最上面（数据本来就是倒序），所以不需要初始滚动。 */

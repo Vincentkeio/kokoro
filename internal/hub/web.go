@@ -2223,6 +2223,17 @@ func (h *Hub) render(w http.ResponseWriter, name string, data any, r *http.Reque
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	// ⚠️ HTML **必须每次回源**，别让它进启发式缓存。
+	//
+	// 不给这条头时，浏览器对没有 Cache-Control / Last-Modified 的 HTML 会
+	// 自行"启发式缓存"，于是出现：部署了新版本、static 的 ?v=N 也 bump 了，
+	// 用户刷新却仍拿着旧 HTML —— 里面引用的还是旧版 CSS/JS，
+	// 表现成"明明修了却没变化"，而且从服务端完全看不出异常。
+	// 2026-10-10 的地球修复就在这里卡了一轮。
+	//
+	// HTML 体积不大（~85KB）且内容本就实时（在线状态、流量都在变），
+	// 每次重新取是划算的。
+	w.Header().Set("Cache-Control", "no-cache")
 
 	// 主题系统整体不可用时（内置主题解析失败）也要能出页面：
 	// 给一份空的 themeView，模板里的条件分支会退回原始样式。

@@ -634,9 +634,30 @@
     var self = this;
     var reduce = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.reduce = reduce;
+    // 低频自检的时间戳。第一帧 t 会远大于它，所以必然先查一次。
+    var lastCheck = -1e9;
     function frame(t) {
       self._raf = global.requestAnimationFrame(frame);
       if (document.hidden || !self.visible) return;
+
+      // 兜底自检：容器尺寸变了但没收到任何通知时，自己纠正一次。
+      //
+      // ResizeObserver 已经覆盖了多数情况，但下面几种仍可能漏网：
+      //   - 浏览器跑的是缓存里的**旧版 globe.js**（没有观察器）；
+      //   - 别的脚本把观察器断开、或把画布的 inline style 写死；
+      //   - 布局从意想不到的地方被改动（某个祖先元素高度变化）。
+      // 这类漏网的后果就是"地球只剩上半部分"，而且不报错。
+      //
+      // 每 ~250ms 比一次，代价是读一次 clientWidth/Height（会 flush 布局），
+      // 比每帧读便宜得多，也不会被帧率带着走。
+      if (t - lastCheck > 250) {
+        lastCheck = t;
+        if (Math.abs(self.host.clientHeight - self.h) > 1 ||
+            Math.abs(self.host.clientWidth - self.w) > 1) {
+          self._resize();
+        }
+      }
+
       self._step(reduce, t);
     }
     this._raf = global.requestAnimationFrame(frame);
