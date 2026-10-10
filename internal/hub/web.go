@@ -1784,6 +1784,12 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 	if raw, err := h.store.GetSetting(settingHubLon); err == nil {
 		data.HubLon = raw
 	}
+	// ⚠️ 这里是**手工构造** adminData（没走 adminBase，因为它还带
+	// Nodes/Profiles/Tokens 这些只有后台首页才要的东西）。
+	// 所以主题面板那几项得**显式补上** —— 漏了的话「主题」页签里
+	// 主题卡片会是空的（列表渲染出 0 张，还不报错）。
+	// 2026-10-11 合并主题页时就是这么踩的：DOM 里 th-grid 是空的。
+	h.fillThemePanel(&data, r)
 
 	nameOf := make(map[string]string, len(nodes))
 	slugOf := make(map[string]string, len(nodes))

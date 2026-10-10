@@ -161,15 +161,22 @@ func TestAdminThemesTabIsPlainTab(t *testing.T) {
 	}
 	// 页签不能是空壳：主题管理的标志性入口都得在页面上
 	for _, want := range []string{
-		`data-atab="themes"`,         // 面板挂了页签值
-		`href="/theme-export/`,       // 导出
+		`data-atab="themes"`,          // 面板挂了页签值
+		`href="/theme-export/`,        // 导出
 		`action="/admin/themes/grab"`, // 一键获取别人的主题
-		`action="/admin/wallpaper"`,  // 壁纸
-		`href="/theme-ai-prompt.md"`, // AI 提示词
+		`action="/admin/wallpaper"`,   // 壁纸
+		`href="/theme-ai-prompt.md"`,  // AI 提示词
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("主题面板缺少 %q —— 页签不能是空壳", want)
 		}
+	}
+	// ⚠️ 光有外壳不够，**卡片数据也得真填进去**。
+	// handleAdmin 是手工构造 adminData 的，漏调 fillThemePanel 时
+	// 页面结构完整、但 th-grid 里一张卡都没有 —— 不报错，只是列表空着。
+	// （2026-10-11 合并主题页时就这么踩过一次。）
+	if !strings.Contains(body, `class="th-card`) {
+		t.Error("主题卡片一张都没渲染 —— handleAdmin 是不是漏了 fillThemePanel？")
 	}
 	// 那个高级配置整块都该没了。
 	for _, gone := range []string{"theme_fetch_hosts", "本机地址白名单"} {
