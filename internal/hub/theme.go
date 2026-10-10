@@ -23,6 +23,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+
+	"github.com/Vincentkeio/kokoro/docs"
 	"net/url"
 	"strings"
 	"sync"
@@ -903,6 +905,29 @@ func (h *Hub) handleThemeDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleThemeExport 导出当前主题的 theme.json，方便分享给别人。
+// handleThemeAIPrompt 提供「给 AI 写主题用的提示词」下载。
+//
+// 这份文档是自包含的：硬约束、字段表、101 个合法变量清单全在里面。
+// 用户把它整段丢给 AI、末尾补一句自己想要的样子，产出的 theme.json
+// 就能直接过校验 —— 不用手工纠错字段名。
+//
+// 放在公开路径上（和 /theme.json 一样）：规范不是秘密，公开才好分享。
+// 带 attachment 是因为它的用途就是"存下来再喂给 AI"。
+func (h *Hub) handleThemeAIPrompt(w http.ResponseWriter, r *http.Request) {
+	body := docs.AIPrompt()
+	if len(body) == 0 {
+		// 理论上不可能（embed 是编译期常量）。真发生了说明构建出了问题，
+		// 给 404 比吐一个空文件让人以为"AI 读不懂"要好。
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition",
+		`attachment; filename="kokoro-theme-ai-prompt.md"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(body)
+}
+
 func (h *Hub) handleThemeExport(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/theme-export/")
 	m := h.themes.Resolve(id)

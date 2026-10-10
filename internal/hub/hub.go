@@ -225,6 +225,9 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/theme.json", h.handleThemeManifest)
 	h.mux.HandleFunc("/theme-export/", h.handleThemeExport)
 	h.mux.HandleFunc("/theme-bundle/", h.handleThemeBundle)
+	// 给 AI 写主题用的提示词，后台「主题」页有下载入口。
+	// 公开：规范不是秘密，公开才好分享给别人。
+	h.mux.HandleFunc("/theme-ai-prompt.md", h.handleThemeAIPrompt)
 	h.mux.HandleFunc("/theme/", h.handleThemeSwitch)
 	// 访客自选主题：无鉴权，只写 cookie，不影响站点设置。
 	h.mux.HandleFunc("/pick/", h.handleThemePick)

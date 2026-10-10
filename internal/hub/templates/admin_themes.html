@@ -170,11 +170,20 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
   </div>
 
   <section class="panel">
-    <h3>主题文件规范</h3>
-    <p class="hint" style="line-height:1.7">
-      想自己写主题，或者把这套规范丢给 AI 让它帮你生成？
-      仓库里的 <code>docs/THEME-FORMAT.md</code> 写清了全部字段、合法变量表、
-      布局枚举、安全边界和一整段可直接复制的 AI 提示词，
+    <h3>让 AI 帮你写主题</h3>
+    <p class="th-intro" style="margin-bottom:10px">
+      下载下面这份提示词，<b>整段丢给 AI</b>，末尾补一句你想要的样子
+      （比如"深色、赛博朋克、紫配绿"），它产出的 <code>theme.json</code>
+      就能直接导入。提示词里已经写死了全部硬约束 —— 合法变量名、值类型、
+      枚举值、安全禁区 —— 所以 AI 不会瞎编字段名，不用你再手工纠错。
+    </p>
+    <div class="row">
+      <a class="btn" href="/theme-ai-prompt.md">下载 AI 提示词</a>
+      <a class="btn ghost" href="/theme-export/{{.Theme.ID}}">拿现成的改</a>
+      <span class="hint">导出的 JSON 改几个颜色就是一套新皮肤。</span>
+    </div>
+    <p class="hint" style="line-height:1.7;margin-top:12px">
+      想自己手写：<code>docs/THEME-FORMAT.md</code> 是完整规范，
       <code>docs/themes/minimal.json</code> 是能直接用的最小示例。
     </p>
   </section>
