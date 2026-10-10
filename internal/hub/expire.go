@@ -66,7 +66,7 @@ func expireTag(raw string) (text, level string) {
 	}
 }
 
-// ---- 三网延迟与流量的展示辅助 ----
+// ---- 延迟与流量的展示辅助 ----
 
 // netLevel 给延迟分档。**判据与占用率相反**：延迟越低越好。
 //

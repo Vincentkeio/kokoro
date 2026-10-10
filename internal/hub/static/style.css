@@ -1854,7 +1854,7 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   font-size: 12px; line-height: 1.5;
 }
 .card .netrow { margin: 0; display: flex; flex-wrap: wrap; gap: 3px 10px; align-items: baseline; }
-/* 「三网延迟」「流量」这两个前缀固定宽度，两行的值才能对齐 */
+/* 每行左侧的标签（延迟 / 本日 / 本月）固定宽度，值列才能对齐 */
 .card .netrow .nl { flex: none; width: 4.2em; color: var(--muted); }
 .card .netrow .nv { color: var(--fg); font-family: var(--mono); white-space: nowrap; }
 /* 延迟越低越好 —— 这里 green=快、red=慢，跟占用率条的方向相反 */

@@ -1,6 +1,6 @@
 package hub
 
-// 卡片上的三网延迟与流量。
+// 卡片上的延迟与流量。
 
 import (
 	"net/http"
@@ -12,7 +12,7 @@ import (
 
 // TestCardShowsThreeISPLatency 三网延迟要按 电信→联通→移动 排。
 func TestCardShowsThreeISPLatency(t *testing.T) {
-	_, st := newTestHub(t)
+	h, st := newTestHub(t)
 	n := mkNode(t, st, "东京", "JP", "日本", "")
 
 	// 故意乱序插入，验证卡片上会重排
@@ -45,6 +45,16 @@ func TestCardShowsThreeISPLatency(t *testing.T) {
 	}
 	if want := 45.0 + 52 + 68; sum < want-0.1 || sum > want+0.1 {
 		t.Errorf("延迟合计 = %.1f，应为 %.1f", sum, want)
+	}
+
+	// 端到端：卡片上的标签是「延迟」（boss 要求从「三网延迟」缩短）。
+	seedMetrics(t, st, n.ID)
+	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(body, `>延迟</span>`) {
+		t.Error("卡片上应显示「延迟」标签")
+	}
+	if strings.Contains(body, "三网延迟") {
+		t.Error("「三网延迟」已按要求缩短为「延迟」，不该再出现")
 	}
 }
 
@@ -158,7 +168,7 @@ func TestNetLevelLowerIsBetter(t *testing.T) {
 	}
 }
 
-// TestCardShowsTraffic 卡片上要出现「今 ↑… ↓…」。
+// TestCardShowsTraffic 卡片上要出现「本日 / 本月」两行流量。
 //
 // 端到端：塞今天的窗口 → 渲染首页 → HTML 里得有流量那一段。
 // （只测 store 是不够的——接线断了 store 照样绿。）
@@ -184,10 +194,15 @@ func TestCardShowsTraffic(t *testing.T) {
 	if !strings.Contains(body, `class="netcard"`) {
 		t.Fatal("首页没渲染出 netcard 块")
 	}
-	if !strings.Contains(body, "今 ↑") {
-		t.Error("卡片上没有本日流量 —— 接线断了？")
+	// boss 要求：删掉「流量」这个标题，把「今 / 月」写成「本日 / 本月」，
+	// 各占一行。回退任何一处都该让这条红。
+	if !strings.Contains(body, `>本日</span>`) {
+		t.Error("卡片上没有「本日」流量行 —— 接线断了？")
 	}
-	if !strings.Contains(body, "月 ↑") {
-		t.Error("卡片上没有本月流量")
+	if !strings.Contains(body, `>本月</span>`) {
+		t.Error("卡片上没有「本月」流量行")
+	}
+	if strings.Contains(body, `>流量</span>`) {
+		t.Error("卡片上不该再有「流量」标题")
 	}
 }

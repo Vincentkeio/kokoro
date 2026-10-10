@@ -350,25 +350,34 @@
       {{end}}
       </div>
 
-      {{/* ---- 三网延迟 + 流量 ----
-           紧凑两行，固定高度（跟 IP 卡一个道理：没数据的卡片
+      {{/* ---- 延迟 + 流量 ----
+           紧凑几行，固定高度（跟 IP 卡一个道理：没数据的卡片
            不该比有数据的矮一截，否则网格参差）。
 
-           三网延迟是**最近一轮探测**的结果，跟详情页口径一致；
-           流量是估算值（窗口平均速率 × 时长），不是精确计数。 ---- */}}
+           延迟是**最近一轮探测**的结果，跟详情页口径一致；
+           流量是估算值（窗口平均速率 × 时长），不是精确计数。
+
+           每行都带一个同宽的左标签（延迟 / 本日 / 本月），值列才能对齐。
+           原来流量挤在一行、用「今」「月」当行内前缀，两行标签宽度
+           不一致，值就对不齐 —— 拆成独立两行反而更整齐。 ---- */}}
       {{if or .Net3 .TodayUp .MonthUp}}
       <div class="netcard">
         {{if .Net3}}
         <p class="netrow">
-          <span class="nl">三网延迟</span>
+          <span class="nl">延迟</span>
           {{range .Net3}}<span class="nv {{if .Level}}lv-{{.Level}}{{end}}">{{.Label}} {{.MS}}ms</span>{{end}}
         </p>
         {{end}}
-        {{if or .TodayUp .MonthUp}}
+        {{if .TodayUp}}
         <p class="netrow">
-          <span class="nl">流量</span>
-          {{if .TodayUp}}<span class="nv" title="本日估算">今 ↑{{.TodayUp}} ↓{{.TodayDown}}</span>{{end}}
-          {{if .MonthUp}}<span class="nv" title="本月估算">月 ↑{{.MonthUp}} ↓{{.MonthDown}}</span>{{end}}
+          <span class="nl">本日</span>
+          <span class="nv" title="本日估算">↑{{.TodayUp}} ↓{{.TodayDown}}</span>
+        </p>
+        {{end}}
+        {{if .MonthUp}}
+        <p class="netrow">
+          <span class="nl">本月</span>
+          <span class="nv" title="本月估算">↑{{.MonthUp}} ↓{{.MonthDown}}</span>
         </p>
         {{end}}
       </div>
