@@ -292,9 +292,7 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 		v.All = h.themes.List()
 		pickable := h.resolvePickable()
 		v.Pickable = pickable
-		// 有一套就显示。单主题时只有一个选项——这是有意的，
-		// 见 VisitorSwitch 字段上的说明：可发现性比"整洁"重要。
-		v.VisitorSwitch = len(pickable) >= 1
+		v.VisitorSwitch = shouldShowVisitorSwitch(len(pickable))
 		ids := h.themes.ListIDs()
 		if len(ids) > 1 {
 			for i, id := range ids {
@@ -384,6 +382,22 @@ func (h *Hub) handleThemeSwitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// shouldShowVisitorSwitch 判断要不要给访客看外观切换入口。
+//
+// 只要装了**至少一套**就显示——哪怕只有一套。单主题时切片里只有一个选项，
+// 看起来"切了等于没切"，但它同时承担两件事：
+//  1. 让访客一眼看到"这个站支持换外观"，否则功能藏起来等于没有；
+//  2. 它是唯一能发现"我正用着哪套皮肤"的地方（当前项高亮）。
+//
+// ⚠️ 单独抽成函数是为了能直接测边界（0 / 1 / N）。早先这个判断内联在
+// themeFor 里，测试只能靠"内置主题恰好只有一套"来构造场景 ——
+// 2026-10-11 加了第二套内置主题 kokoro.neon 之后，那条测试就因为
+// 「前置条件不成立：站点应只有 1 套主题，实际 2」而红了。
+// 判据本身跟站点装了几套主题无关，就别让它依赖主题数量。
+func shouldShowVisitorSwitch(pickable int) bool {
+	return pickable >= 1
 }
 
 // handleThemePick 处理 GET /pick/<id>：访客自选主题（写 cookie，不改站点设置）。

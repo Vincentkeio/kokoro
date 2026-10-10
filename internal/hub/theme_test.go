@@ -398,20 +398,30 @@ func TestVisitorPickAllowsInstalledThemesAndRejectsGhosts(t *testing.T) {
 // 访客看不到"本站支持换外观"，也看不到"我正用着哪套"。
 //
 // 可发现性优先于"整洁"——单主题时它只有一个选项，但它仍然必须存在。
+// ⚠️ 判据直接测 shouldShowVisitorSwitch 的边界，**不再靠"内置主题恰好一套"**
+// 来构造场景：2026-10-11 加了第二套内置主题（kokoro.neon）之后，那种写法
+// 会以前置条件不成立的形式红掉 —— 而它想守的东西（一套也要显示）
+// 其实跟站点装了几套主题无关。
 func TestVisitorSwitchShownWithSingleTheme(t *testing.T) {
-	h, _ := newThemeTestHub(t)
-
-	// 站点只有内置默认主题。
-	if got := len(h.Themes().List()); got != 1 {
-		t.Fatalf("前置条件不成立：站点应只有 1 套主题，实际 %d", got)
+	if shouldShowVisitorSwitch(0) {
+		t.Error("一套主题都没有时不该显示切换器")
+	}
+	if !shouldShowVisitorSwitch(1) {
+		t.Error("只有一套主题时也必须显示 —— 否则访客看不到「本站支持换外观」，" +
+			"也看不到自己正用着哪套")
+	}
+	if !shouldShowVisitorSwitch(3) {
+		t.Error("多套主题时必须显示")
 	}
 
+	// 端到端：确认它真的渲染到了页面上。这部分不依赖主题数量。
+	h, _ := newThemeTestHub(t)
 	v := h.themeFor(httptest.NewRequest(http.MethodGet, "/", nil))
 	if !v.VisitorSwitch {
-		t.Fatal("只有一套主题时 VisitorSwitch 也应为真（否则切换器消失）")
+		t.Fatal("VisitorSwitch 应为真（否则切换器消失）")
 	}
-	if len(v.Pickable) != 1 {
-		t.Fatalf("可选主题应恰有 1 套，实际 %d", len(v.Pickable))
+	if len(v.Pickable) < 1 {
+		t.Fatal("可选主题至少要有站点当前这套，否则访客切走就回不来")
 	}
 
 	// 真的渲染到页面上：访客（未登录）看首页必须能看到切换器，
@@ -450,8 +460,9 @@ func TestVisitorSwitchHiddenOnlyWhenNoThemes(t *testing.T) {
 func TestVisitorPickSwitchesListModeAndChips(t *testing.T) {
 	h, _ := newThemeTestHub(t)
 	cookies := loginAsAdmin(t, h)
-	// 第二套内置主题不存在，所以这里给站点设成社区主题、
-	// 再让访客切回默认主题——这样至少有两套可切。
+	// 给站点设成社区主题、再让访客切回默认主题——这样至少有两套可切。
+	// （不依赖内置主题的数量：那条路在 2026-10-11 之前是靠"内置只有一套"
+	// 才成立的，加了 kokoro.neon 就不好使了。）
 	importTestTheme(t, h, "peer.cur", testThemeJSON("peer.cur", "站点当前"))
 	h.ServeHTTP(httptest.NewRecorder(), withCookies(httptest.NewRequest(http.MethodGet,
 		"/theme/peer.cur?back=%2F", nil), cookies))

@@ -338,6 +338,11 @@ GET /theme.json                       →  返回当前生效主题的清单（�
 
 原因见 §7——这些字符能终止声明、插入新规则或开新标签。
 
+> ⚠️ 由此带来一个实际限制：**`--kokoro-bg-image` 基本只能用 `none`**。
+> data URI 的写法（`data:image/svg+xml;base64,…`）里含 `;`，会被直接拒绝；
+> 外链又被禁止。想要星空、网格之类的底纹，只能用纯色打底 +
+> `--kokoro-hero-gradient` 这类渐变来做（`kokoro.neon` 就是这么处理的）。
+
 ---
 
 ## 5. 第二层：layout（布局与形态）
@@ -421,24 +426,28 @@ layout 决定「页面长什么样」，而不只是「什么颜色」。它是�
 | `numberFormat` | `si` \| `plain` \| `percent` | `si` | 数字格式（1.2K / 1200 / 40%） |
 | `dateFormat` | `relative` \| `absolute` | `relative` | 时间格式 |
 
-### 5.6 内置默认主题与取值参考
-
-当前**只维护一套内置主题**：`kokoro.daylight`（晨白）。
+### 5.6 内置主题与取值参考
 
 | 主题 | 列表 | 图表 | 顶栏 | 详情页头 | 模式 |
 | --- | --- | --- | --- | --- | --- |
 | `kokoro.daylight` 晨白 | card | area | solid | compact | 浅/深 |
+| `kokoro.neon` 霓虹 | card | area | bordered | compact | 深 |
 
-这是刻意的：界面方向还没定稿，多写几套只是让「等定了再写新的」
-变成「等定了再删三套」。**主题系统本身的能力不打折**——下面每个枚举
-取值都能用，文档示例 `docs/themes/example-terminal.json`（紧凑 + 条形图
-+ 描边顶栏）和 `example-paper.json`（透明顶栏 + hero 详情页头）就是
-拿来覆盖其余取值的，可以直接拿去改。
+`kokoro.daylight` 是新安装的默认主题；`kokoro.neon` 是科幻向的深色皮
+——深空底配霓虹青，卡片带一圈微光、状态点会发光、占用条走渐变，
+顶栏压一条发光底线。两者都用 `card` 列表，但配色/发光/顶栏形态差别很大，
+正好可以拿来对比"同一套布局换 tokens 是什么效果"。
 
-导出它当作起点：`GET /theme-export/kokoro.daylight`
+**主题系统本身的能力不打折**——下面每个枚举取值都能用，文档示例
+`docs/themes/example-terminal.json`（紧凑 + 条形图 + 描边顶栏）和
+`example-paper.json`（透明顶栏 + hero 详情页头）就是拿来覆盖其余取值的，
+可以直接拿去改。
 
-以后定了稿要加主题，往 `internal/theme/builtin/` 下加目录、
-并在 `internal/theme/theme_test.go` 的 `want` 列表里登记即可。
+导出任意一套当作起点：`GET /theme-export/kokoro.neon`
+
+加新主题：往 `internal/theme/builtin/` 下加目录（`go:embed builtin/*/theme.json`
+会自动收录，不用改代码），并在 `internal/theme/theme_test.go` 的 `want`
+列表里登记。
 
 ---
 
