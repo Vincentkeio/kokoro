@@ -581,19 +581,46 @@ func RenderTokens(m *Manifest) string {
 	var b strings.Builder
 	light := DefaultTokenMap()
 	for k, v := range m.Tokens {
-		light[k] = v
+		light[k] = rewriteAssetURL(v, m.ID)
 	}
 	writeVars(&b, ":root", light)
 	if len(m.TokensDark) > 0 && m.SupportsDark() {
 		dark := make(map[string]string, len(m.TokensDark))
 		for k, v := range m.TokensDark {
-			dark[k] = v
+			dark[k] = rewriteAssetURL(v, m.ID)
 		}
 		writeVars(&b, `[data-k-mode="dark"]`, dark)
 	}
 	b.WriteString("\n")
 	writeLayoutVars(&b, m)
 	return b.String()
+}
+
+// rewriteAssetURL 把 url(/_theme-assets/xxx) 补全成 url(/_theme-assets/<id>/xxx)。
+//
+// 为什么需要这一层：主题作者写背景图时的心智模型是"包内资源"，
+// 写 /_theme-assets/bg.png 最自然；而路由的实际形态是
+// /_theme-assets/<themeID>/bg.png。两者之间补一次映射，
+// 作者就不必把 ID 抄进每一个 url()——抄错一个字母就是整块背景消失，
+// 而且失败得毫无提示。
+//
+// 已经带 ID 的写法原样保留，否则会拼出 /_theme-assets/<id>/<id>/bg.png。
+// 只处理第一次出现的位置：一个 token 值里挂多张图的情况目前不存在，
+// 真出现了也该由作者显式写全。
+func rewriteAssetURL(val, id string) string {
+	const marker = "/_theme-assets/"
+	if id == "" {
+		return val
+	}
+	i := strings.Index(val, marker)
+	if i < 0 {
+		return val
+	}
+	rest := val[i+len(marker):]
+	if strings.HasPrefix(rest, id+"/") {
+		return val
+	}
+	return val[:i+len(marker)] + id + "/" + rest
 }
 
 // writeVars 输出一个选择器下的全部变量，按名字排序保证输出稳定。

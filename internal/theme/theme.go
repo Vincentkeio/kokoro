@@ -63,6 +63,11 @@ type Manifest struct {
 	LayoutSchemaVersion int               `json:"layoutSchemaVersion"`
 	Layout              Layout            `json:"layout"`
 
+	// SourceURL 记录这份主题是从哪个地址获取的（一键获取或贴 GitHub 链接时
+	// 由 Hub 自动回填）。它只作来源追溯与署名用：主题一旦拉到本地就与来源
+	// 断开关联，Hub 不会拿它去检查更新，也不依赖它做任何渲染。
+	SourceURL string `json:"sourceUrl,omitempty"`
+
 	// Package 描述 .kokoro-theme 包的完整性信息（spec §2.4）。
 	// 裸 theme.json 导入时为 nil，不影响任何渲染逻辑。
 	Package *Package `json:"package,omitempty"`
@@ -231,6 +236,10 @@ func (m *Manifest) Validate() error {
 	}
 	if m.Homepage != "" && !strings.HasPrefix(m.Homepage, "http://") && !strings.HasPrefix(m.Homepage, "https://") {
 		return fmt.Errorf("主题 homepage 必须是 http(s) 地址")
+	}
+	// sourceUrl 只做展示与追溯，但同样不能是 javascript: 之类会变成 XSS 的值。
+	if m.SourceURL != "" && !strings.HasPrefix(m.SourceURL, "http://") && !strings.HasPrefix(m.SourceURL, "https://") {
+		return fmt.Errorf("主题 sourceUrl 必须是 http(s) 地址")
 	}
 	if m.TokensSchemaVersion == 0 {
 		m.TokensSchemaVersion = TokensSchemaVersion

@@ -33,6 +33,8 @@
   background: var(--sunken); border-radius: var(--r-sm);
   padding: 3px 7px; line-height: 1.5;
 }
+.th-src { font-size: 11.5px; color: var(--faint); line-height: 1.5; word-break: break-all; }
+.th-src a { color: var(--muted); text-decoration: underline dotted; }
 .th-tags { display: flex; gap: 5px; flex-wrap: wrap; }
 .th-tags span {
   font-size: 11px; color: var(--muted);
@@ -99,6 +101,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
         </div>
         {{if .Desc}}<p class="th-desc">{{.Desc}}</p>{{end}}
         <div class="th-sum">{{.Summary}}</div>
+        {{if .Source}}<div class="th-src">来源：<a href="{{.Source}}" target="_blank" rel="noopener noreferrer nofollow">{{.Source}}</a></div>{{end}}
         {{if .Tags}}
         <div class="th-tags">{{range .Tags}}<span>{{.}}</span>{{end}}</div>
         {{end}}
@@ -126,13 +129,19 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
     <section class="panel">
       <h3>一键获取别人的皮肤</h3>
       <p class="hint" style="line-height:1.7">
-        对方站点的主题是公开的（本来就是给人抄的）。填他的站点地址或
-        <code>/theme.json</code> 完整地址，Hub 会拉下来、逐项校验后再登记——
-        变量名不在白名单、值里带远程图片或分号，都会当场拒绝。
+        对方站点的主题是公开的（本来就是给人抄的）。可以填：
+        他的站点地址、<code>/theme.json</code> 完整地址，
+        或者 <b>GitHub 仓库 / 子目录 / 文件链接</b>（推荐，来源可信）。
+        Hub 会拉下来、逐项校验后再登记——变量名不在白名单、
+        值里带远程图片或分号，都会当场拒绝。
+      </p>
+      <p class="hint" style="line-height:1.7;margin-top:8px">
+        拉下来就<b>存在你自己的面板里</b>了，此后与来源断开关联：
+        对方改了他的主题，你这边不会跟着变。
       </p>
       <form class="th-form" method="post" action="/admin/themes/grab">
-        <input name="url" placeholder="https://vps.example.com" required
-               value="{{if .Msg}}{{end}}">
+        <input name="url" required
+               placeholder="https://github.com/user/repo 或 https://vps.example.com">
         <div><button class="btn" type="submit">获取并导入</button></div>
       </form>
     </section>
@@ -181,7 +190,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
 </main>
 
 <footer class="wrap foot-page"><span>Kokoro · {{.SiteName}}</span></footer>
-<script src="/static/app.js?v=65"></script>
+<script src="/static/app.js?v=66"></script>
 </body>
 </html>
 {{end}}

@@ -915,3 +915,95 @@ function renderRateChart(svg, pts) {
     else if (k === 'p') { e.preventDefault(); togglePreview(); }
   });
 })();
+
+/* ---- 「我想买它」----
+   点按钮 → 弹窗填联系方式 → POST /api/v1/buy → 服务端落库 + 推 TG。
+   公开接口，服务端自己限流；这里只负责收内容和反馈结果。 */
+(function () {
+  var scrim = document.getElementById('buy-scrim');
+  var btn = document.getElementById('buy-send');
+  if (!scrim || !btn) return;
+
+  var slug = document.getElementById('buy-slug');
+  var contact = document.getElementById('buy-contact');
+  var note = document.getElementById('buy-note');
+  var title = document.getElementById('buy-title');
+  var err = document.getElementById('buy-err');
+
+  function open(s, name) {
+    slug.value = s;
+    contact.value = '';
+    note.value = '';
+    if (title) title.textContent = '我想买它 · ' + (name || '');
+    err.hidden = true;
+    scrim.hidden = false;
+    setTimeout(function () { contact.focus(); }, 30);
+  }
+
+  function closeBuy() { scrim.hidden = true; }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-buy]');
+    if (b) { open(b.dataset.buy, b.dataset.buyname); return; }
+    if (e.target.closest('[data-buyclose]')) { closeBuy(); return; }
+    // 点遮罩本身才关（弹窗是它的子元素）
+    if (e.target === scrim) closeBuy();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !scrim.hidden) closeBuy();
+  });
+
+  btn.addEventListener('click', function () {
+    var c = (contact.value || '').trim();
+    if (!c) {
+      err.textContent = '请填一下联系方式';
+      err.hidden = false;
+      contact.focus();
+      return;
+    }
+    err.hidden = true;
+    var old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '发送中…';
+
+    var body = new URLSearchParams();
+    body.set('slug', slug.value);
+    body.set('contact', c);
+    body.set('note', (note.value || '').trim());
+
+    fetch('/api/v1/buy', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+      body: body.toString(),
+      credentials: 'same-origin',
+    })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (d) {
+          return { ok: r.ok, d: d };
+        });
+      })
+      .then(function (res) {
+        btn.disabled = false;
+        btn.textContent = old;
+        if (!res.ok) {
+          err.textContent = (res.d && res.d.error) || '发送失败，请稍后再试';
+          err.hidden = false;
+          return;
+        }
+        // 成功：明确告诉他"收到"，别提推送成没成 —— 那是站长要操心的事
+
+        scrim.innerHTML = '<div class="dlg"><header class="dlg-head"><b class="dlg-title">已收到</b>' +
+          '<button type="button" class="dlg-x" onclick="this.closest(\'.dlg-scrim\').remove(); return false;">✕</button></header>' +
+          '<div class="dlg-body"><p>联系方式已记下，站长会尽快联系你。</p></div></div>';
+        // 关掉后 3 秒自动消失
+        setTimeout(function () { scrim.hidden = true; }, 3000);
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.textContent = old;
+        err.textContent = '网络异常，请稍后再试';
+        err.hidden = false;
+      });
+  });
+})();

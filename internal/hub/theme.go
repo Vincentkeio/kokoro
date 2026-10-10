@@ -533,7 +533,14 @@ func (h *Hub) installBundle(raw []byte, sourceURL string) (*theme.Manifest, erro
 	}
 	// 把「按实际内容算出」的包元数据并回清单，让后台能展示校验和与资源清单。
 	m.Package = b.Meta()
+	// 作者没在清单里写来源时，用抓取地址补上（导入时 sourceURL 为空，不补）。
+	if m.SourceURL == "" {
+		m.SourceURL = sourceURL
+	}
+	// 资源先进缓存：/_theme-assets/ 路由要从这里取字节。
+	h.themeAssets.set(m.ID, b.Assets)
 	if err := h.themes.Register(m); err != nil {
+		h.themeAssets.drop(m.ID)
 		return nil, err
 	}
 	if err := h.persistTheme(m, raw, sourceURL); err != nil {
@@ -558,6 +565,9 @@ func (h *Hub) importManifest(raw []byte, sourceURL string) (*theme.Manifest, err
 	}
 	if sourceURL == "" {
 		sourceURL = h.storedSourceURL(m.ID)
+	}
+	if m.SourceURL == "" {
+		m.SourceURL = sourceURL
 	}
 	if err := h.persistTheme(m, nil, sourceURL); err != nil {
 		// 注册表已登记但没落库 = 重启即丢，主动撤掉。
@@ -656,15 +666,12 @@ func newThemeGrabClient(timeout time.Duration, policy themeLoopbackPolicy) *http
 	}
 }
 
-// grabTheme 从一个站点抓取主题并登记。第二个返回值是 "bundle" 或 "manifest"，
-// 用来告诉用户这次拿到的是完整包还是只有配色清单。
-func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
-	base, err := normalizeThemeBase(src)
-	if err != nil {
-		return nil, "", err
-	}
-	client := newThemeGrabClient(themeFetchTimeout, h.themeFetchPolicy())
-	fetch := func(u string) ([]byte, error) {
+// themeFetcher 返回一个「取一个 URL 的字节」的函数。
+//
+// 抽出来是为了让通用抓取与 GitHub 抓取共用同一套出口约束：
+// 超时、体积上限、拒绝空响应、且绝不带上管理员的 cookie。
+func themeFetcher(client *http.Client) func(string) ([]byte, error) {
+	return func(u string) ([]byte, error) {
 		req, err := http.NewRequest(http.MethodGet, u, nil)
 		if err != nil {
 			return nil, fmt.Errorf("地址不合法: %w", err)
@@ -689,6 +696,22 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 		}
 		return body, nil
 	}
+}
+
+// grabTheme 从一个站点抓取主题并登记。第二个返回值是 "bundle" 或 "manifest"，
+// 用来告诉用户这次拿到的是完整包还是只有配色清单。
+//
+// 贴的是 GitHub 链接时走另一条路（见 theme_github.go）——那边要把仓库页面
+// 地址翻译成 raw 地址，不能按「站点根 + /theme.json」去拼。
+func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
+	if target, ok := parseGitHubThemeURL(src); ok {
+		return h.grabGitHubTheme(src, target)
+	}
+	base, err := normalizeThemeBase(src)
+	if err != nil {
+		return nil, "", err
+	}
+	fetch := themeFetcher(newThemeGrabClient(themeFetchTimeout, h.themeFetchPolicy()))
 
 	// 第一步：探当前生效主题的清单与 ID。
 	if raw, err := fetch(base + "/theme.json"); err == nil && len(raw) > 0 {
@@ -803,6 +826,10 @@ func exportManifest(m *theme.Manifest) map[string]any {
 	if m.Homepage != "" {
 		out["homepage"] = m.Homepage
 	}
+	// 来源随包走：别人抄走你的主题时也带走出处，既是署名也是追溯线索。
+	if m.SourceURL != "" {
+		out["sourceUrl"] = m.SourceURL
+	}
 	return out
 }
 
@@ -823,6 +850,8 @@ func (h *Hub) handleThemeDelete(w http.ResponseWriter, r *http.Request) {
 			http.StatusSeeOther)
 		return
 	}
+	// 资源缓存也要一并丢掉，否则 /_theme-assets/ 还能吐出一套已删除主题的图。
+	h.themeAssets.drop(id)
 	// 注册表和数据库都要删。只删前者的话，重启后这份主题会从数据库里
 	// 满血复活——对管理员来说就是「我明明删了」。
 	if err := h.removeTheme(id); err != nil {

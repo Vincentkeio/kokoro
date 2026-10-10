@@ -50,6 +50,8 @@ type Hub struct {
 	// 后台切主题只改内存 + settings 表，不需要重启。
 	themes *theme.Registry
 	theme  themeCache
+	// themeAssets 缓存各主题包里的资源字节，供 /_theme-assets/ 路由直接吐出。
+	themeAssets *themeAssetCache
 
 	// done 在开始关闭时被 close，用来通知 SSE 之类的长连接主动退出。
 	//
@@ -157,12 +159,13 @@ func New(cfg *model.HubConfig, st *store.Store) (*Hub, error) {
 	}
 
 	h := &Hub{
-		cfg:     cfg,
-		store:   st,
-		mux:     http.NewServeMux(),
-		tmpl:    tmpl,
-		broker:  newBroker(),
-		limiter: newLimiter(),
+		cfg:         cfg,
+		store:       st,
+		mux:         http.NewServeMux(),
+		tmpl:        tmpl,
+		broker:      newBroker(),
+		limiter:     newLimiter(),
+		themeAssets: newThemeAssetCache(),
 		// 在这里就建好，保证 handleStream 拿到的一定不是 nil
 		// （select 里对 nil channel 会永久阻塞，那就等于没接上关闭信号）。
 		done: make(chan struct{}),
@@ -213,6 +216,8 @@ func (h *Hub) routes() {
 	// 文章配图：/img/<哈希>。<name> 只允许「32 位十六进制 + 已知后缀」，
 	// 见 handleImage 里的形状校验 —— 不接受用户给的文件名。
 	h.mux.HandleFunc("/img/", h.handleImage)
+	// 「我想买它」：公开接口（访客未登录）。内部自己限流。
+	h.mux.HandleFunc("/api/v1/buy", h.handleBuy)
 
 	// 主题：导出与切换。三个读取端点都公开（主题就是给人抄的）：
 	// /theme.json 给清单，/theme-bundle/<id> 给完整包，/theme-export/<id> 给下载。
@@ -223,6 +228,8 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/theme/", h.handleThemeSwitch)
 	// 访客自选主题：无鉴权，只写 cookie，不影响站点设置。
 	h.mux.HandleFunc("/pick/", h.handleThemePick)
+	// 主题包里的资源（背景图、字体）。只吐白名单类型，SVG 一律不给。
+	h.mux.HandleFunc("/_theme-assets/", h.handleThemeAssets)
 
 	// 后台（M0 只做最小可用：节点列表与安装令牌）
 	h.mux.HandleFunc("/admin", h.handleAdmin)

@@ -368,3 +368,16 @@ CREATE TABLE IF NOT EXISTS node_articles (
 );
 CREATE INDEX IF NOT EXISTS idx_node_articles_node
     ON node_articles (node_id, sort_order, created_at);
+
+-- ---------- 购买意向（访客点「我想买它」留下的联系方式）----------
+CREATE TABLE IF NOT EXISTS buy_intents (
+    id         TEXT    PRIMARY KEY,
+    node_id    TEXT    NOT NULL DEFAULT '',
+    contact    TEXT    NOT NULL DEFAULT '',   -- 访客填的联系方式
+    note       TEXT    NOT NULL DEFAULT '',
+    ip_hash    TEXT    NOT NULL DEFAULT '',   -- 只存哈希，不存原 IP
+    created_at INTEGER NOT NULL DEFAULT 0,
+    notified   INTEGER NOT NULL DEFAULT 0     -- 1 = 已推送给站长
+);
+CREATE INDEX IF NOT EXISTS idx_buy_node_time ON buy_intents (node_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_buy_ip ON buy_intents (ip_hash, created_at DESC);

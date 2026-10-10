@@ -113,6 +113,9 @@ func (h *Hub) loadStoredThemes() {
 			log.Printf("[theme] 登记存档 %s 失败：%v", m.ID, err)
 			continue
 		}
+		// 存档里带了原始包就顺便把资源解出来缓存，否则重启后
+		// /_theme-assets/ 会一直 404，背景图全丢。
+		h.rememberThemeAssets(m.ID, t.Bundle)
 		n++
 	}
 	if n > 0 {

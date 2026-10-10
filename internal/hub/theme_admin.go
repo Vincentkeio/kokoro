@@ -22,6 +22,9 @@ type themeCard struct {
 	Swatch  []string
 	Active  bool
 	Builtin bool
+	// Source 是这份主题的来源地址（一键获取或贴 GitHub 链接时记下）。
+	// 只作追溯用：主题拉到本地后与来源断开关联，不检查更新。
+	Source string
 	// Layout 摘要是给管理员看的"这套主题改了什么"，用中文直说而不是让他猜。
 	Summary string
 }
@@ -62,6 +65,7 @@ func (h *Hub) handleAdminThemes(w http.ResponseWriter, r *http.Request, authed b
 				Swatch:  m.Swatches,
 				Active:  m.ID == active,
 				Builtin: m.Builtin,
+				Source:  m.SourceURL,
 				Summary: themeSummary(m),
 			})
 		}

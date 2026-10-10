@@ -1918,3 +1918,11 @@ details.adv .hint { line-height: 1.7; }
 }
 .mdmenu-i:hover { background: var(--sunken); }
 .mdmenu-i > span { width: 1.4em; text-align: center; flex: none; }
+
+/* ---- 卡片第二行：我想买它 / 查看详情 ---- */
+.buyrow { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+.buyrow .more { margin-left: auto; }
+/* 「买它」用主色描边，跟右边的次要按钮拉开 —— 它是这张卡最值钱的动作 */
+.buyrow .buy { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.buyrow .buy:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.req { color: var(--bad); margin-left: 2px; }

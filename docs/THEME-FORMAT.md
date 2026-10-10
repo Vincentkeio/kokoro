@@ -97,6 +97,7 @@ GET /theme.json                       →  返回当前生效主题的清单（�
 | `description` | string | 否 | 一句话说明，显示在主题选择器里 |
 | `author` | string | 否⁴ | 作者名，留空会填「未知作者」 |
 | `homepage` | string | 否 | 主题主页，必须是 `http://` 或 `https://` 开头 |
+| `sourceUrl` | string | 否 | 来源地址，必须是 `http://` 或 `https://` 开头。一键获取 / 贴 GitHub 链接时由 Hub 自动回填，**手写主题不用填**。只作追溯与署名，Hub 不会拿它检查更新 |
 | `license` | string | 否 | 许可证，留空视为 `MIT` |
 | `tags` | string[] | 否 | 标签，用于分类检索 |
 | `tokensSchemaVersion` | number | 否¹ | tokens 命名表版本，当前为 `2` |
@@ -536,6 +537,27 @@ raw, err := theme.BuildPackage(manifest, assets, preview, license, readme)
 
 理由：主题不该让访客的浏览器去别处拉东西（隐私泄露 + 对方站点挂了整站跟着花屏）。同理 `@import` 完全禁止。
 
+写 `/_theme-assets/` 时**只写包内相对路径即可**，Hub 渲染时会自动补上主题 ID：
+
+```json
+"--kokoro-bg-image": "url(/_theme-assets/bg.png)"           ✅ 会自动变成 /_theme-assets/<你的主题ID>/bg.png
+"--kokoro-bg-image": "url(/_theme-assets/<主题ID>/bg.png)"  ✅ 写全了也不会被重复拼接
+```
+
+这些资源只在你把主题**打成 `.kokoro-theme` 包**时才存在（资源字节在包里）。
+只交一份 `theme.json` 的话，`/_theme-assets/` 下面什么都取不到，背景图会 404。
+
+Hub 只肯下发这些类型，其余（**尤其 `.svg`**）一律 404：
+
+| 类别 | 扩展名 |
+| --- | --- |
+| 图片 | `.png` `.jpg` `.jpeg` `.webp` `.gif` `.avif` `.bmp` `.ico` |
+| 字体 | `.woff2` `.woff` `.ttf` `.otf` |
+
+`.svg` 被单独拎出来禁止，是因为它是唯一能在「图片」位置执行脚本的格式
+（`<svg onload=…>`、内嵌 `<script>`），而主题包来自第三方，不能赌它善意。
+要矢量图就转成 `.png`/`.webp`。
+
 ### 7.3 拒绝未知变量名
 
 只能写 `tokens` 表里的 101 个名字。不能通过 `--body-bg: red` 之类去污染站点其他样式。
@@ -565,9 +587,18 @@ raw, err := theme.BuildPackage(manifest, assets, preview, license, readme)
 
 ### 8.1 使用
 
-后台 `/admin/themes` → 「一键获取别人的皮肤」→ 填站点地址。
+后台 `/admin/themes` → 「一键获取别人的皮肤」→ 填地址。支持三种地址：
 
-Hub 的取件顺序：
+- **GitHub 链接**（推荐）：`https://github.com/user/repo`、
+  子目录 `https://github.com/user/repo/tree/main/themes/dark`、
+  或单文件 `https://github.com/user/repo/blob/main/theme.json`
+- 对方站点地址：`https://vps.example.com`
+- 清单完整地址：`https://vps.example.com/theme.json`
+
+抓下来就**存在你自己的面板里**，此后与来源断开关联：对方改了他的主题，
+你这边不会跟着变（来源地址会记在清单的 `sourceUrl` 里，只作追溯）。
+
+**填站点地址时**，Hub 的取件顺序：
 
 1. `GET <站点>/theme.json` —— 拿清单，同时知道对方主题的 ID
 2. `GET <站点>/theme-bundle/<id>` —— 尝试拿完整包
@@ -575,7 +606,34 @@ Hub 的取件顺序：
    - 对方没有这个端点（404） → 退回只用清单
    - **拿到了但校验没过 → 直接中止**，报明确错误
 
-### 8.2 对方站点需要暴露什么
+**填 GitHub 链接时**，Hub 把页面地址翻译成 raw 内容地址
+（`https://raw.githubusercontent.com/...`），然后：
+
+1. 在目标目录找 `theme.json` —— 找到就用清单导入
+2. 没有就找 `theme.kokoro-theme` —— 找到就装包（含资源）
+3. 都没有 → 报「该目录下既没有 theme.json，也没有主题包」
+
+### 8.2 GitHub 仓库怎么放主题
+
+最省事的两种布局，任选其一：
+
+```
+user/repo
+├── theme.json          ← 仓库根直接放清单
+└── assets/             ← 可选：背景图、字体（随包一起走需要打成包）
+```
+
+或者直接把打包好的主题放在仓库里：
+
+```
+user/repo
+└── theme.kokoro-theme  ← 用「导出」按钮拿到的那个包，直接提交进去
+```
+
+仓库根是默认分支即可（Hub 用 `HEAD` 别名指向默认分支）；
+主题放在子目录时，贴 `.../tree/<分支>/<子目录>` 形式的链接。
+
+### 8.3 对方站点需要暴露什么
 
 任何 Kokoro 站点**默认就暴露**这三个端点，无需配置：
 
@@ -587,7 +645,7 @@ Hub 的取件顺序：
 
 这是刻意的：主题的意义就是被人抄。如果你想给自己的站加「禁止被获取」，需要在 Nginx 层拦这些路径。
 
-### 8.3 抓取限制
+### 8.4 抓取限制
 
 - 只允许 `http://` / `https://`
 - 单次超时 12 秒
@@ -595,7 +653,7 @@ Hub 的取件顺序：
 - 体积上限 8MB
 - **不会携带本地管理员 cookie 去请求对方**——你的登录态不会泄漏给别人
 
-### 8.4 内网地址一律不抓（SSRF 防护）
+### 8.5 内网地址一律不抓（SSRF 防护）
 
 「一键获取」本质是让 Hub 按一个地址发请求，不设防就等于开放内网探测。
 所以目标 IP 会被检查：
@@ -791,12 +849,13 @@ Hub 的取件顺序：
 | `/theme.json` | GET | 无 | 当前生效主题清单 |
 | `/theme-export/<id>` | GET | 无 | 下载清单文件 |
 | `/theme-bundle/<id>` | GET | 无 | 下载完整包 |
+| `/_theme-assets/<id>/<name>` | GET | 无 | 主题包里的资源（背景图 / 字体）。只下发白名单类型，**SVG 一律 404** |
 | `/pick/<id>` | GET | 无 | **访客**自选主题（只写自己的 cookie） |
 | `/pick/default` | GET | 无 | 访客恢复站点默认 |
 | `/theme/<id>` | GET | **管理员** | 切换站点主题（影响所有人） |
 | `/admin/themes` | GET | **管理员** | 主题管理页 |
 | `/admin/themes/import` | POST | **管理员** | 导入（粘贴 JSON 或上传包） |
-| `/admin/themes/grab` | POST | **管理员** | 一键获取 |
+| `/admin/themes/grab` | POST | **管理员** | 一键获取（站点地址 / 清单地址 / GitHub 链接） |
 | `/admin/themes/delete` | POST | **管理员** | 删除自定义主题 |
 
 ### 两种"切换主题"的区别

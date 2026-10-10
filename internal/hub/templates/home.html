@@ -400,14 +400,18 @@
                 title="看这台机器的评论">
           💬 评论 {{.Comments}}
         </button>
-        {{/* 查看详情并进这一行、靠最右 —— 原来它自己占一行，
-           整张卡片白白多出一行高度。
-           明确给一个按钮进详情页：不做"整张卡片可点"，也不做悬停弹详情，
-           boss 明确否掉了这两种（看不出哪能点，还容易误触）。
+      </div>
 
-           原来这行左边还有个在线状态绿点，也删了 ——
-           在线与否在卡片标题右侧已经有一个了，同一张卡出现两遍。 */}}
-        <a class="btn small more" href="/n/{{.Slug}}">查看详情</a>
+      {{/* ---- 第二行：买它 + 查看详情 ----
+           boss 要求这两个单独成行，左边「我想买它」、右边「查看详情」。
+           上面那行留给赞踩和文章评论 —— 混在一行的话四个控件挤成一坨，
+           而且「买它」这个动作会被淹没在赞踩里，看不出是它能点的。 */}}
+      <div class="buyrow">
+        <button type="button" class="btn small buy" data-buy="{{.Slug}}" data-buyname="{{.Name}}"
+                title="留下联系方式，站长会来联系你">
+          我想买它
+        </button>
+        <a class="btn small ghost more" href="/n/{{.Slug}}">查看详情</a>
       </div>
     </article>
     {{end}}
@@ -444,7 +448,34 @@
      表现是"点开只有一片灰背景，看不到内容"。（踩过一次） */}}
 <div class="dlg-scrim" id="dlg-scrim" hidden>
 
-  <div class="dlg" id="d-art" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="文章">
+  <div class="dlg-scrim" id="buy-scrim" hidden>
+  <div class="dlg" id="d-buy" aria-hidden="true" role="dialog" aria-modal="true" aria-label="我想买它">
+    <header class="dlg-head">
+      <b class="dlg-title" id="buy-title">我想买它</b>
+      <button type="button" class="dlg-x" data-buyclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body">
+      <p class="hint">留个联系方式，站长会主动联系你。这只是意向，不产生任何付款。</p>
+      <form id="buy-form" class="col">
+        <input type="hidden" name="slug" id="buy-slug">
+        <label for="buy-contact">联系方式<span class="req">*</span>
+          <input id="buy-contact" name="contact" maxlength="120" required
+                 placeholder="微信 / QQ / 邮箱 / 手机号，任选">
+        </label>
+        <label for="buy-note">想说点什么（可选）
+          <textarea id="buy-note" name="note" maxlength="200" rows="3" placeholder="例如：想要月付，主要跑…"></textarea>
+        </label>
+        <p class="hint err" id="buy-err" hidden></p>
+      </form>
+    </div>
+    <footer class="dlg-foot">
+      <button type="button" class="btn ghost small" data-buyclose>取消</button>
+      <button type="button" class="btn small" id="buy-send">发送</button>
+    </footer>
+  </div>
+</div>
+
+<div class="dlg" id="d-art" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="文章">
     <header class="dlg-head">
       <b class="dlg-title">文章</b>
       <span class="dlg-admin" id="d-art-admin"></span>
@@ -478,7 +509,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=65"></script>
+<script src="/static/app.js?v=66"></script>
 </body>
 </html>
 {{end}}

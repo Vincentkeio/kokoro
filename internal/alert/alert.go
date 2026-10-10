@@ -718,6 +718,32 @@ func (m *Manager) deleteRule(w http.ResponseWriter, id string) {
 // HandleTest 立即发一条测试通知（使用当前通知配置，不受免打扰限制）。
 //
 // 注意：本 handler 不做鉴权，调用方必须保证只有管理员能访问。
+// Notify 发一条**非告警**的通知（比如访客的购买意向）。
+//
+// 只走 Telegram：这类消息是给站长本人看的，没必要再往 webhook 上投一份
+// （那通常是接自动化流程的，语义不一样）。
+//
+// ⚠️ 本方法**会遵守免打扰时段**。所以调用方必须**先把内容落库再调它** ——
+// 否则凌晨留下的线索会因为"推送被抑制"而彻底丢掉。
+func (m *Manager) Notify(ctx context.Context, msg notify.Message) error {
+	cfg, err := notify.LoadConfig(m.st)
+	if err != nil {
+		return fmt.Errorf("读取通知配置失败: %w", err)
+	}
+	if !cfg.TelegramOK() {
+		return errors.New("telegram 未配置：缺少 bot token 或 chat id")
+	}
+	msg.Channels = []string{notify.ChannelTelegram}
+	// NodeURL 留空时由调用方自己决定；这里补一个兜底：
+	// 消息里带上详情页链接，站长在 TG 里一点就能看是哪台机器。
+	if msg.NodeURL == "" && msg.NodeID != "" {
+		if n, err := m.st.GetNode(msg.NodeID); err == nil && n != nil {
+			msg.NodeURL = m.nodeURL(n)
+		}
+	}
+	return notify.New(cfg).Send(ctx, msg)
+}
+
 func (m *Manager) HandleTest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "只支持 POST")

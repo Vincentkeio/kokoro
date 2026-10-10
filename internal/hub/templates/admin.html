@@ -371,7 +371,27 @@
     {{else}}
     <p class="empty">还没有评论。</p>
     {{end}}
-  </section>
+  
+    {{/* 购买意向。放在评论审核下面 —— 都是"访客留下的东西」。 */}}
+    {{if .BuyIntents}}
+    <details class="adv" style="margin-top:var(--s4)">
+      <summary>购买意向（{{len .BuyIntents}}）</summary>
+      <table class="tbl">
+        <thead><tr><th>时间</th><th>联系方式</th><th>备注</th><th>状态</th></tr></thead>
+        <tbody>
+        {{range .BuyIntents}}
+        <tr>
+          <td class="nowrap">{{tsShort .CreatedAt}}</td>
+          <td><code>{{.Contact}}</code></td>
+          <td>{{if .Note}}{{.Note}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>{{if .Notified}}<span class="ok">已推送</span>{{else}}<span class="warn" title="免打扰时段或未配置 TG —— 但意向已存住了">未推送</span>{{end}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </details>
+    {{end}}
+</section>
 
   <section class="panel" id="account" data-atab="sys">
     <h3>管理员账号</h3>
@@ -410,7 +430,7 @@
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=65"></script>
+<script src="/static/app.js?v=66"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

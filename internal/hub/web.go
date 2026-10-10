@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Vincentkeio/kokoro/internal/store"
 	"html/template"
 	"io"
 	"log"
@@ -639,6 +640,11 @@ type adminData struct {
 	BootPass string
 
 	Comments []modComment
+	// BuyIntents 是访客通过「我想买它」留下的联系方式。
+	// 即使 TG 没推成功（免打扰 / 没配），这里也看得到 ——
+	// 这就是"先落库再推送"的意义。
+	BuyIntents []store.BuyIntent
+
 	// CommentsByNode 是按小鸡分好组的评论。
 	// 一个平铺的长表格里，"这条评的是哪台机器"要靠单独一列去认，
 	// 评论一多根本对不上 —— 分组之后每台一块。
@@ -1859,6 +1865,11 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 		data.CommentsByNode = append(data.CommentsByNode, nodeComments{
 			NodeID: id, Name: nameOf[id], Slug: slugOf[id], Comments: g,
 		})
+	}
+
+	// 购买意向。即使 TG 没推成功，这里也能看到 —— 先落库再推送的意义就在这
+	if bis, err := h.store.ListBuyIntents(30); err == nil {
+		data.BuyIntents = bis
 	}
 
 	// 国家/地区候选：把常用机房所在地排前面，其余按代码顺序兜底

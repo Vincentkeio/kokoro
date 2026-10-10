@@ -332,6 +332,42 @@ func safeEntryName(raw string) (string, error) {
 		clean, manifestName, previewName, licenseName, readmeName, assetsDir)
 }
 
+// SafeAssetPath 校验并归一化一个主题资源的相对路径（不含 assets/ 前缀）。
+//
+// 入参是 URL 里的那段（如 "bg/hero.png"），返回可直接查表的完整条目名
+// （"assets/bg/hero.png"）。校验强度与 safeEntryName 对齐：
+// 拒绝反斜杠、空字节、绝对路径、以及任何形式的目录回退。
+//
+// 这条函数是 /_theme-assets/ 路由的第一道闸——URL 是用户可控输入，
+// 而拼出来的路径要拿去查包内资源表，不校验就等于把 zip-slip 从包内
+// 搬到了 HTTP 层。
+func SafeAssetPath(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("资源名为空")
+	}
+	if strings.Contains(name, "\\") || strings.ContainsAny(name, "\x00") {
+		return "", fmt.Errorf("资源名含非法字符")
+	}
+	if strings.Contains(name, ":") {
+		return "", fmt.Errorf("资源名含冒号")
+	}
+	if strings.HasPrefix(name, "/") {
+		return "", fmt.Errorf("资源名不能是绝对路径")
+	}
+	if len(name) > 160 {
+		return "", fmt.Errorf("资源名过长")
+	}
+	clean := path.Clean(name)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", fmt.Errorf("资源名试图跳出包目录")
+	}
+	if clean != name {
+		return "", fmt.Errorf("资源名不是规范路径")
+	}
+	return assetsDir + clean, nil
+}
+
 // readZipEntry 读一个条目，带体积上限与符号链接拒绝。
 func readZipEntry(f *zip.File, limit int64) ([]byte, error) {
 	// 符号链接在 zip 里通过 mode 位标记；Go 的 zip 包不直接暴露，

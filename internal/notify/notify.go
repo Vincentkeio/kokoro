@@ -139,6 +139,12 @@ func (m *multiNotifier) Send(ctx context.Context, msg Message) error {
 	return errors.Join(errs...)
 }
 
+// TelegramOK 判断 Telegram 渠道是否可用（开关 + 凭据齐全）。
+//
+// 导出是因为 alert 包要在**发消息之前**先判断配没配，好给调用方一个
+// 明确的错误（"没配 TG"），而不是发出去才失败。
+func (c Config) TelegramOK() bool { return c.telegramOK() }
+
 // telegramOK 判断 Telegram 渠道是否可用（开关 + 凭据齐全）。
 func (c Config) telegramOK() bool {
 	return c.TelegramEnabled && c.TelegramBotToken != "" && c.TelegramChatID != ""
