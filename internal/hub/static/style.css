@@ -512,6 +512,13 @@ input:focus, select:focus, textarea:focus {
 
 .row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
 
+/* 纵向表单：一行一行往下排，行与行之间留出空隙。
+   ⚠️ 这个类在后台「告警与通知」的 Telegram 表单、以及首页的购买意向表单上
+   都用了，但样式表里**一直没定义它** —— 于是里面的 .row 紧贴成一片，
+   看起来就是"行与行太挤"（2026-10-11 boss 报的正是这里）。
+   定义成 flex column + gap 之后，那几行才有呼吸感。 */
+.col { display: flex; flex-direction: column; gap: var(--s3); }
+
 /* 后台开关 */
 .switch {
   display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer;
@@ -555,7 +562,9 @@ input:focus, select:focus, textarea:focus {
 /* ---- 表格 ---- */
 .tbl { width: 100%; border-collapse: collapse; font-size: var(--kokoro-font-size-sm, 13px); }
 .tbl th, .tbl td {
-  text-align: left; padding: 8px 10px;
+  /* 行距给足一点：12px 的纵向内边距 + 1.5 的行高才不至于"每行都贴着"。
+     8px 那版在告警规则/最近告警这种多列表格里显得很局促。 */
+  text-align: left; padding: 11px 12px;
   border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
   vertical-align: middle;
 }
@@ -765,6 +774,9 @@ body[data-k-list-mode="compact"] .card:hover { transform: none; }
 .skin-item:hover { background: var(--sunken); text-decoration: none; }
 .skin-item.on { border-color: var(--accent); background: var(--sunken); }
 .skin-item-name { font-size: var(--kokoro-font-size-sm, 13px); }
+/* 下拉按钮上显示的当前皮肤名。按钮本体是 muted 色（它是"控件"），
+   皮肤名要读得清，所以单独提亮一档。 */
+.skin-cur { color: var(--fg); }
 .skin-item small {
   display: block; margin-top: 2px;
   color: var(--faint); font-size: var(--kokoro-font-size-xs, 12px); line-height: 1.5;
@@ -880,6 +892,14 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 }
 .map-head { display: flex; align-items: baseline; justify-content: space-between;
   gap: var(--s3); flex-wrap: wrap; margin-bottom: 4px; }
+/* 地球卡片底部那行（左"拖动旋转 · 滚轮缩放"、右"N 个可定位节点"）。
+   这个类一直没写样式，于是两个 span 挨在一起，
+   看起来是"…滚轮缩放5 个可定位节点"——中间只隔着源码里的换行空格。 */
+.map-foot {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s3); flex-wrap: wrap; margin-top: 8px;
+  font-size: var(--kokoro-font-size-xs, 12px); color: var(--faint);
+}
 .map-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--fg-strong); }
 .map-legend { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); }
 .map-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -1750,6 +1770,12 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
   flex: none;
 }
+/* 弹窗标题。之前没有这条规则，标题只靠 <b> 的默认加粗，和正文一样大，
+   层级出不来。 */
+.dlg-title { font-size: var(--kokoro-font-size-lg, 16px); color: var(--fg-strong); }
+/* ⚠️ 这个类负责把后面的关闭按钮推到右边（margin-left:auto）。
+   弹窗头里如果**没有** .dlg-admin，✕ 就会紧贴着标题 —— 新加弹窗时记得
+   补一个空的 <div class="dlg-admin"></div> 占位，别直接靠 .dlg-x 自己。 */
 .dlg-admin { margin-left: auto; display: flex; gap: 6px; }
 .dlg-x {
   flex: none; background: none; border: 0; cursor: pointer;

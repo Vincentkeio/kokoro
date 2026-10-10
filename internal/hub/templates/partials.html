@@ -6,7 +6,7 @@
      themeTokens 已经过校验（未知变量名会被 Parse 拒绝），且值里不可能出现
      </style>，所以这里直接内联是安全的。 */}}
 <link rel="icon" href="/static/favicon.svg?v=66">
-<link rel="stylesheet" href="/static/style.css?v=71">
+<link rel="stylesheet" href="/static/style.css?v=73">
 <style id="kokoro-tokens">{{.Theme.Tokens}}</style>
 <style id="kokoro-layout">{{.Theme.LayoutCSS}}</style>
 {{if eq .Theme.DefaultMode "auto"}}
@@ -106,6 +106,9 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="skinget-title">
     <header class="dlg-head">
       <b class="dlg-title" id="skinget-title">获取本站皮肤</b>
+      {{/* 空占位：它的 margin-left:auto 负责把 ✕ 推到最右边。
+           少了它，关闭按钮会紧贴着标题（另外两个弹窗都带这个 div）。 */}}
+      <div class="dlg-admin"></div>
       <button type="button" class="dlg-x" data-skingetclose aria-label="关闭">✕</button>
     </header>
     <div class="dlg-body">

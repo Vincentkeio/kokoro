@@ -11,7 +11,18 @@ JS 报错，也控制不好"等 WebGL 初始化完再拍"的时机。地球是 W
      `while True: recv()` 就永远卡住（第一版就是这么挂的）。
 
 用法：
-    python scripts/cdp-shot.py <URL> <输出图片> [等待毫秒]
+    python scripts/cdp-shot.py <URL> <输出图片> [等待毫秒] [dpr] [pre_js] \
+        [视口宽] [视口高] [cookie]
+
+后三个参数都是为了复现特定场景：
+    dpr      高分屏（1.25 / 1.5），很多 bug 只在那种缩放比下出现
+    pre_js   截图前先跑的 JS，**返回值会打印出来**（量尺寸、诊断用）
+    视口宽高  有些布局问题只在特定窗口尺寸下出现
+    cookie   name=value，导航前注入 —— 截后台页面（需要登录态）用
+
+⚠️ 必须用托管 venv 的 python（系统 python 没有 websocket-client），
+   并且用 `timeout 95` 包住：脚本末尾的 proc.kill()/rmtree 会卡住不返回，
+   图在卡住之前已经写盘，所以 exit=124 是正常的。
 """
 import base64
 import json
@@ -109,6 +120,10 @@ def main():
     # 默认的 1400x1500 太"标准"，反而不容易撞上。
     vw = int(sys.argv[6]) if len(sys.argv) > 6 else 1400
     vh = int(sys.argv[7]) if len(sys.argv) > 7 else 1500
+    # 第 8 个参数（可选）：name=value 形式的 cookie，导航前注入。
+    # 用途：截后台页面（要登录态）。headless 每次都是全新 profile，
+    # 没法沿用别的会话，只能把 cookie 递进来。
+    cookie = sys.argv[8] if len(sys.argv) > 8 else ""
 
     import websocket  # websocket-client
 
@@ -142,6 +157,14 @@ def main():
         w, h = vw, vh
         s.send("Emulation.setDeviceMetricsOverride",
                {"width": w, "height": h, "deviceScaleFactor": dpr, "mobile": False})
+        # ⚠️ cookie 必须在导航之前设，否则第一次加载就是未登录状态，
+        # 页面已经渲染成登录页了，再设 cookie 也来不及。
+        if cookie:
+            cname, _, cval = cookie.partition("=")
+            s.send("Network.setCookie",
+                   {"name": cname, "value": cval, "url": url, "path": "/"})
+            print("· 已注入 cookie", cname, flush=True)
+
         s.send("Page.navigate", {"url": url}, wait=False)
         print("· 开始导航", flush=True)
 

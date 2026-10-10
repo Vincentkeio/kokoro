@@ -189,8 +189,12 @@
       <div class="map-head">
         <h2>全球节点</h2>
         <div class="map-legend">
+          {{/* 只保留三个图例项。原来这里还有一条
+               <span><i class="i-hub"></i>主机</span>，而 .i-hub 从来没写过
+               样式 —— 那个点是透明的，图例里就变成"在线 主机 离线 主机"
+               两个"主机"，其中一个前面还没有点。属于改到 i-cur 时忘了删的
+               遗留，2026-10-11 一并清掉。 */}}
           <span><i class="i-on"></i>在线</span>
-          <span><i class="i-hub"></i>主机</span>
           <span><i class="i-off"></i>离线</span>
           {{if .Globe.HasHub}}<span><i class="i-cur"></i>主机</span>{{end}}
         </div>
