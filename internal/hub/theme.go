@@ -383,7 +383,7 @@ func (h *Hub) handleThemeSwitch(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.themes != nil && h.themes.Get(id) == nil {
 		// 再给一次明确反馈，别让管理员对着空白页猜。
-		http.Redirect(w, r, "/admin/themes?msg="+
+		http.Redirect(w, r, "/admin?msg="+
 			url.QueryEscape("没有这套主题："+id), http.StatusSeeOther)
 		return
 	}
@@ -887,12 +887,12 @@ func (h *Hub) handleThemeDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.FormValue("id")
 	if id == "" {
-		http.Redirect(w, r, "/admin/themes?msg="+url.QueryEscape("缺少主题 ID"),
+		http.Redirect(w, r, "/admin?msg="+url.QueryEscape("缺少主题 ID")+"#themes",
 			http.StatusSeeOther)
 		return
 	}
 	if err := h.themes.Unregister(id); err != nil {
-		http.Redirect(w, r, "/admin/themes?msg="+url.QueryEscape(err.Error()),
+		http.Redirect(w, r, "/admin?msg="+url.QueryEscape(err.Error())+"#themes",
 			http.StatusSeeOther)
 		return
 	}
@@ -902,7 +902,7 @@ func (h *Hub) handleThemeDelete(w http.ResponseWriter, r *http.Request) {
 	// 满血复活——对管理员来说就是「我明明删了」。
 	if err := h.removeTheme(id); err != nil {
 		log.Printf("[theme] 删除主题存档失败 %s: %v", id, err)
-		http.Redirect(w, r, "/admin/themes?msg="+url.QueryEscape("已从内存移除，但删除存档失败："+err.Error()),
+		http.Redirect(w, r, "/admin?msg="+url.QueryEscape("已从内存移除，但删除存档失败："+err.Error())+"#themes",
 			http.StatusSeeOther)
 		return
 	}
@@ -914,7 +914,7 @@ func (h *Hub) handleThemeDelete(w http.ResponseWriter, r *http.Request) {
 		}
 		h.setActiveTheme(theme.DefaultID)
 	}
-	http.Redirect(w, r, "/admin/themes?msg="+url.QueryEscape("已删除《"+id+"》"),
+	http.Redirect(w, r, "/admin?msg="+url.QueryEscape("已删除《"+id+"》")+"#themes",
 		http.StatusSeeOther)
 }
 
@@ -996,5 +996,5 @@ func (h *Hub) themeErr(w http.ResponseWriter, errMsg string, r *http.Request, ok
 		msg = okMsg[0]
 	}
 	// 用 query 传反馈，不引 session/flash 中间件——省一个依赖，也少一处状态。
-	http.Redirect(w, r, "/admin/themes?msg="+url.QueryEscape(msg), http.StatusSeeOther)
+	http.Redirect(w, r, "/admin?msg="+url.QueryEscape(msg)+"#themes", http.StatusSeeOther)
 }

@@ -657,6 +657,19 @@ type adminData struct {
 	HubLat string
 	HubLon string
 
+	// ---- 下面这几个是后台「主题」页签的数据 ----
+	// 主题面板就挂在 /admin 里（和「节点」「告警」一样是个页签），
+	// 所以这些数据每次进后台都要带上，不再是单独一页的专属。
+	Themes []themeCard
+	// Msg 是主题操作后的提示（导入成功 / 失败原因）。
+	Msg string
+	// ActiveID 是当前生效的主题 ID。
+	ActiveID string
+	// TokenNames 列出可用的 CSS 变量名，方便管理员复制内置主题去改。
+	TokenNames []string
+	// Wallpaper 是站点壁纸面板的数据（上传 / URL / 清除）。
+	Wallpaper wallpaperView
+
 	OwnerName   string
 	OwnerBio    string
 	OwnerAvatar string
@@ -2172,7 +2185,6 @@ func (d *homeData) setTheme(t themeView)      { d.Theme = t }
 func (d *nodePageData) setTheme(t themeView)  { d.Theme = t }
 func (d *dashboardData) setTheme(t themeView) { d.Theme = t }
 func (d *adminData) setTheme(t themeView)     { d.Theme = t }
-func (d *themePageData) setTheme(t themeView) { d.Theme = t }
 
 // render 渲染一个页面。
 //
@@ -2181,7 +2193,7 @@ func (d *themePageData) setTheme(t themeView) { d.Theme = t }
 // 模板里只要写 {{.Theme.Tokens}} 就能用。
 //
 // data 必须是 map 或实现了 themed 的指针，否则主题为空，
-// 页面会退回 style.css 里的兜底变量（仍可读，只是没有皮肤）。
+// 页面会退回 style.css 里的兜底变量（仍可读，只是没有主题）。
 func (h *Hub) render(w http.ResponseWriter, name string, data any, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

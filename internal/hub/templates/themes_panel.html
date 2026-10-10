@@ -1,9 +1,4 @@
-{{define "admin_themes.html"}}
-<!doctype html>
-<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
-<head>
-<title>皮肤 · {{.SiteName}} 后台</title>
-{{template "head.html" .}}
+{{define "theme-panels"}}
 <style>
 .th-intro { color: var(--muted); font-size: 13px; line-height: 1.7; margin: 0 0 var(--s4); max-width: 62ch; }
 .th-grid {
@@ -84,27 +79,13 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
 .wp-prev-side { display: flex; flex-direction: column; gap: var(--s3); align-items: flex-start; }
 .wp-prev-side .hint { margin: 0; line-height: 1.65; }
 </style>
-</head>
-<body {{.Theme.Attrs}} data-admin="1">
-<header class="top">
-  <div class="wrap">
-    <a class="brand" href="/">{{.SiteName}} 后台</a>
-    <div class="top-tools">
-      <a class="btn ghost small" href="/admin">← 后台</a>
-      {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode>{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
-      <a class="btn ghost small" href="/">← 前台</a>
-    </div>
-  </div>
-</header>
-
-<main class="wrap">
-  <section class="panel">
-    <h3>皮肤</h3>
+  <section class="panel" data-atab="themes">
+    <h3>主题</h3>
     <p class="th-intro">
-      皮肤分两层：<b>变量</b>管颜色、圆角、阴影、字体、间距；<b>布局</b>管列表形态、
-      顶栏样式、图表类型、详情页头图。所以换皮肤不只是换颜色——列表会从卡片变表格、
-      等宽字体会整个界面换掉。每套皮肤都能导出成 JSON，
-      看到别人的站用了好皮肤，填他的地址就能一键抄过来。
+      主题分两层：<b>变量</b>管颜色、圆角、阴影、字体、间距；<b>布局</b>管列表形态、
+      顶栏样式、图表类型、详情页头图。所以换主题不只是换颜色——列表会从卡片变表格、
+      等宽字体会整个界面换掉。每套主题都能导出成 JSON，
+      看到别人的站用了好主题，填他的地址就能一键抄过来。
     </p>
 
     {{if .Msg}}<p class="th-msg {{if hasPrefix .Msg "导入失败"}}{{"err"}}err{{else}}ok ok{{end}}">{{.Msg}}</p>{{end}}
@@ -130,12 +111,12 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
           {{if .Active}}
             <a class="btn ghost small" href="/">看看前台</a>
           {{else}}
-            <a class="btn small" href="/theme/{{.ID}}?back={{urlquery "/admin/themes"}}">启用这套</a>
+            <a class="btn small" href="/theme/{{.ID}}?back={{urlquery "/admin#themes"}}">启用这套</a>
           {{end}}
           <a class="btn ghost small" href="/theme-export/{{.ID}}">导出</a>
           {{if not .Builtin}}
           <form method="post" action="/admin/themes/delete"
-                onsubmit="return confirm('删除《{{.Name}}》？删除后如果正在使用会自动切回默认皮肤。')">
+                onsubmit="return confirm('删除《{{.Name}}》？删除后如果正在使用会自动切回默认主题。')">
             <input type="hidden" name="id" value="{{.ID}}">
             <button class="btn ghost small" type="submit">删除</button>
           </form>
@@ -146,11 +127,11 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel" data-atab="themes">
     <h3>壁纸</h3>
     <p class="th-intro" style="margin-bottom:12px">
-      给整个站点铺一张底图。它垫在皮肤底色之下，卡片和面板浮在它上面 ——
-      配半透明的皮肤最好看（比如「毛玻璃」那套）。
+      给整个站点铺一张底图。它垫在主题底色之下，卡片和面板浮在它上面 ——
+      配半透明的主题最好看（比如「毛玻璃」那套）。
     </p>
 
     {{if .Wallpaper.Err}}<p class="th-msg err">{{.Wallpaper.Err}}</p>{{end}}
@@ -205,8 +186,8 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
   </section>
 
   <div class="th-two">
-    <section class="panel">
-      <h3>一键获取别人的皮肤</h3>
+    <section class="panel" data-atab="themes">
+      <h3>一键获取别人的主题</h3>
       <p class="hint" style="line-height:1.7">
         对方站点的主题是公开的（本来就是给人抄的）。可以填：
         他的站点地址、<code>/theme.json</code> 完整地址，
@@ -225,7 +206,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
       </form>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-atab="themes">
       <h3>导入主题</h3>
       <p class="hint" style="line-height:1.7">
         两种方式：上传 <code>.kokoro-theme</code> 包（能带自定义字体、背景图），
@@ -248,7 +229,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
     </section>
   </div>
 
-  <section class="panel">
+  <section class="panel" data-atab="themes">
     <h3>让 AI 帮你写主题</h3>
     <p class="th-intro" style="margin-bottom:10px">
       下载下面这份提示词，<b>整段丢给 AI</b>，末尾补一句你想要的样子
@@ -259,7 +240,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
     <div class="row">
       <a class="btn" href="/theme-ai-prompt.md">下载 AI 提示词</a>
       <a class="btn ghost" href="/theme-export/{{.Theme.ID}}">拿现成的改</a>
-      <span class="hint">导出的 JSON 改几个颜色就是一套新皮肤。</span>
+      <span class="hint">导出的 JSON 改几个颜色就是一套新主题。</span>
     </div>
     <p class="hint" style="line-height:1.7;margin-top:12px">
       想自己手写：<code>docs/THEME-FORMAT.md</code> 是完整规范，
@@ -267,7 +248,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
     </p>
   </section>
 
-  <section class="panel">
+  <section class="panel" data-atab="themes">
     <h3>可用的 CSS 变量</h3>
     <p class="hint">
       改主题时用得到。写成 <code>--kokoro-</code> 前缀、值只能是颜色 / 长度 / 数值 / 时间 /
@@ -275,10 +256,4 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
     </p>
     <div class="th-tok">{{range .TokenNames}}<div>{{.}}</div>{{end}}</div>
   </section>
-</main>
-
-<footer class="wrap foot-page"><span>Kokoro · {{.SiteName}}</span></footer>
-<script src="/static/app.js?v=74"></script>
-</body>
-</html>
 {{end}}

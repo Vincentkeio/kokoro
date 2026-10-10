@@ -9,7 +9,6 @@
 <header class="top">
   <div class="wrap">
     <a class="brand" href="/">{{.SiteName}} 后台</a>
-    <a class="btn ghost" href="/admin/themes">皮肤</a>
     {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode title="切换深色 / 浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
     <a class="btn ghost" href="/">← 前台</a>
     <span class="stat">{{.AdminUser}}</span>
@@ -30,11 +29,7 @@
     <button type="button" class="atab" data-goto="comments">互动{{if .PendingN}}<span class="abadge">{{.PendingN}}</span>{{end}}</button>
     <button type="button" class="atab" data-goto="profile">名片</button>
     <button type="button" class="atab" data-goto="alerts">告警</button>
-    {{/* 「主题」是个**链接**不是页签：完整的主题管理（卡片列表、启用/导出/删除、
-         一键获取、导入）在独立页面 /admin/themes 上，这里只留一个入口。
-         原来这个页签里只塞了一个「抓主题的本机地址白名单」高级配置 ——
-         点进来看到的就是那么一个跟主题管理毫不相干的东西，还以为功能没了。 */}}
-    <a class="atab" href="/admin/themes">主题</a>
+    <button type="button" class="atab" data-goto="themes">主题</button>
     <button type="button" class="atab" data-goto="sys">系统</button>
   </nav>
 
@@ -142,14 +137,20 @@
              那个开关的语义是 public <-> private（详情页也跟着 404）。
              model 里还留着 unlisted，但界面上不再有入口。 */}}
         <td>
-          <form method="post" action="/admin/nodes" onsubmit="return confirm('确认删除该节点？')">
-            <input type="hidden" name="action" value="delete">
-            <input type="hidden" name="id" value="{{.ID}}">
-            <button class="btn danger small" type="submit">删除</button>
-          </form>
-          <a class="btn small ghost" href="/admin/tasks?node={{.ID}}">测试</a>
-          <a class="btn small ghost" href="/admin/post?node={{.ID}}">文章</a>
-          <a class="btn small ghost" href="/n/{{.Slug}}">查看</a>
+          {{/* ⚠️ 必须包一层 .row（flex）：删除按钮外面套着 <form>，
+               而 form 是**块级**元素 —— 不包的话它独占一行，
+               变成「删除」在上面、「测试/文章/查看」在下面，四个按钮排成两行。
+               （2026-10-11 boss 截图反馈的就是这个。） */}}
+          <div class="row">
+            <form method="post" action="/admin/nodes" onsubmit="return confirm('确认删除该节点？')">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="id" value="{{.ID}}">
+              <button class="btn danger small" type="submit">删除</button>
+            </form>
+            <a class="btn small ghost" href="/admin/tasks?node={{.ID}}">测试</a>
+            <a class="btn small ghost" href="/admin/post?node={{.ID}}">文章</a>
+            <a class="btn small ghost" href="/n/{{.Slug}}">查看</a>
+          </div>
         </td>
       </tr>
       {{end}}
@@ -401,11 +402,21 @@
      金额 + 货币 + 周期三件套。做成弹窗而不是三个输入框排在表格里：
      一行已经放了名字/标签/到期日，再塞三个控件会把表格挤爆。 ---- */}}
 
+{{/* ---- 主题面板 ----
+     主题管理（卡片列表、启用/导出/删除、一键获取别人的主题、导入、
+     壁纸、AI 提示词）就在这里，和「节点」「告警」一样是后台的一个页签
+     —— 不再单独开一页：单独一页时，从后台点进去像是"跳走了"，
+     而且顶栏还要多挂一个入口按钮。
+
+     ⚠️ 它是一组 panel，**共用同一个 data-atab="themes"**：多个面板挂同一个
+     页签值，切换时一起显示/隐藏，CSS 的 [data-atab] 选择器一行都不用改。 ---- */}}
+{{template "theme-panels" .}}
+
 </main>
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=74"></script>
+<script src="/static/app.js?v=77"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

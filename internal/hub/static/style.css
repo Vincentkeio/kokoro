@@ -671,7 +671,11 @@ body:not([data-k-hero]) .hero { display: none; }
   background: var(--bg-soft);
   border: var(--kokoro-border-width, 1px) solid var(--line);
 }
-body[data-k-hero="gradient"] .hero { background-image: var(--kokoro-hero-gradient); border-color: transparent; }
+body[data-k-hero="gradient"] .hero {
+  background-image: var(--kokoro-hero-overlay, rgba(0, 0, 0, .35)),
+                    var(--kokoro-hero-gradient);
+  border-color: transparent;
+}
 body[data-k-hero="gradient"] .hero h1,
 body[data-k-hero="gradient"] .hero p { color: var(--kokoro-color-text-inverse, #fff); }
 .hero h1 { margin: 0 0 var(--s2); font-size: var(--kokoro-font-size-3xl, 34px); letter-spacing: -0.02em; }
@@ -1599,6 +1603,13 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 .dash-grid-line { stroke: var(--line); stroke-width: 1; }
 .dash-area-up   { fill: var(--accent-soft); stroke: none; }
 .dash-line-up   { fill: none; stroke: var(--cpu); stroke-width: 2; stroke-linejoin: round; }
+/* 柱状图（主题 layout.charts.type = "bar" 时由 renderRateChart 生成 rect）。
+   ⚠️ --kokoro-chart-bar-radius 这个 token 早就有，但**前端一直没引用过** ——
+   是 2026-10-11 查"主题里写了却没生效的东西"时才翻出来的，正好在这用上。
+   rx 是 SVG 属性，值是无单位数字，和 token 的 number 类型对得上。 */
+.dash-bar-up { fill: var(--cpu); rx: var(--kokoro-chart-bar-radius, 3); }
+/* 数据点（radius 由主题 --kokoro-chart-point-radius 决定，0 = 不画）。 */
+.dash-point { fill: var(--cpu); stroke: none; }
 .dash-line-down { fill: none; stroke: var(--mem); stroke-width: 2; stroke-linejoin: round; }
 .dash-legend {
   display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px;

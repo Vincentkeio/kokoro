@@ -169,7 +169,7 @@ func (h *Hub) handleAdminWallpaper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseMultipartForm(maxWallpaperBytes + (1 << 20)); err != nil {
-		http.Redirect(w, r, "/admin/themes?wperr=big", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin?wperr=big#themes", http.StatusSeeOther)
 		return
 	}
 
@@ -182,7 +182,7 @@ func (h *Hub) handleAdminWallpaper(w http.ResponseWriter, r *http.Request) {
 	case "url":
 		u := strings.TrimSpace(r.FormValue("wallpaper_url"))
 		if !safeWallpaperURL(u) {
-			http.Redirect(w, r, "/admin/themes?wperr=url", http.StatusSeeOther)
+			http.Redirect(w, r, "/admin?wperr=url#themes", http.StatusSeeOther)
 			return
 		}
 		_ = h.store.SetSetting(settingWallpaperKind, "url")
@@ -193,21 +193,21 @@ func (h *Hub) handleAdminWallpaper(w http.ResponseWriter, r *http.Request) {
 	case "upload":
 		_, hdr, err := r.FormFile("wallpaper")
 		if err != nil || hdr == nil || hdr.Size == 0 {
-			http.Redirect(w, r, "/admin/themes?wperr=file", http.StatusSeeOther)
+			http.Redirect(w, r, "/admin?wperr=file#themes", http.StatusSeeOther)
 			return
 		}
 		if hdr.Size > maxWallpaperBytes {
-			http.Redirect(w, r, "/admin/themes?wperr=big", http.StatusSeeOther)
+			http.Redirect(w, r, "/admin?wperr=big#themes", http.StatusSeeOther)
 			return
 		}
 		ext, ok := imageExt(hdr.Filename)
 		if !ok {
-			http.Redirect(w, r, "/admin/themes?wperr=type", http.StatusSeeOther)
+			http.Redirect(w, r, "/admin?wperr=type#themes", http.StatusSeeOther)
 			return
 		}
 		if err := h.saveWallpaper(hdr, ext); err != nil {
 			log.Printf("[hub] 保存壁纸失败: %v", err)
-			http.Redirect(w, r, "/admin/themes?wperr=save", http.StatusSeeOther)
+			http.Redirect(w, r, "/admin?wperr=save#themes", http.StatusSeeOther)
 			return
 		}
 		_ = h.store.SetSetting(settingWallpaperKind, "local")
@@ -217,7 +217,7 @@ func (h *Hub) handleAdminWallpaper(w http.ResponseWriter, r *http.Request) {
 		_ = h.store.SetSetting("wallpaper_ver",
 			strconv.FormatInt(time.Now().UnixMilli(), 10))
 	}
-	http.Redirect(w, r, "/admin/themes", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin#themes", http.StatusSeeOther)
 }
 
 // saveWallpaper 把上传的壁纸写进数据目录，旧文件先删掉。

@@ -245,7 +245,11 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/admin/profile", h.handleAdminProfile)
 	h.mux.HandleFunc("/admin/account", h.handleAdminAccount)
 	h.mux.HandleFunc("/admin/logout", h.handleAdminLogout)
-	h.mux.HandleFunc("/admin/themes", h.adminOnlyPage(h.handleAdminThemes))
+	// 主题面板已经并进 /admin 的「主题」页签。老地址 /admin/themes
+	// 重定向过去 —— 收藏过的书签、或者别人分享的链接都不该变成 404。
+	h.mux.HandleFunc("/admin/themes", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin#themes", http.StatusSeeOther)
+	})
 	// 壁纸设置（上传 / 填 URL / 清除）。它挂在主题页上，
 	// 因为壁纸就是"站点外观"的一部分，另开一页反而找不着。
 	h.mux.HandleFunc("/admin/wallpaper", h.handleAdminWallpaper)

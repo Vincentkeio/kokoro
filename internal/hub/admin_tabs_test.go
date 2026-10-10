@@ -137,21 +137,39 @@ func TestAdminOldAnchorsStillWork(t *testing.T) {
 
 // TestAdminThemesTabLinksToPage 「主题」页签必须是通向 /admin/themes 的链接。
 //
-// 它曾经是个普通页签（data-goto="theme"），而那里面**只有**一块
-// 「抓主题的本机地址白名单」高级配置 —— 点进去看到的就是这么个跟主题管理
-// 毫不相干的东西，任谁都会以为主题功能没了。（boss 2026-10-11 就是这么反馈的。）
-// 真正完整的管理页在 /admin/themes：卡片列表 + 启用/导出/删除 + 一键获取
-// （站点地址 / theme.json / GitHub）+ 导入。
-func TestAdminThemesTabLinksToPage(t *testing.T) {
+// 它必须是**普通页签**（data-goto），不是指向独立页的链接。
+//
+// 历史（改了三轮，别再改回去）：
+//   ① 空壳页签 —— data-goto 有，但面板里只有「抓主题的本机地址白名单」
+//      高级配置，点进去看不出能干嘛（boss 2026-10-11 就是这么反馈的）；
+//   ② 改成链接指向独立页 /admin/themes；
+//   ③ boss 要求「主题选项卡应该跟其他选项卡一样，不要单独一页」——
+//      整块搬回 /admin，又变回普通页签。
+//
+// 要防的两个退化：
+//   1. 退回"空壳页签"（data-goto 有了，面板里却没有主题管理）；
+//   2. 又变成链接跳独立页（那样后台顶栏还得再挂一个入口按钮）。
+func TestAdminThemesTabIsPlainTab(t *testing.T) {
 	h, st := newTestHub(t)
 	body := adminBody(t, h, st)
 
-	if !strings.Contains(body, `<a class="atab" href="/admin/themes">主题</a>`) {
-		t.Error("「主题」页签应该是指向 /admin/themes 的链接")
+	if !strings.Contains(body, `<button type="button" class="atab" data-goto="themes">主题</button>`) {
+		t.Error("「主题」应该是个普通页签（data-goto=\"themes\"）")
 	}
-	// 不能同时又是个页签 —— 那会多出一块永远空着的面板。
-	if strings.Contains(body, `data-goto="theme"`) {
-		t.Error("「主题」不该再有 data-goto：它是链接，不是页签")
+	if strings.Contains(body, `href="/admin/themes"`) {
+		t.Error("后台里不该再出现指向 /admin/themes 的链接（主题是页签，不是独立页）")
+	}
+	// 页签不能是空壳：主题管理的标志性入口都得在页面上
+	for _, want := range []string{
+		`data-atab="themes"`,         // 面板挂了页签值
+		`href="/theme-export/`,       // 导出
+		`action="/admin/themes/grab"`, // 一键获取别人的主题
+		`action="/admin/wallpaper"`,  // 壁纸
+		`href="/theme-ai-prompt.md"`, // AI 提示词
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("主题面板缺少 %q —— 页签不能是空壳", want)
+		}
 	}
 	// 那个高级配置整块都该没了。
 	for _, gone := range []string{"theme_fetch_hosts", "本机地址白名单"} {

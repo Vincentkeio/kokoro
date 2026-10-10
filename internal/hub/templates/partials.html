@@ -6,7 +6,7 @@
      themeTokens 已经过校验（未知变量名会被 Parse 拒绝），且值里不可能出现
      </style>，所以这里直接内联是安全的。 */}}
 <link rel="icon" href="/static/favicon.svg?v=66">
-<link rel="stylesheet" href="/static/style.css?v=76">
+<link rel="stylesheet" href="/static/style.css?v=77">
 <style id="kokoro-tokens">{{.Theme.Tokens}}</style>
 {{/* 站点壁纸。必须排在 #kokoro-tokens **后面**：两者都是 :root 上的
      --kokoro-bg-image，靠书写顺序定胜负，站点设置要压过主题默认。
@@ -48,7 +48,7 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
               aria-label="切换深色或浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>
       {{end}}
       <a class="btn ghost small" href="/admin">后台</a>
-      {{/* 皮肤切换器放在最后 = 贴着右上角。
+      {{/* 主题切换器放在最后 = 贴着右上角。
            不要为了"把外观控件聚在一起"把它挪到 mode-toggle 旁边：
            站长明确要求它在右上角，这个位置本身就是它的可发现性。 */}}
       {{template "skinpicker.html" .}}
@@ -58,7 +58,7 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
 {{end}}
 
 {{define "skinpicker.html"}}
-{{/* 页头右上角的皮肤切换器。两条语义完全不同的路径，别搞混：
+{{/* 页头右上角的主题切换器。两条语义完全不同的路径，别搞混：
      /pick/<id>  访客自选，只写 k_theme cookie，不动站点设置，人人可用；
      /theme/<id> 管理员改站点默认主题，影响所有人（后台用）。
 
@@ -68,21 +68,21 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
      不要因为选项少就把整条藏掉，那是拿可发现性换整洁。
 
      用 <details> 做下拉：无 JS 也能开合，JS 只负责"点外面/Esc 关掉"。
-     summary 上显示当前皮肤名，所以访客不用展开就知道自己在用哪套。
+     summary 上显示当前主题名，所以访客不用展开就知道自己在用哪套。
 
      back 用 urlquery 模板函数转义一次就够了——千万别在 Go 里先
      QueryEscape 再让模板再转义一层，那样 / 会变成 %252F，
      服务端解出来是 "%2F" 这种非站内路径，只能被安全检查丢掉。 */}}
 {{if .Theme.VisitorSwitch}}
 <details class="skin" data-skin-picker>
-  <summary class="skin-btn" title="切换皮肤">
+  <summary class="skin-btn" title="切换主题">
     <span class="skin-ico" aria-hidden="true">◐</span>
     <span class="skin-cur">{{.Theme.Name}}</span>
   </summary>
-  <div class="skin-menu" role="menu" aria-label="皮肤">
-    {{/* 只显示皮肤名，不带描述 —— boss 要求。
+  <div class="skin-menu" role="menu" aria-label="主题">
+    {{/* 只显示主题名，不带描述 —— boss 要求。
          主题的 description 动辄一整句，铺在下拉里把菜单撑得很高，
-         而选皮肤时真正要看的就是"叫什么"，描述反而挡住了列表本身。 */}}
+         而选主题时真正要看的就是"叫什么"，描述反而挡住了列表本身。 */}}
     {{range .Theme.Pickable}}
     <a class="skin-item{{if eq .ID $.Theme.ID}} on{{end}}" role="menuitem"
        href="/pick/{{.ID}}?back={{urlquery $.Theme.BackURL}}">
@@ -94,17 +94,17 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
        href="/pick/default?back={{urlquery .Theme.BackURL}}">恢复默认</a>
     {{end}}
     {{/* 反过来的一条路：不是"我去抄别人"，而是"别人怎么抄我"。
-         访客看到一套喜欢的皮肤，最自然的念头就是"我也想用"——
+         访客看到一套喜欢的主题，最自然的念头就是"我也想用"——
          没有这个入口，他只能自己去猜有没有 /theme.json 这种东西。
          放菜单最底部，不抢切换主题的位置。 */}}
     <button class="skin-item get" type="button" role="menuitem" data-skinget>
-      <span class="skin-item-name">获取本站皮肤</span>
+      <span class="skin-item-name">获取本站主题</span>
       <small>抄到你自己的面板</small>
     </button>
   </div>
 </details>
 
-{{/* 「获取本站皮肤」弹窗。
+{{/* 「获取本站主题」弹窗。
      放在 details 外面：details 收起时会把内部元素一起藏掉，
      弹窗要是嵌在里面，点完按钮一展开就跟着消失了。
      DOM 挂在这个模板里而不是首页模板里 —— skinpicker 在首页和详情页
@@ -112,7 +112,7 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
 <div class="dlg-scrim" id="skinget-scrim" hidden>
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="skinget-title">
     <header class="dlg-head">
-      <b class="dlg-title" id="skinget-title">获取本站皮肤</b>
+      <b class="dlg-title" id="skinget-title">获取本站主题</b>
       {{/* 空占位：它的 margin-left:auto 负责把 ✕ 推到最右边。
            少了它，关闭按钮会紧贴着标题（另外两个弹窗都带这个 div）。 */}}
       <div class="dlg-admin"></div>
@@ -120,7 +120,7 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
     </header>
     <div class="dlg-body">
       <p class="skinget-lead">
-        打开<b>你自己</b>的 Kokoro 面板，四步就能装上本站的皮肤：
+        打开<b>你自己</b>的 Kokoro 面板，四步就能装上本站的主题：
       </p>
 
       <p class="skinget-step"><b>1</b> 点右边「复制」，拿到本站的主题地址</p>
@@ -131,11 +131,11 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
       </div>
 
       <p class="skinget-step"><b>2</b> 进你面板的后台，打开「主题」页</p>
-      <p class="skinget-step"><b>3</b> 找到「一键获取别人的皮肤」，把地址粘进那个输入框</p>
+      <p class="skinget-step"><b>3</b> 找到「一键获取别人的主题」，把地址粘进那个输入框</p>
       <p class="skinget-step"><b>4</b> 点「获取并导入」，装好立刻生效</p>
 
       <p class="skinget-hint">
-        拿到的是本站的<b>默认皮肤</b>。装进你面板之后就是<b>你自己的副本</b> ——
+        拿到的是本站的<b>默认主题</b>。装进你面板之后就是<b>你自己的副本</b> ——
         本站以后换皮、甚至关站，都不会再影响你。
       </p>
     </div>

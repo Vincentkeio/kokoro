@@ -29,35 +29,16 @@ type themeCard struct {
 	Summary string
 }
 
-// themePageData 是 /admin/themes 的页面数据。
-type themePageData struct {
-	adminData
-	Themes   []themeCard
-	Msg      string
-	Err      bool
-	ActiveID string
-	// TokenNames 列出可用的 CSS 变量名，方便管理员复制内置主题去改。
-	TokenNames []string
-	// Wallpaper 是站点壁纸面板的数据（上传 / URL / 清除）。
-	Wallpaper wallpaperView
-}
-
-func (h *Hub) handleAdminThemes(w http.ResponseWriter, r *http.Request, authed bool) {
-	if !authed {
-		h.render(w, "login.html", map[string]any{"SiteName": h.cfg.SiteName}, r)
-		return
-	}
-	msg := strings.TrimSpace(r.URL.Query().Get("msg"))
-	data := themePageData{
-		adminData: h.adminBase(r),
-		Msg:       msg,
-		ActiveID:  h.ActiveThemeID(),
-		Wallpaper: h.wallpaperFor(strings.TrimSpace(r.URL.Query().Get("wperr"))),
-	}
+// fillThemePanel 把「主题」页签需要的数据填进 adminData。
+//
+// 主题面板挂在 /admin 里（不再单独一页），所以这些数据是**后台页面数据的一部分**，
+// 由 adminBase 统一带上 —— 少一个"进后台时漏填"的机会。
+func (h *Hub) fillThemePanel(d *adminData, r *http.Request) {
+	d.Msg = strings.TrimSpace(r.URL.Query().Get("msg"))
+	d.ActiveID = h.ActiveThemeID()
 	if h.themes != nil {
-		active := data.ActiveID
 		for _, m := range h.themes.List() {
-			data.Themes = append(data.Themes, themeCard{
+			d.Themes = append(d.Themes, themeCard{
 				ID:      m.ID,
 				Name:    m.Name,
 				Desc:    m.Description,
@@ -66,16 +47,22 @@ func (h *Hub) handleAdminThemes(w http.ResponseWriter, r *http.Request, authed b
 				License: m.License,
 				Tags:    m.Tags,
 				Swatch:  m.Swatches,
-				Active:  m.ID == active,
+				Active:  m.ID == d.ActiveID,
 				Builtin: m.Builtin,
 				Source:  m.SourceURL,
 				Summary: themeSummary(m),
 			})
 		}
 	}
-	data.TokenNames = theme.AllowedTokenNames()
-	h.render(w, "admin_themes.html", &data, r)
+	d.TokenNames = theme.AllowedTokenNames()
+	d.Wallpaper = h.wallpaperFor(strings.TrimSpace(r.URL.Query().Get("wperr")))
 }
+
+// 注：原来这里有个 handleAdminThemes 渲染**独立页面** /admin/themes。
+// 主题面板已经并进 /admin 的「主题」页签（boss 要求后台所有区块都是页签，
+// 不要单独跳一页），所以页面渲染那部分删掉了；
+// 留下的是 /admin/themes/import、/grab、/delete 这几个**动作**端点，
+// 它们本来就不渲染页面（做完 Redirect 回 /admin#themes）。
 
 // themeSummary 用一句中文说清这套主题的布局取向。
 // 管理员在后台看到的应该是"这台机器上会变成什么样"，而不是一堆 JSON 键名。
@@ -199,7 +186,7 @@ func (h *Hub) siteBaseURL(r *http.Request) string {
 // 后台各子页面（节点、告警、主题…）都需要站点名与 Hub 地址，
 // 但不需要把节点列表、告警规则全查一遍——那几页用不到，白查白费。
 func (h *Hub) adminBase(r *http.Request) adminData {
-	return adminData{
+	d := adminData{
 		SiteName:    h.cfg.SiteName,
 		HubURL:      h.siteBaseURL(r),
 		CommentOn:   h.commentEnabled(),
@@ -210,4 +197,7 @@ func (h *Hub) adminBase(r *http.Request) adminData {
 		AdminUser:   h.adminUsername(),
 		CC:          countryOptions(),
 	}
+	// 主题面板挂在 /admin 里，所以每次构造后台数据都要带上它。
+	h.fillThemePanel(&d, r)
+	return d
 }

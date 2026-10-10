@@ -433,11 +433,58 @@ function renderRateChart(svg, pts) {
     grid += '<line class="dash-grid-line" x1="' + pad + '" y1="' + y +
             '" x2="' + (W - pad) + '" y2="' + y + '"/>';
   }
+
+  // 图表形态由主题的 layout.charts.type 决定，值在 body 的 data-k-chart-type 上。
+  // ⚠️ 早先这个属性**前端根本没读**，主题里选 bar 也照样画 area ——
+  // 是 2026-10-11 做毛玻璃主题（那份把能配的全配了一遍）时才发现的。
+  var type = (document.body && document.body.getAttribute('data-k-chart-type')) || 'area';
+
+  if (type === 'bar') {
+    // 柱状图：只画上行。速率图的核心指标是上行，两条柱子并排的话
+    // 一小时 60 个点会挤成一片，反而看不清趋势。
+    var bw = (W - pad * 2) / pts.length;
+    // 柱宽至少留 1px 间隙，柱子才分得开
+    var w = bw > 2 ? bw - 1 : bw;
+    var bars = '';
+    for (i = 0; i < pts.length; i++) {
+      var h = (pts[i].up / max) * (H - pad * 2);
+      // 有流量但柱子矮到看不见时，给 1px 保底 —— 否则低峰期像"断流了"
+      if (h > 0 && h < 1) h = 1;
+      x = (pad + i * bw).toFixed(1);
+      y = (H - pad - h).toFixed(1);
+      bars += '<rect class="dash-bar-up" x="' + x + '" y="' + y +
+              '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) + '"/>';
+    }
+    svg.innerHTML = grid + bars;
+    return;
+  }
+
   svg.innerHTML = grid +
     '<path class="dash-area-up" d="M' + pad + ' ' + (H - pad) + ' L' + up.slice(1) +
       ' L' + (W - pad) + ' ' + (H - pad) + ' Z"/>' +
     '<path class="dash-line-up" d="' + up + '"/>' +
     '<path class="dash-line-down" d="' + down + '"/>';
+
+  // 数据点。半径由主题的 --kokoro-chart-point-radius 决定，0 = 不画。
+  // ⚠️ 这个 token 一直存在、但前端从来没接过 —— 2026-10-11 查"主题里写了
+  // 却没生效的东西"时才翻出来，和 charts.type:"bar" 是同一批漏接的。
+  // 点太密时不画（一小时 60 个点会糊成一片），阈值 40 是折中：
+  // 详情页 12 个点、首页 60 个点，前者画、后者不画。
+  var pr = 0;
+  try {
+    pr = parseFloat(global.getComputedStyle(svg).getPropertyValue(
+      '--kokoro-chart-point-radius')) || 0;
+  } catch (e) { /* 老浏览器没有这个 API，当没配处理 */ }
+  if (pr > 0 && pts.length <= 40) {
+    var dots = '';
+    for (i = 0; i < pts.length; i++) {
+      x = (pad + i * ((W - pad * 2) / (pts.length - 1))).toFixed(1);
+      y = (H - pad - (pts[i].up / max) * (H - pad * 2)).toFixed(1);
+      dots += '<circle class="dash-point" cx="' + x + '" cy="' + y +
+              '" r="' + pr + '"/>';
+    }
+    svg.innerHTML += dots;
+  }
 }
 
 /* 页面上所有 [data-rate-chart] 用同一份数据画 ——

@@ -15,7 +15,7 @@
       {{if .Theme.ShowSwitch}}
       <button class="btn ghost small mode-toggle" type="button" data-toggle-mode title="切换深色 / 浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>
       {{end}}
-      {{/* 皮肤切换器必须在详情页也在——它原先挂在页尾，改到页头后
+      {{/* 主题切换器必须在详情页也在——它原先挂在页尾，改到页头后
            这里漏了就会让详情页整页没有切换入口。由
            TestSkinPickerOnHomeAndNode 守住。 */}}
       {{template "skinpicker.html" .}}
@@ -245,7 +245,7 @@
 window.__POINTS__ = [{{range .Points}}{"t":{{.Ts}},"cpu":{{.CPU}},"mu":{{.MemUsed}},"up":{{.NetUp}},"down":{{.NetDown}}},{{end}}];
 window.__SLUG__ = {{.Node.Slug | js}};
 </script>
-<script src="/static/app.js?v=74"></script>
+<script src="/static/app.js?v=77"></script>
 </body>
 </html>
 {{end}}

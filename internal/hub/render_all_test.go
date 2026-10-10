@@ -55,7 +55,8 @@ func TestEveryTemplateRenders(t *testing.T) {
 			Scripts:   h.scriptViews(),
 			Tasks:     []model.NodeTask{{ID: "t1", Kind: "bench", Title: "硬件跑分", Status: model.TaskDone}},
 		}},
-		{"admin_themes.html", &themePageData{adminData: h.adminBase(httptest.NewRequest(http.MethodGet, "/admin/themes", nil)), ActiveID: h.ActiveThemeID()}},
+		// 主题面板：它并进 /admin 了，是个可复用片段（define "theme-panels"）。
+		{"theme-panels", h.adminBase(httptest.NewRequest(http.MethodGet, "/admin", nil))},
 	}
 	for _, p := range adminPages {
 		body, err := renderTo(t, h, p.tmpl, p.data, nil)
