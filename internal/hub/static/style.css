@@ -1773,6 +1773,15 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 /* 弹窗标题。之前没有这条规则，标题只靠 <b> 的默认加粗，和正文一样大，
    层级出不来。 */
 .dlg-title { font-size: var(--kokoro-font-size-lg, 16px); color: var(--fg-strong); }
+/* 弹窗表单里的 label：文字在上、控件在下。
+   `.login label` 有这条规则，弹窗里的没有 —— 于是「联系方式」和输入框
+   挤在同一行、两个输入框宽度还各不相同，看着很毛糙。
+   ⚠️ 用 block 而不是 flex column：label 里的「文字 + 必填星号」是两个
+   节点，flex column 会把星号也挤到单独一行去。block 下文字和星号照常
+   行内排列，控件自己 block 换行。 */
+.dlg label { display: block; font-size: 13px; color: var(--muted); }
+.dlg label input, .dlg label textarea { display: block; width: 100%; margin-top: 4px; }
+.dlg label .req { color: var(--bad); }
 /* ⚠️ 这个类负责把后面的关闭按钮推到右边（margin-left:auto）。
    弹窗头里如果**没有** .dlg-admin，✕ 就会紧贴着标题 —— 新加弹窗时记得
    补一个空的 <div class="dlg-admin"></div> 占位，别直接靠 .dlg-x 自己。 */

@@ -461,7 +461,37 @@
      表现是"点开只有一片灰背景，看不到内容"。（踩过一次） */}}
 <div class="dlg-scrim" id="dlg-scrim" hidden>
 
-  <div class="dlg-scrim" id="buy-scrim" hidden>
+<div class="dlg" id="d-art" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="文章">
+    <header class="dlg-head">
+      <b class="dlg-title">文章</b>
+      <span class="dlg-admin" id="d-art-admin"></span>
+      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body" id="d-art-body"></div>
+  </div>
+
+  <div class="dlg" id="d-cmt" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="评论">
+    <header class="dlg-head">
+      <b class="dlg-title">评论</b>
+      <span class="dlg-admin" id="d-cmt-admin"></span>
+      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body" id="d-cmt-body"></div>
+    <footer class="dlg-foot" id="d-cmt-foot"></footer>
+  </div>
+
+</div>
+
+{{/* ---- 购买意向弹窗 ----
+     ⚠️ 它必须和 #dlg-scrim **平级**，不能嵌进那个遮罩里。
+
+     #dlg-scrim 是文章/评论共用的遮罩，默认 hidden。买它弹窗一旦被放进去，
+     JS 里的 scrim.hidden = false 确实执行了、DOM 属性也变了，
+     但父元素还藏着 —— 整棵子树都不渲染，表现就是"点了没反应"，
+     而且**不报任何错**。（2026-10-11 boss 报的就是这个。）
+
+     它自己带 .dlg-scrim，所以有自己的遮罩和居中，不需要借别人的。 ---- */}}
+<div class="dlg-scrim" id="buy-scrim" hidden>
   <div class="dlg" id="d-buy" aria-hidden="true" role="dialog" aria-modal="true" aria-label="我想买它">
     <header class="dlg-head">
       <b class="dlg-title" id="buy-title">我想买它</b>
@@ -486,27 +516,6 @@
       <button type="button" class="btn small" id="buy-send">发送</button>
     </footer>
   </div>
-</div>
-
-<div class="dlg" id="d-art" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="文章">
-    <header class="dlg-head">
-      <b class="dlg-title">文章</b>
-      <span class="dlg-admin" id="d-art-admin"></span>
-      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
-    </header>
-    <div class="dlg-body" id="d-art-body"></div>
-  </div>
-
-  <div class="dlg" id="d-cmt" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="评论">
-    <header class="dlg-head">
-      <b class="dlg-title">评论</b>
-      <span class="dlg-admin" id="d-cmt-admin"></span>
-      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
-    </header>
-    <div class="dlg-body" id="d-cmt-body"></div>
-    <footer class="dlg-foot" id="d-cmt-foot"></footer>
-  </div>
-
 </div>
 
 </main>
