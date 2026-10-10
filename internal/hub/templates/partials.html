@@ -6,7 +6,7 @@
      themeTokens 已经过校验（未知变量名会被 Parse 拒绝），且值里不可能出现
      </style>，所以这里直接内联是安全的。 */}}
 <link rel="icon" href="/static/favicon.svg?v=66">
-<link rel="stylesheet" href="/static/style.css?v=70">
+<link rel="stylesheet" href="/static/style.css?v=71">
 <style id="kokoro-tokens">{{.Theme.Tokens}}</style>
 <style id="kokoro-layout">{{.Theme.LayoutCSS}}</style>
 {{if eq .Theme.DefaultMode "auto"}}
@@ -110,22 +110,24 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
     </header>
     <div class="dlg-body">
       <p class="skinget-lead">
-        把下面这个地址填进你自己的 Kokoro 面板 →「主题」→「一键获取别人的皮肤」，
-        就能装上本站的皮肤。它已经<b>存在你本地</b>，之后本站换皮不会影响你。
+        打开<b>你自己</b>的 Kokoro 面板，四步就能装上本站的皮肤：
       </p>
+
+      <p class="skinget-step"><b>1</b> 点右边「复制」，拿到本站的主题地址</p>
       <div class="skinget-row">
         <input id="skinget-url" type="text" readonly
-               value="{{.Theme.SiteURL}}" aria-label="本站地址">
+               value="{{.Theme.ThemeShareURL}}" aria-label="本站主题地址">
         <button type="button" class="btn small" data-skingetcopy>复制</button>
       </div>
+
+      <p class="skinget-step"><b>2</b> 进你面板的后台，打开「主题」页</p>
+      <p class="skinget-step"><b>3</b> 找到「一键获取别人的皮肤」，把地址粘进那个输入框</p>
+      <p class="skinget-step"><b>4</b> 点「获取并导入」，装好立刻生效</p>
+
       <p class="skinget-hint">
-        拿到的会是本站的<b>默认皮肤</b>。想拿我现在看的这套（{{.Theme.Name}}），
-        或者直接下载文件去后台「导入主题」上传：
+        拿到的是本站的<b>默认皮肤</b>。装进你面板之后就是<b>你自己的副本</b> ——
+        本站以后换皮、甚至关站，都不会再影响你。
       </p>
-      <div class="skinget-acts">
-        <a class="btn ghost small" href="/theme-export/{{.Theme.ID}}">下载这套的 JSON</a>
-        <a class="btn ghost small" href="/theme-bundle/{{.Theme.ID}}">下载完整包</a>
-      </div>
     </div>
   </div>
 </div>

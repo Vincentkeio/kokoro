@@ -162,11 +162,17 @@ type themeView struct {
 	// SiteThemeID 是站点默认主题，用于在切换器里标注"当前默认"。
 	SiteThemeID string
 	// SiteURL 是本站对外根地址（不带末尾斜杠）。
-	//
-	// 给「获取本站皮肤」用：访客要把一个地址填进自己的面板才能抄走这套皮肤，
-	// 那个地址必须是完整的对外地址，不能是相对路径——相对路径复制出去
-	// 到了别人的输入框里就什么都不是。
 	SiteURL string
+	// ThemeShareURL 是「获取本站皮肤」要让访客复制走的地址，即
+	// <SiteURL>/theme.json。
+	//
+	// 为什么给带 /theme.json 的完整地址，而不是光秃秃的域名：
+	//   - 它看起来**就是一个主题文件**，复制出去的人一眼知道这是什么，
+	//     浏览器直接打开也能看到清单内容（可自证）；
+	//   - 对方的「一键获取」两种写法都认 —— grabTheme 里的
+	//     normalizeThemeBase 会把 /theme.json 后缀剥掉再拼回去。
+	// 站点根地址本身在别的场景（后台展示等）还有用，所以两个都留着。
+	ThemeShareURL string
 	// VisitorOverride 报告本次请求是否用了访客自己的选择（而非站点默认）。
 	VisitorOverride bool
 }
@@ -275,6 +281,9 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 		BackURL:     r.URL.RequestURI(),
 		SiteThemeID: siteID,
 		SiteURL:     h.siteBaseURL(r),
+	}
+	if v.SiteURL != "" {
+		v.ThemeShareURL = v.SiteURL + "/theme.json"
 	}
 	// 访客选的不是站点默认 → 他需要一条"回到默认"的出路。
 	v.VisitorOverride = m.ID != siteID

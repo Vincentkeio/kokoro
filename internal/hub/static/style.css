@@ -790,9 +790,25 @@ body[data-k-list-mode="compact"] .card:hover { transform: none; }
 }
 .skin-item.get:hover { color: var(--accent); border-color: var(--accent); }
 
-/* ---- 「获取本站皮肤」弹窗 ---- */
+/* ---- 「获取本站皮肤」弹窗 ----
+   内容是"四步怎么操作"，所以用带序号的行排列；
+   地址框紧跟在第 1 步下面，让"复制这个"的指代一目了然。 */
 .skinget-lead { margin: 0 0 var(--s3); font-size: 13px; line-height: 1.75; color: var(--muted); }
-.skinget-row { display: flex; gap: var(--s2); align-items: center; }
+.skinget-step {
+  display: flex; gap: 8px; align-items: flex-start;
+  margin: 0 0 var(--s2); font-size: 13px; line-height: 1.7; color: var(--fg);
+}
+/* 序号做成小圆点。flex 子项默认会被压扁，所以 flex:none。
+   margin-top 让圆心和第一行文字的视觉中线对齐（纯 baseline 对齐会偏上）。 */
+.skinget-step b {
+  flex: none; min-width: 18px; height: 18px; margin-top: 3px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: var(--accent); color: var(--accent-fg);
+  font-size: 11px; font-weight: 600; line-height: 1;
+}
+/* 左缩进 = 序号宽度 + 间距，和上面的步骤文字左边缘对齐 */
+.skinget-row { display: flex; gap: var(--s2); align-items: center; margin: 0 0 var(--s3) 26px; }
 .skinget-row input {
   flex: 1; min-width: 0;
   font-family: var(--mono); font-size: 12.5px;
@@ -801,8 +817,11 @@ body[data-k-list-mode="compact"] .card:hover { transform: none; }
   border: var(--kokoro-border-width, 1px) solid var(--line);
   border-radius: var(--r-sm);
 }
-.skinget-hint { margin: var(--s3) 0 var(--s2); font-size: 12.5px; line-height: 1.65; color: var(--faint); }
-.skinget-acts { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.skinget-hint {
+  margin: var(--s3) 0 0; padding-top: var(--s3);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  font-size: 12.5px; line-height: 1.7; color: var(--muted);
+}
 
 /* ==========================================================================
    8. 首页信息面板：时钟 / 统计卡 / 点阵地球 / 富卡片

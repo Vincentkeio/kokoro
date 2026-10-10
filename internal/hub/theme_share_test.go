@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Vincentkeio/kokoro/internal/model"
-	"github.com/Vincentkeio/kokoro/internal/theme"
 )
 
 func TestSiteBaseURL(t *testing.T) {
@@ -38,6 +37,11 @@ func TestSiteBaseURL(t *testing.T) {
 	if got := h3.siteBaseURL(nil); got != "https://a.example.com" {
 		t.Errorf("带 scheme + 末尾斜杠时得到 %q", got)
 	}
+
+	// 给访客复制的地址是 `<站点>/theme.json`，不是光秃秃的域名。
+	if got := h.themeFor(req).ThemeShareURL; got != "https://vps.example.com/theme.json" {
+		t.Errorf("ThemeShareURL = %q，应为站点根 + /theme.json", got)
+	}
 }
 
 // 弹窗必须在访客能进的页面上都存在，并且地址是完整的对外地址。
@@ -57,17 +61,20 @@ func TestSkinGetDialogOnPublicPages(t *testing.T) {
 		if !strings.Contains(body, `id="skinget-scrim"`) {
 			t.Errorf("%s 缺少获取皮肤弹窗的 DOM", path)
 		}
-		// 复制框里必须是完整对外地址：相对路径复制到别人的输入框里
-		// 什么都不算，这是这个功能能不能用的关键。
-		if !strings.Contains(body, "https://vps.example.com") {
-			t.Errorf("%s 的地址框里不是完整对外地址", path)
+		// 地址框里必须是 `<站点>/theme.json` 的完整地址。
+		// 给光秃秃的域名时用户会问"复制这个有什么用"（boss 真的问了）；
+		// 带上 /theme.json 既像个主题文件（浏览器打开就能看到清单），
+		// 对方面板的「一键获取」也认这种写法（normalizeThemeBase 会剥后缀）。
+		if !strings.Contains(body, "https://vps.example.com/theme.json") {
+			t.Errorf("%s 的地址框里不是 <站点>/theme.json 完整地址", path)
 		}
-		// 当前这套皮肤的下载入口（JSON 与完整包）。
-		if !strings.Contains(body, "/theme-export/"+theme.DefaultID) {
-			t.Errorf("%s 缺少导出 JSON 的链接", path)
+		// 按 boss 要求只留"复制地址"一条路，下载入口已撤。
+		if strings.Contains(body, "/theme-export/") || strings.Contains(body, "/theme-bundle/") {
+			t.Errorf("%s 不该再出现下载入口（只保留复制地址）", path)
 		}
-		if !strings.Contains(body, "/theme-bundle/"+theme.DefaultID) {
-			t.Errorf("%s 缺少下载完整包的链接", path)
+		// 文案要给出可照做的步骤 —— boss 明确要求"写清楚怎么操作"。
+		if !strings.Contains(body, "一键获取别人的皮肤") {
+			t.Errorf("%s 的操作步骤里没提到对方要去点哪个入口", path)
 		}
 		// 弹窗不能嵌在 <details> 里 —— details 一收起就把弹窗一起藏了，
 		// 表现成"点了按钮没反应"。所以它必须在 </details> 之后。
