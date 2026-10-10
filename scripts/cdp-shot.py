@@ -104,6 +104,11 @@ def main():
     # 用途：触发纯 CSS 的悬浮浮窗（:hover / :focus-within）——
     # 无头浏览器没法真的"把鼠标移上去"，只能靠 focus 触发。
     pre_js = sys.argv[5] if len(sys.argv) > 5 else ""
+    # 第 6/7 个参数（可选）：视口宽高。
+    # 有些 bug 只在特定窗口尺寸下复现（比如依赖 vh 的高度），
+    # 默认的 1400x1500 太"标准"，反而不容易撞上。
+    vw = int(sys.argv[6]) if len(sys.argv) > 6 else 1400
+    vh = int(sys.argv[7]) if len(sys.argv) > 7 else 1500
 
     import websocket  # websocket-client
 
@@ -134,7 +139,7 @@ def main():
         # ⚠️ 只给 --window-size 是不够的：无头模式下它常常不生效，
         # 视口会退成 ~410x288，截图只有左上角一小块，地球也被挤成一小坨。
         # 必须再显式设一次设备度量。两者都要。
-        w, h = 1400, 1500
+        w, h = vw, vh
         s.send("Emulation.setDeviceMetricsOverride",
                {"width": w, "height": h, "deviceScaleFactor": dpr, "mobile": False})
         s.send("Page.navigate", {"url": url}, wait=False)
@@ -230,7 +235,13 @@ def main():
         # 先跑调用方给的 JS（比如 focus 出浮窗），再做自检和截图
         if pre_js:
             try:
-                s.send("Runtime.evaluate", {"expression": pre_js, "returnByValue": True})
+                pr = s.send("Runtime.evaluate",
+                            {"expression": pre_js, "returnByValue": True})
+                # 把返回值打出来：诊断类 pre_js（"量一下某元素的尺寸再返回 JSON"）
+                # 全靠这一行，否则它只是个哑调用，白跑一趟。
+                val = pr.get("result", {}).get("value")
+                if val is not None:
+                    print("预执行 JS 返回:", val, flush=True)
                 time.sleep(0.6)  # 等 CSS transition 走完
             except Exception as e:
                 print("预执行 JS 失败:", e)

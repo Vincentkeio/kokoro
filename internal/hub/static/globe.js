@@ -525,6 +525,19 @@
     this._onResize = function () { self._resize(); };
     global.addEventListener('resize', this._onResize);
 
+    // 容器尺寸变了就重算绘制分辨率。
+    //
+    // 为什么不能只靠 window 的 resize：.globe 的高度来自 CSS
+    // （.home-band 的 --band-h 含 vh，窄屏还走另一套媒体查询），
+    // 任何「容器变了但窗口没变」的情况都不会发 window resize ——
+    // 比如字体加载把卡片撑高、媒体查询切换、父级 margin/边框调整。
+    // 那种时候画布就与容器脱节了（正是"地球被截断"的成因）。
+    // ResizeObserver 盯的是元素本身，这类变化一个都跑不掉。
+    if (global.ResizeObserver) {
+      this._ro = new global.ResizeObserver(function () { self._resize(); });
+      this._ro.observe(this.host);
+    }
+
     // 滚出视口或切到别的标签页时停掉 rAF，别白烧 CPU
     if (global.IntersectionObserver) {
       this._io = new IntersectionObserver(function (es) {
@@ -540,15 +553,33 @@
 
   KokoroGlobe.prototype._resize = function () {
     var r = this.host.getBoundingClientRect();
+    // 容器塌成 0（还没布局好、或被 display:none 藏起来）时直接跳过：
+    // 设成 1x1 会让地球缩成一个点，而之后尺寸恢复时未必有第二次机会。
+    // 漏掉的那次由 ResizeObserver 补上。
+    if (r.width < 2 || r.height < 2) return;
     this.w = Math.max(1, Math.round(r.width));
     this.h = Math.max(1, Math.round(r.height));
+    // dpr 每次都重读：把窗口拖到缩放比例不同的另一块显示器时它会变，
+    // 只在构造时取一次的话，换屏之后点阵会糊。
+    this.dpr = Math.min(2, global.devicePixelRatio || 1);
     var dpr = this.dpr;
     for (var i = 0; i < 2; i++) {
       var cv = i ? this.ovCanvas : this.glCanvas;
       cv.width = Math.round(this.w * dpr);
       cv.height = Math.round(this.h * dpr);
-      cv.style.width = this.w + 'px';
-      cv.style.height = this.h + 'px';
+      // ⚠️ **这里不要再写 cv.style.width / cv.style.height**。
+      //
+      // 画布的「显示尺寸」交给 CSS（.globe canvas { width:100%; height:100% }），
+      // 它永远等于容器尺寸；这个函数只管「绘制分辨率」（canvas.width/height）。
+      //
+      // 反面教材（2026-10-10 boss 报的 bug）：一旦 JS 把 style 宽高写死，
+      // 容器后来变矮（窗口改小、--band-h 的 vh 变化、字体加载把卡片撑高…）
+      // 而 window 没发 resize 时，画布就停在旧高度上，多出来的部分被
+      // .globe 的 overflow:hidden 裁掉 —— 表现成"地球下半部分被截断"。
+      //
+      // 交给 CSS 之后，哪怕这一帧的 backing 尺寸暂时落后，浏览器也只是
+      // 把位图整体缩放一下（短暂发糊），**绝不会裁掉内容**；
+      // 下一帧 ResizeObserver 就会把分辨率纠正回来。
     }
     this.cx = this.w / 2;
     this.cy = this.h / 2;
@@ -933,6 +964,7 @@
     this._destroyed = true;
     if (this._raf) global.cancelAnimationFrame(this._raf);
     if (this._io) this._io.disconnect();
+    if (this._ro) this._ro.disconnect();
     global.removeEventListener('resize', this._onResize);
     if (this.ovCanvas) this.ovCanvas.removeEventListener('wheel', this._onWheel);
     document.removeEventListener('visibilitychange', this._onVis);

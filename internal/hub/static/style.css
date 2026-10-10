@@ -876,7 +876,12 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   background: radial-gradient(70% 70% at 50% 45%,
     color-mix(in srgb, var(--accent) 7%, transparent), transparent 72%);
 }
-.globe canvas { position: absolute; inset: 0; display: block; }
+/* 画布的**显示尺寸由 CSS 决定**，永远等于容器；globe.js 只管绘制分辨率
+   （canvas.width/height）。反过来让 JS 写死 style 宽高的话，容器一变矮，
+   画布就停在旧尺寸上、下半部分被 .globe 的 overflow:hidden 裁掉。
+   用 left/top + 100% 而不是 inset:0 —— 后者和显式 width/height 同时存在时
+   会互相打架，写清楚更不容易被后人改坏。 */
+.globe canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
 .globe-ov { cursor: grab; }
 .globe-ov.grabbing { cursor: grabbing; }
 .globe-tip {
