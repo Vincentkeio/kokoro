@@ -14,11 +14,13 @@ import (
 
 // want 是当前维护的内置主题清单。
 //
-// 2026-10-11 加了第二套 kokoro.neon（霓虹，科幻向深色皮）。
+// 2026-10-11 加了 kokoro.neon（霓虹，科幻向深色）和 kokoro.glass
+// （毛玻璃，刻意把每个枚举都取非默认值，用来压主题能力的边界）。
 // 下面所有「换主题是否真的换脸」的断言都用现场构造的主题，
 // 不依赖具体内置主题，所以加主题不会牵动这些测试。
 var want = []string{
 	"kokoro.daylight",
+	"kokoro.glass",
 	"kokoro.neon",
 }
 
@@ -472,11 +474,22 @@ func TestHeroVariantIsSeparateAttribute(t *testing.T) {
 	if _, ok := d["data-k-hero-on"]; ok {
 		t.Error("未启用 Hero 时不应有 data-k-hero-on")
 	}
-	// 内置主题同样默认不开 Hero。
+	// 内置主题里**只有明确要用 Hero 的才该开**。
+	//
+	// ⚠️ 早先这条是"所有内置主题都不开 Hero"——但 kokoro.glass 就是刻意
+	// 开 Hero 做能力展示的（boss 要一份"样样不同"的边界样例）。
+	// 那种写法会让"加一套开 Hero 的主题"变成改测试，于是改成白名单：
+	// 首页 Hero 会占掉一大块首屏，**开之前在这里登记一下**，说明是有意的。
+	heroOn := map[string]bool{"kokoro.glass": true}
 	r, _ := NewRegistry()
 	for _, id := range r.ListIDs() {
-		if _, ok := BodyAttrs(r.Get(id), "light", "card")["data-k-hero-on"]; ok {
-			t.Errorf("%s 默认不开 Hero，不应有 data-k-hero-on", id)
+		_, ok := BodyAttrs(r.Get(id), "light", "card")["data-k-hero-on"]
+		if ok && !heroOn[id] {
+			t.Errorf("%s 开了 Hero，但没在 heroOn 白名单里登记 —— "+
+				"Hero 会占掉一大块首屏，开之前确认是有意的", id)
+		}
+		if !ok && heroOn[id] {
+			t.Errorf("%s 在 heroOn 白名单里，实际却没开 Hero —— 白名单过时了", id)
 		}
 	}
 }

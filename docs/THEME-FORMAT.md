@@ -342,6 +342,12 @@ GET /theme.json                       →  返回当前生效主题的清单（�
 > data URI 的写法（`data:image/svg+xml;base64,…`）里含 `;`，会被直接拒绝；
 > 外链又被禁止。想要星空、网格之类的底纹，只能用纯色打底 +
 > `--kokoro-hero-gradient` 这类渐变来做（`kokoro.neon` 就是这么处理的）。
+>
+> ⚠️ 另外三个背景变量 **`--kokoro-bg-attachment` / `--kokoro-bg-repeat` /
+> `--kokoro-bg-size` 是按「长度」校验的**（实现里没给它们单独的取值分支），
+> 所以 `fixed` / `no-repeat` / `cover` 这些关键字会被**拒绝**，只能写长度。
+> 加上 `--kokoro-bg-image` 实际只能是 `none`，这三个目前没有实际作用 ——
+> 不写就行。（这是 `kokoro.glass` 做边界测试时踩出来的。）
 
 ---
 
@@ -431,12 +437,24 @@ layout 决定「页面长什么样」，而不只是「什么颜色」。它是�
 | 主题 | 列表 | 图表 | 顶栏 | 详情页头 | 模式 |
 | --- | --- | --- | --- | --- | --- |
 | `kokoro.daylight` 晨白 | card | area | solid | compact | 浅/深 |
+| `kokoro.glass` 毛玻璃 | table | bar | blur | hero | 浅/深 |
 | `kokoro.neon` 霓虹 | card | area | bordered | compact | 深 |
 
-`kokoro.daylight` 是新安装的默认主题；`kokoro.neon` 是科幻向的深色皮
-——深空底配霓虹青，卡片带一圈微光、状态点会发光、占用条走渐变，
-顶栏压一条发光底线。两者都用 `card` 列表，但配色/发光/顶栏形态差别很大，
-正好可以拿来对比"同一套布局换 tokens 是什么效果"。
+- `kokoro.daylight` —— 新安装的默认主题，克制中性。
+- `kokoro.neon` —— 科幻向深色皮：深空底配霓虹青，卡片带一圈微光、
+  状态点会发光、占用条走渐变，顶栏压一条发光底线。
+- `kokoro.glass` —— 毛玻璃 / 亚克力质感，**同时也是一份「边界样例」**：
+  每个能配的项都取了与默认不同的值（`table` 列表、按机房分组、
+  Hero 渐变头、`bar` 图表、`ring` 状态点、`segmented` 占用条、
+  `absolute` 时间、非吸顶顶栏、`columns` 页脚…），tokens 写满到 **98 个**
+  （101 个变量里，`--kokoro-bg-*` 那三个受值类型限制写不出有意义的取值，
+  见 §4.4）。想知道"这套系统到底能改成什么样"，看它就行。
+
+> 💡 `kokoro.glass` 的用法提示：它靠 `header.variant: "blur"` 触发
+> 毛玻璃顶栏，而模糊强度来自 `--kokoro-backdrop-blur`。底下的
+> `--kokoro-color-surface` / `--kokoro-card-bg` 都是 `rgba()` 半透明值 ——
+> 半透明面板叠在什么底色上，决定了最终观感，所以底色 `--kokoro-color-bg`
+> 要和它们一起调，别只改一个。
 
 **主题系统本身的能力不打折**——下面每个枚举取值都能用，文档示例
 `docs/themes/example-terminal.json`（紧凑 + 条形图 + 描边顶栏）和

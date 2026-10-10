@@ -34,6 +34,11 @@
   --accent: var(--kokoro-color-primary, #2f6feb);
   --accent-fg: var(--kokoro-color-primary-fg, #ffffff);
   --accent-2: var(--kokoro-color-accent, #7c5cff);
+  /* ⚠️ 这条曾经漏了：`.dash-area-up` 用 var(--accent-soft) 当填充，
+     而它**从来没被定义过** —— var() 取不到值，fill 就整条失效，
+     回落到 SVG 的默认黑色。首页「全网速率」图的上行面积因此一直是一块黑，
+     看着像"深色填充的设计"，其实是 bug（2026-10-11 做毛玻璃主题时才发现）。 */
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
   --ok: var(--kokoro-status-online, #1a7f37);
   --warn: var(--kokoro-color-warning, #bf6a02);
   --bad: var(--kokoro-status-offline, #cf222e);
@@ -64,6 +69,11 @@
   --s4: var(--kokoro-space-4, 16px);
   --s5: var(--kokoro-space-5, 24px);
   --s6: var(--kokoro-space-6, 32px);
+  /* ⚠️ s7 / s8 曾经漏了，而 .foot-page 等三处用 var(--s7) 当内边距 ——
+     var() 取不到值会让**整条 padding 声明失效**（不是退回 0），
+     所以那几个元素的间距是浏览器默认值，一直没人发现。 */
+  --s7: var(--kokoro-space-7, 48px);
+  --s8: var(--kokoro-space-8, 64px);
 
   --font: var(--kokoro-font-sans, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
   --mono: var(--kokoro-font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);

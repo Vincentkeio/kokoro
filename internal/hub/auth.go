@@ -169,7 +169,20 @@ func SetAdminCredentials(st *store.Store, user, pass string) error {
 	if err := st.SetSetting(settingAdminUser, user); err != nil {
 		return err
 	}
-	return st.SetSetting(settingAdminPass, hash)
+	if err := st.SetSetting(settingAdminPass, hash); err != nil {
+		return err
+	}
+	// 口令换了，旧会话必须一起失效——否则拿着旧 cookie 的人还能继续进后台。
+	// 后台改密码走 handleAdminAccount 时本来就会踢，但 CLI（kokoro passwd）
+	// 也调这里，把清理放进函数里才能保证两条路都真的注销。
+	all, err := st.ListSettings(sessionKeyPrefix)
+	if err != nil {
+		return nil
+	}
+	for k := range all {
+		_ = st.SetSetting(k, "")
+	}
+	return nil
 }
 
 // ensureAdmin 保证存在管理员账号。库里没有就生成一个随机口令，
