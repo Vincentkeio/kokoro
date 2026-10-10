@@ -619,6 +619,65 @@ function renderRateChart(svg, pts) {
     if (e.key === 'Escape' && st.cur) close();
   });
 })();
+
+/* ---- 「获取本站皮肤」弹窗 ----
+   皮肤下拉最底部的一项：不是"我去抄别人"，而是"别人怎么抄我"。
+   和上面文章/评论那套弹窗是两套独立 DOM ——
+   那个挂在首页（#dlg-scrim），这个挂在 skinpicker 模板里，
+   所以首页和详情页都点得开。 */
+(function () {
+  var scrim = document.getElementById('skinget-scrim');
+  if (!scrim) return;
+  var input = document.getElementById('skinget-url');
+
+  function open() {
+    // 先收起皮肤下拉，否则菜单会浮在弹窗上面
+    var dd = document.querySelector('[data-skin-picker]');
+    if (dd) dd.open = false;
+    scrim.hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+  function close() {
+    scrim.hidden = true;
+    document.body.style.overflow = '';
+  }
+
+  function copyText() {
+    var text = input ? input.value : '';
+    // http 下 navigator.clipboard 不可用（需要安全上下文），
+    // 所以必须有 execCommand 的退路，否则站内 http 部署时按钮是死的。
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return Promise.reject();
+  }
+
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    if (e.target.closest('[data-skinget]')) { open(); return; }
+    if (e.target.closest('[data-skingetclose]')) { close(); return; }
+
+    var copy = e.target.closest('[data-skingetcopy]');
+    if (copy) {
+      var done = function () {
+        copy.textContent = '已复制';
+        setTimeout(function () { copy.textContent = '复制'; }, 1500);
+      };
+      copyText().then(done, function () {
+        // 退路：选中文本，让用户按 Ctrl/⌘+C。
+        if (!input) return;
+        input.select();
+        try { document.execCommand('copy'); done(); } catch (err) { /* 留给用户手抄 */ }
+      });
+      return;
+    }
+    if (e.target === scrim) close();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !scrim.hidden) close();
+  });
+})();
 /* ---- 后台选项卡 ----
    走 location.hash，所以老链接（#profile / #comments …）仍然能直达某一页。
    ⚠️ 直接用 hidden 属性而不是 class：这些面板里有表单，

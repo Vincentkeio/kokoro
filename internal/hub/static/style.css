@@ -778,6 +778,32 @@ body[data-k-list-mode="compact"] .card:hover { transform: none; }
 }
 .skin-item.reset:hover { color: var(--accent); border-color: var(--accent); }
 
+/* 「获取本站皮肤」是按钮不是链接（它开弹窗，不跳转），所以要补一遍
+   button 的 reset —— 否则会继承浏览器默认的灰底、居中文字和系统字体。
+   用虚线上边框和上面的皮肤列表分隔开：它是"拿东西走"，不是又一套皮肤。 */
+.skin-item.get {
+  width: 100%; text-align: left; cursor: pointer;
+  font: inherit; background: none;
+  color: var(--muted);
+  margin-top: var(--s2);
+  border-top-style: dashed;
+}
+.skin-item.get:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---- 「获取本站皮肤」弹窗 ---- */
+.skinget-lead { margin: 0 0 var(--s3); font-size: 13px; line-height: 1.75; color: var(--muted); }
+.skinget-row { display: flex; gap: var(--s2); align-items: center; }
+.skinget-row input {
+  flex: 1; min-width: 0;
+  font-family: var(--mono); font-size: 12.5px;
+  padding: 6px 9px;
+  color: var(--fg); background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm);
+}
+.skinget-hint { margin: var(--s3) 0 var(--s2); font-size: 12.5px; line-height: 1.65; color: var(--faint); }
+.skinget-acts { display: flex; gap: var(--s2); flex-wrap: wrap; }
+
 /* ==========================================================================
    8. 首页信息面板：时钟 / 统计卡 / 点阵地球 / 富卡片
    --------------------------------------------------------------------------
@@ -1641,7 +1667,11 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
    原来是贴右边滑出的侧边栏，改成居中 ——
    侧边栏会把正文挤到很窄，而且贴着边缘读起来累。 */
 .dlg-scrim {
-  position: fixed; inset: 0; z-index: 60;
+  position: fixed; inset: 0;
+  /* ⚠️ 必须高于顶栏。顶栏是 sticky + z-index: 1000，这里原来是 60，
+     于是弹窗顶部会被顶栏压住一截（遮罩是 fixed 的，看起来像
+     "弹窗从顶栏下面钻出来"）。跟着 dropdown 层级走，主题调高也不会漏。 */
+  z-index: calc(var(--kokoro-z-dropdown, 1000) + 100);
   background: rgba(0, 0, 0, .45);
   display: flex; align-items: center; justify-content: center;
   padding: var(--s4);

@@ -161,6 +161,12 @@ type themeView struct {
 	VisitorSwitch bool
 	// SiteThemeID 是站点默认主题，用于在切换器里标注"当前默认"。
 	SiteThemeID string
+	// SiteURL 是本站对外根地址（不带末尾斜杠）。
+	//
+	// 给「获取本站皮肤」用：访客要把一个地址填进自己的面板才能抄走这套皮肤，
+	// 那个地址必须是完整的对外地址，不能是相对路径——相对路径复制出去
+	// 到了别人的输入框里就什么都不是。
+	SiteURL string
 	// VisitorOverride 报告本次请求是否用了访客自己的选择（而非站点默认）。
 	VisitorOverride bool
 }
@@ -268,6 +274,7 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 		ListMode:    listMode,
 		BackURL:     r.URL.RequestURI(),
 		SiteThemeID: siteID,
+		SiteURL:     h.siteBaseURL(r),
 	}
 	// 访客选的不是站点默认 → 他需要一条"回到默认"的出路。
 	v.VisitorOverride = m.ID != siteID

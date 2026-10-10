@@ -6,7 +6,7 @@
      themeTokens 已经过校验（未知变量名会被 Parse 拒绝），且值里不可能出现
      </style>，所以这里直接内联是安全的。 */}}
 <link rel="icon" href="/static/favicon.svg?v=66">
-<link rel="stylesheet" href="/static/style.css?v=66">
+<link rel="stylesheet" href="/static/style.css?v=67">
 <style id="kokoro-tokens">{{.Theme.Tokens}}</style>
 <style id="kokoro-layout">{{.Theme.LayoutCSS}}</style>
 {{if eq .Theme.DefaultMode "auto"}}
@@ -86,7 +86,48 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
     <a class="skin-item reset" role="menuitem"
        href="/pick/default?back={{urlquery .Theme.BackURL}}">恢复默认</a>
     {{end}}
+    {{/* 反过来的一条路：不是"我去抄别人"，而是"别人怎么抄我"。
+         访客看到一套喜欢的皮肤，最自然的念头就是"我也想用"——
+         没有这个入口，他只能自己去猜有没有 /theme.json 这种东西。
+         放菜单最底部，不抢切换主题的位置。 */}}
+    <button class="skin-item get" type="button" role="menuitem" data-skinget>
+      <span class="skin-item-name">获取本站皮肤</span>
+      <small>抄到你自己的面板</small>
+    </button>
   </div>
 </details>
+
+{{/* 「获取本站皮肤」弹窗。
+     放在 details 外面：details 收起时会把内部元素一起藏掉，
+     弹窗要是嵌在里面，点完按钮一展开就跟着消失了。
+     DOM 挂在这个模板里而不是首页模板里 —— skinpicker 在首页和详情页
+     都会被 include，挂在这里两处都能用。 */}}
+<div class="dlg-scrim" id="skinget-scrim" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="skinget-title">
+    <header class="dlg-head">
+      <b class="dlg-title" id="skinget-title">获取本站皮肤</b>
+      <button type="button" class="dlg-x" data-skingetclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body">
+      <p class="skinget-lead">
+        把下面这个地址填进你自己的 Kokoro 面板 →「主题」→「一键获取别人的皮肤」，
+        就能装上本站的皮肤。它已经<b>存在你本地</b>，之后本站换皮不会影响你。
+      </p>
+      <div class="skinget-row">
+        <input id="skinget-url" type="text" readonly
+               value="{{.Theme.SiteURL}}" aria-label="本站地址">
+        <button type="button" class="btn small" data-skingetcopy>复制</button>
+      </div>
+      <p class="skinget-hint">
+        拿到的会是本站的<b>默认皮肤</b>。想拿我现在看的这套（{{.Theme.Name}}），
+        或者直接下载文件去后台「导入主题」上传：
+      </p>
+      <div class="skinget-acts">
+        <a class="btn ghost small" href="/theme-export/{{.Theme.ID}}">下载这套的 JSON</a>
+        <a class="btn ghost small" href="/theme-bundle/{{.Theme.ID}}">下载完整包</a>
+      </div>
+    </div>
+  </div>
+</div>
 {{end}}
 {{end}}

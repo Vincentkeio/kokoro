@@ -167,21 +167,38 @@ func themePickURL(id, back string) string {
 	return "/theme/" + id + "?" + q.Encode()
 }
 
+// siteBaseURL 返回本站的对外根地址（不带末尾斜杠）。
+//
+// 优先用启动参数 --domain：反代架构下 r.Host 是内网主机名或 127.0.0.1，
+// 拿去告诉访客"填这个地址"是错的。没配 --domain 才退回请求里的 Host。
+//
+// 这个值会出现在「获取本站皮肤」的复制框里，所以它必须是一个
+// 别人能直接填进自己面板、且真的能连上的地址。
+func (h *Hub) siteBaseURL(r *http.Request) string {
+	base := ""
+	if h.cfg != nil {
+		base = strings.TrimSpace(h.cfg.Domain)
+	}
+	if base == "" && r != nil {
+		base = r.Host
+	}
+	if base == "" {
+		return ""
+	}
+	if !strings.HasPrefix(base, "http") {
+		base = "https://" + base
+	}
+	return strings.TrimRight(base, "/")
+}
+
 // adminBase 造一份只填了站点级字段的 adminData。
 //
 // 后台各子页面（节点、告警、主题…）都需要站点名与 Hub 地址，
 // 但不需要把节点列表、告警规则全查一遍——那几页用不到，白查白费。
 func (h *Hub) adminBase(r *http.Request) adminData {
-	hubURL := h.cfg.Domain
-	if hubURL == "" {
-		hubURL = r.Host
-	}
-	if !strings.HasPrefix(hubURL, "http") {
-		hubURL = "https://" + hubURL
-	}
 	return adminData{
 		SiteName:    h.cfg.SiteName,
-		HubURL:      hubURL,
+		HubURL:      h.siteBaseURL(r),
 		CommentOn:   h.commentEnabled(),
 		AutoApprove: h.autoApprove(),
 		OwnerName:   h.owner().Name,
