@@ -62,6 +62,27 @@
 .th-form { display: flex; flex-direction: column; gap: var(--s2); }
 .th-form textarea { min-height: 120px; font-family: var(--mono); font-size: 12px; }
 details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.5px; margin-top: var(--s3); }
+
+/* ---- 壁纸面板 ---- */
+.wp-two { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.wp-box {
+  background: var(--sunken); border: 1px solid var(--line);
+  border-radius: var(--r); padding: var(--s4);
+}
+.wp-box h4 { margin: 0 0 var(--s2); font-size: 13.5px; }
+.wp-box .hint { margin: 0 0 var(--s3); line-height: 1.65; }
+.wp-prev {
+  display: flex; gap: var(--s4); align-items: flex-start; flex-wrap: wrap;
+  margin-top: var(--s4); padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+}
+/* 预览图限高限宽，别让一张 4K 壁纸把后台撑爆 */
+.wp-prev img {
+  width: 220px; height: 130px; object-fit: cover;
+  border-radius: var(--r-sm); border: 1px solid var(--line);
+}
+.wp-prev-side { display: flex; flex-direction: column; gap: var(--s3); align-items: flex-start; }
+.wp-prev-side .hint { margin: 0; line-height: 1.65; }
 </style>
 </head>
 <body {{.Theme.Attrs}} data-admin="1">
@@ -123,6 +144,64 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
       </article>
       {{end}}
     </div>
+  </section>
+
+  <section class="panel">
+    <h3>壁纸</h3>
+    <p class="th-intro" style="margin-bottom:12px">
+      给整个站点铺一张底图。它垫在皮肤底色之下，卡片和面板浮在它上面 ——
+      配半透明的皮肤最好看（比如「毛玻璃」那套）。
+    </p>
+
+    {{if .Wallpaper.Err}}<p class="th-msg err">{{.Wallpaper.Err}}</p>{{end}}
+
+    <div class="wp-two">
+      <div class="wp-box">
+        <h4>传一张本地图片</h4>
+        <p class="hint">
+          png / jpg / webp / gif，最大 6 MB。图存在**你自己的服务器**上，
+          不依赖任何外部站点。
+        </p>
+        <form method="post" action="/admin/wallpaper"
+              enctype="multipart/form-data" class="th-form">
+          <input type="hidden" name="action" value="upload">
+          <input type="file" name="wallpaper"
+                 accept="image/png,image/jpeg,image/webp,image/gif">
+          <div><button class="btn" type="submit">上传并启用</button></div>
+        </form>
+      </div>
+
+      <div class="wp-box">
+        <h4>或者填一个图片地址</h4>
+        <p class="hint">
+          ⚠️ 访客的浏览器会**直接**去请求这个地址 —— 等于把访客的 IP 告诉
+          那个站点。自己看无所谓，公开站点建议用左边的本地上传。
+        </p>
+        <form method="post" action="/admin/wallpaper" class="th-form">
+          <input type="hidden" name="action" value="url">
+          <input name="wallpaper_url" value="{{.Wallpaper.URL}}"
+                 placeholder="https://example.com/bg.jpg">
+          <div><button class="btn" type="submit">用这个地址</button></div>
+        </form>
+      </div>
+    </div>
+
+    {{if .Wallpaper.Preview}}
+    <div class="wp-prev">
+      <img src="{{.Wallpaper.Preview}}" alt="当前壁纸">
+      <div class="wp-prev-side">
+        <p class="hint">
+          当前壁纸：
+          {{if eq .Wallpaper.Kind "local"}}本地上传{{else}}外部地址{{end}}
+          <br>图片会被自动缩放铺满整屏（cover），小图放大会有点糊。
+        </p>
+        <form method="post" action="/admin/wallpaper">
+          <input type="hidden" name="action" value="clear">
+          <button class="btn ghost small" type="submit">去掉壁纸</button>
+        </form>
+      </div>
+    </div>
+    {{end}}
   </section>
 
   <div class="th-two">

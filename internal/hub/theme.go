@@ -177,6 +177,18 @@ type themeView struct {
 	ThemeShareURL string
 	// VisitorOverride 报告本次请求是否用了访客自己的选择（而非站点默认）。
 	VisitorOverride bool
+	// WallpaperCSS 是站点壁纸要注入的 :root 声明，空串表示没设壁纸。
+	//
+	// 它在 `<style id="kokoro-tokens">` **之后**渲染，靠"后定义的赢"
+	// 压过主题的 --kokoro-bg-image。为什么不让主题自己写：
+	// 主题 tokens 有沙箱校验（禁外链 url()），而壁纸要么是本地文件、
+	// 要么是管理员填的外链 —— 只有站点级设置这条不受沙箱约束的路能承载。
+	//
+	// ⚠️ 类型必须是 template.CSS：html/template 在 <style> 上下文里会把
+	// `"` 转义成 `\"`，那会把 url("…") 整个写坏。值在 Go 侧已经过
+	// safeWallpaperURL（只放行 http(s)、且不含引号括号分号反斜杠空白），
+	// 所以这里标成"安全"是有依据的，不是图省事。
+	WallpaperCSS template.CSS
 }
 
 // resolvePickable 返回访客可自选的主题列表。
@@ -287,6 +299,8 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 	if v.SiteURL != "" {
 		v.ThemeShareURL = v.SiteURL + "/theme.json"
 	}
+	// 站点壁纸（如果有）。见 WallpaperCSS 字段上的说明。
+	v.WallpaperCSS = template.CSS(h.wallpaperCSS())
 	// 访客选的不是站点默认 → 他需要一条"回到默认"的出路。
 	v.VisitorOverride = m.ID != siteID
 

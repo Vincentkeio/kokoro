@@ -8,6 +8,11 @@
 <link rel="icon" href="/static/favicon.svg?v=66">
 <link rel="stylesheet" href="/static/style.css?v=76">
 <style id="kokoro-tokens">{{.Theme.Tokens}}</style>
+{{/* 站点壁纸。必须排在 #kokoro-tokens **后面**：两者都是 :root 上的
+     --kokoro-bg-image，靠书写顺序定胜负，站点设置要压过主题默认。
+     内容由 wallpaperCSS() 生成，已经过 safeWallpaperURL 校验
+     （只放行 http(s)、且不含能跳出 url() 的字符）。 */}}
+{{if .Theme.WallpaperCSS}}<style id="kokoro-wallpaper">:root{ {{.Theme.WallpaperCSS}} }</style>{{end}}
 <style id="kokoro-layout">{{.Theme.LayoutCSS}}</style>
 {{if eq .Theme.DefaultMode "auto"}}
 <script>
@@ -75,11 +80,13 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
     <span class="skin-cur">{{.Theme.Name}}</span>
   </summary>
   <div class="skin-menu" role="menu" aria-label="皮肤">
+    {{/* 只显示皮肤名，不带描述 —— boss 要求。
+         主题的 description 动辄一整句，铺在下拉里把菜单撑得很高，
+         而选皮肤时真正要看的就是"叫什么"，描述反而挡住了列表本身。 */}}
     {{range .Theme.Pickable}}
     <a class="skin-item{{if eq .ID $.Theme.ID}} on{{end}}" role="menuitem"
        href="/pick/{{.ID}}?back={{urlquery $.Theme.BackURL}}">
       <span class="skin-item-name">{{.Name}}</span>
-      {{if .Description}}<small>{{.Description}}</small>{{end}}
     </a>
     {{end}}
     {{if .Theme.VisitorOverride}}

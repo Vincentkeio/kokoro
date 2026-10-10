@@ -38,6 +38,8 @@ type themePageData struct {
 	ActiveID string
 	// TokenNames 列出可用的 CSS 变量名，方便管理员复制内置主题去改。
 	TokenNames []string
+	// Wallpaper 是站点壁纸面板的数据（上传 / URL / 清除）。
+	Wallpaper wallpaperView
 }
 
 func (h *Hub) handleAdminThemes(w http.ResponseWriter, r *http.Request, authed bool) {
@@ -50,6 +52,7 @@ func (h *Hub) handleAdminThemes(w http.ResponseWriter, r *http.Request, authed b
 		adminData: h.adminBase(r),
 		Msg:       msg,
 		ActiveID:  h.ActiveThemeID(),
+		Wallpaper: h.wallpaperFor(strings.TrimSpace(r.URL.Query().Get("wperr"))),
 	}
 	if h.themes != nil {
 		active := data.ActiveID

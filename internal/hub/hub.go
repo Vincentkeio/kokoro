@@ -213,6 +213,8 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/n/", h.handleNodePage)
 	h.mux.HandleFunc("/i/", h.handleInstallScript)
 	h.mux.HandleFunc("/avatar", h.handleAvatar)
+	// 站点壁纸：上传的那份落在数据目录，不在 embed 里，所以也要单独开路由。
+	h.mux.HandleFunc("/wallpaper", h.handleWallpaper)
 	// 文章配图：/img/<哈希>。<name> 只允许「32 位十六进制 + 已知后缀」，
 	// 见 handleImage 里的形状校验 —— 不接受用户给的文件名。
 	h.mux.HandleFunc("/img/", h.handleImage)
@@ -244,6 +246,9 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/admin/account", h.handleAdminAccount)
 	h.mux.HandleFunc("/admin/logout", h.handleAdminLogout)
 	h.mux.HandleFunc("/admin/themes", h.adminOnlyPage(h.handleAdminThemes))
+	// 壁纸设置（上传 / 填 URL / 清除）。它挂在主题页上，
+	// 因为壁纸就是"站点外观"的一部分，另开一页反而找不着。
+	h.mux.HandleFunc("/admin/wallpaper", h.handleAdminWallpaper)
 	h.mux.HandleFunc("/admin/post", h.adminOnlyPage(h.handleAdminPost))
 	h.mux.HandleFunc("/admin/tasks", h.adminOnlyPage(h.handleAdminTasks))
 	// 文章配图上传。返回 JSON（不是整页跳转）—— 前端在编辑器里异步传，
