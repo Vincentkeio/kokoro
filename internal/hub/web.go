@@ -653,9 +653,6 @@ type adminData struct {
 	CommentOn      bool
 	AutoApprove    bool
 
-	// ThemeFetchHosts 是「允许抓回环」的主机名白名单（逗号分隔）。
-	// 详见 theme_ssrf.go 顶部的策略说明。
-	ThemeFetchHosts string
 	// HubLat / HubLon 是主机（面板所在机器）的经纬度，首页地球用它当航线中心。
 	HubLat string
 	HubLon string
@@ -1768,11 +1765,6 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 		OwnerBio:    ownerOf.Bio,
 		OwnerAvatar: ownerOf.Avatar,
 	}
-	// 回环白名单：回显原始串（而不是解析后的列表），
-	// 这样管理员能看到并编辑自己到底写了什么。
-	if raw, err := h.store.GetSetting(settingThemeFetchHosts); err == nil {
-		data.ThemeFetchHosts = raw
-	}
 	if raw, err := h.store.GetSetting(settingHubLat); err == nil {
 		data.HubLat = raw
 	}
@@ -2003,43 +1995,14 @@ func (h *Hub) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 		_ = h.store.SetSetting(settingHubLon, lon)
 	}
 
-	// 回环白名单：规范化后回存。这里刻意做 trim + 去空项，
-	// 免得管理员误留一个尾逗号就存进去、界面上看着像有配置其实生效范围不同。
-	// 解析不出来的碎片（例如只写了 "http"）会被丢掉——错收一条等于放开回环。
-	if _, ok := r.Form["theme_fetch_hosts"]; ok {
-		raw := r.FormValue("theme_fetch_hosts")
-		if normalized := normalizeThemeFetchHostsInput(raw); normalized != "" {
-			_ = h.store.SetSetting(settingThemeFetchHosts, normalized)
-		} else {
-			_ = h.store.SetSetting(settingThemeFetchHosts, "")
-		}
-	}
-
+	// 注：这里原来还处理「抓主题的本机地址白名单」表单（theme_fetch_hosts）。
+	// 那个入口已按 boss 要求撤掉——它对普通站长没有任何用处（自建站直接跑
+	// Hub，不存在"反代之后换域名抓自己"的场景）。**安全策略本身没动**：
+	// theme_ssrf.go 仍然默认拒绝回环、只放行 --domain 与库里已有的白名单，
+	// 只是不再提供界面去改它。
 	http.Redirect(w, r, "/admin#comments", http.StatusSeeOther)
 }
 
-// normalizeThemeFetchHostsInput 把管理员输入的白名单整理成规范形式。
-//
-// 只做「修剪 + 去空项 + 去重」，不改变大小写之外的东西——
-// 真正的合法性判断在 parseThemeFetchHosts，这里只负责回显得干净。
-// 返回空串表示「清空白名单」。
-func normalizeThemeFetchHostsInput(raw string) string {
-	seen := make(map[string]bool)
-	var kept []string
-	for _, part := range strings.Split(raw, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		low := strings.ToLower(part)
-		if seen[low] {
-			continue
-		}
-		seen[low] = true
-		kept = append(kept, part)
-	}
-	return strings.Join(kept, ",")
-}
 
 // handleAdminTokens 创建/吊销安装令牌。
 func (h *Hub) handleAdminTokens(w http.ResponseWriter, r *http.Request) {

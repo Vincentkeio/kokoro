@@ -30,7 +30,11 @@
     <button type="button" class="atab" data-goto="comments">互动{{if .PendingN}}<span class="abadge">{{.PendingN}}</span>{{end}}</button>
     <button type="button" class="atab" data-goto="profile">名片</button>
     <button type="button" class="atab" data-goto="alerts">告警</button>
-    <button type="button" class="atab" data-goto="theme">主题</button>
+    {{/* 「主题」是个**链接**不是页签：完整的主题管理（卡片列表、启用/导出/删除、
+         一键获取、导入）在独立页面 /admin/themes 上，这里只留一个入口。
+         原来这个页签里只塞了一个「抓主题的本机地址白名单」高级配置 ——
+         点进来看到的就是那么一个跟主题管理毫不相干的东西，还以为功能没了。 */}}
+    <a class="atab" href="/admin/themes">主题</a>
     <button type="button" class="atab" data-goto="sys">系统</button>
   </nav>
 
@@ -278,35 +282,6 @@
     {{end}}
   </section>
 
-  <section class="panel" id="theme-fetch" data-atab="theme">
-    {{/* 这块原来叫「主题获取出口」，名字完全看不出是干嘛的 ——
-         它其实是个**安全旋钮**：哪些主机名允许抓本机回环地址。
-         普通站长永远不需要碰它，所以：
-           ① 改成人话名字
-           ② 用 <details> 默认收起，不占视线
-           ③ 解释里说清"什么时候才需要动它" */}}
-    <details class="adv">
-      <summary>高级：抓主题时的本机地址白名单</summary>
-      <p class="hint">
-        「一键获取主题」会去抓你给的那个地址。为了防止它被用来偷看**这台服务器自己**
-        （127.0.0.1 上可能跑着数据库、Docker 面板等等），本机地址默认是**全部拒绝**的。
-      </p>
-      <p class="hint">
-        <b>什么时候需要填这里：</b>你的面板挂在 Nginx 反代后面、而你想从
-        <em>别的域名</em>抓本站主题时。除此之外不用管。
-      </p>
-      <form class="row" method="post" action="/admin/settings">
-        <label class="wide">额外允许的主机名
-          <input type="text" name="theme_fetch_hosts" value="{{.ThemeFetchHosts}}"
-                 placeholder="逗号分隔，例如 mysite.example.com">
-        </label>
-        <button class="btn small" type="submit">保存</button>
-        <span class="hint">{{if .HubURL}}本站域名 <code>{{.HubURL}}</code> 已自动放行；{{end}}
-          精确匹配，不含子域名。留空即只用默认规则。</span>
-      </form>
-    </details>
-  </section>
-
   <section class="panel" id="comments" data-atab="comments">
     <h3>评论审核{{if .PendingN}} <small class="bad">{{.PendingN}} 条待处理</small>{{end}}</h3>
     <form class="row" method="post" action="/admin/settings">
@@ -430,7 +405,7 @@
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=67"></script>
+<script src="/static/app.js?v=74"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

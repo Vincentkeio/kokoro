@@ -9,13 +9,14 @@ package hub
 // 早期版本放行整个 127.0.0.0/8，理由是「抓自己站是正常用法」——
 // 但回环段是**这台机器上的所有服务**，不是「自己的站」。一个 SSRF 就能
 // 把本机数据库、Docker 映射端口、任何本地管理面板读一遍。
-// 现在只有 --domain 或后台白名单里的主机名才允许走回环。
+// 现在只有 --domain（或库里既有的白名单）里的主机名才允许走回环。
+// 填白名单的后台入口已撤掉 —— 自建站直接跑 Hub，不存在"反代换域名抓自己"
+// 那个场景，对普通站长是纯粹的困惑源。
 
 import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 )
@@ -100,29 +101,12 @@ func TestForbiddenThemeIPs(t *testing.T) {
 	}
 }
 
-func TestNormalizeThemeFetchHostsInput(t *testing.T) {
-	cases := []struct {
-		in   string
-		want string
-	}{
-		{"", ""},
-		{"  ", ""},
-		{"a.com", "a.com"},
-		{" a.com , b.com ", "a.com,b.com"},
-		{"a.com,,b.com,", "a.com,b.com"}, // 空项与尾逗号
-		{"a.com,a.com", "a.com"},
-		// 去重是大小写不敏感的，跟 policy.allow 的比较方式一致——
-		// A.COM 和 a.com 放行效果完全相同，留两条只会让界面看起来像有两条配置。
-		{"a.com,A.COM,a.com", "a.com"},
-	}
-	for _, c := range cases {
-		if got := normalizeThemeFetchHostsInput(c.in); got != c.want {
-			t.Errorf("normalize(%q) = %q，应为 %q", c.in, got, c.want)
-		}
-	}
-}
-
 // TestThemeFetchPolicyReadsDomainAndSetting 确认白名单的两个来源都生效。
+//
+// 注意：填白名单的**后台入口已经撤掉**（boss 说对普通站长没用），
+// 所以第二个来源现在只能靠库里的历史值。但这条测试仍然要留着 ——
+// 策略读取的逻辑没动，将来若再加回配置入口（或换命令行参数），
+// 两条来源都得照旧成立。
 func TestThemeFetchPolicyReadsDomainAndSetting(t *testing.T) {
 	// 来源一：--domain
 	h, st := newThemeTestHubWithDomain(t, "vps.mjfuns.lat")
@@ -148,42 +132,6 @@ func TestThemeFetchPolicyReadsDomainAndSetting(t *testing.T) {
 	// --domain 那条不能因为加了设置而丢掉
 	if !p.allow("vps.mjfuns.lat") {
 		t.Error("--domain 的放行不应被覆盖")
-	}
-}
-
-// TestAdminSettingsSavesThemeFetchHosts 端到端走一遍后台表单。
-func TestAdminSettingsSavesThemeFetchHosts(t *testing.T) {
-	h, st := newThemeTestHub(t)
-	cookies := loginAsAdmin(t, h)
-
-	form := url.Values{
-		"comment_enabled":   {"1"},
-		"theme_fetch_hosts": {"  mirror.example.com ,, 127.0.0.1  "},
-	}
-	req := httptest.NewRequest(http.MethodPost, "/admin/settings", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	for _, c := range cookies {
-		req.AddCookie(c)
-	}
-	rec := httptest.NewRecorder()
-	h.mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("保存设置状态码 = %d，应为 303", rec.Code)
-	}
-
-	got, err := st.GetSetting(settingThemeFetchHosts)
-	if err != nil {
-		t.Fatalf("读取设置失败: %v", err)
-	}
-	if got != "mirror.example.com,127.0.0.1" {
-		t.Errorf("存下的白名单 = %q，应已去空项去空格", got)
-	}
-	// 存进去的每一项都必须真的能被 allow 认出来。
-	p := h.themeFetchPolicy()
-	for _, want := range []string{"mirror.example.com", "127.0.0.1"} {
-		if !p.allow(want) {
-			t.Errorf("刚保存的 %q 应能通过白名单校验", want)
-		}
 	}
 }
 

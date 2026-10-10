@@ -63,8 +63,12 @@ func TestAdminEveryPanelHasTab(t *testing.T) {
 	_ = n
 	body := adminBody(t, h, st)
 
+	// 面板数是个哨兵：数量掉下来通常意味着某块被删了、或渲染提前中断。
+	// 曾经是 8，2026-10-11 减到 7 —— 原来的「主题」页签里只有一块
+	// 「抓主题的本机地址白名单」高级配置，跟主题管理毫不相干，
+	// 已按 boss 要求撤掉；主题管理本身在独立页面 /admin/themes 上。
 	panels := regexp.MustCompile(`<section class="panel"([^>]*)>`).FindAllStringSubmatch(body, -1)
-	if len(panels) < 8 {
+	if len(panels) < 7 {
 		t.Fatalf("后台面板数只有 %d，是不是渲染出问题了", len(panels))
 	}
 	for _, p := range panels {
@@ -115,9 +119,12 @@ func TestAdminOldAnchorsStillWork(t *testing.T) {
 	body := adminBody(t, h, st)
 
 	// 前端靠 id + data-atab 反查页签，所以这两样都得在
-	// ⚠️ #hubgeo（面板位置）**故意删掉了** —— 别再加回来，
+	// ⚠️ 下面这些是**故意删掉**的，别再加回来：
+	//   #hubgeo      面板位置设置
+	//   #theme-fetch 抓主题的本机地址白名单（2026-10-11 撤掉，
+	//                主题管理改由页签链接直达 /admin/themes）
 	// 这个断言就是用来发现"某个锚点悄悄消失"的，删是有意为之。
-	for _, id := range []string{"profile", "comments", "alerts", "account", "theme-fetch"} {
+	for _, id := range []string{"profile", "comments", "alerts", "account"} {
 		if !strings.Contains(body, `id="`+id+`"`) {
 			t.Errorf("老锚点 #%s 的 id 丢了，老链接会失效", id)
 		}
@@ -125,6 +132,32 @@ func TestAdminOldAnchorsStillWork(t *testing.T) {
 	// 前端那个"hash 也能是区块 id"的分支得留着
 	if !strings.Contains(body, "app.js") {
 		t.Error("后台没引 app.js，页签切换不会工作")
+	}
+}
+
+// TestAdminThemesTabLinksToPage 「主题」页签必须是通向 /admin/themes 的链接。
+//
+// 它曾经是个普通页签（data-goto="theme"），而那里面**只有**一块
+// 「抓主题的本机地址白名单」高级配置 —— 点进去看到的就是这么个跟主题管理
+// 毫不相干的东西，任谁都会以为主题功能没了。（boss 2026-10-11 就是这么反馈的。）
+// 真正完整的管理页在 /admin/themes：卡片列表 + 启用/导出/删除 + 一键获取
+// （站点地址 / theme.json / GitHub）+ 导入。
+func TestAdminThemesTabLinksToPage(t *testing.T) {
+	h, st := newTestHub(t)
+	body := adminBody(t, h, st)
+
+	if !strings.Contains(body, `<a class="atab" href="/admin/themes">主题</a>`) {
+		t.Error("「主题」页签应该是指向 /admin/themes 的链接")
+	}
+	// 不能同时又是个页签 —— 那会多出一块永远空着的面板。
+	if strings.Contains(body, `data-goto="theme"`) {
+		t.Error("「主题」不该再有 data-goto：它是链接，不是页签")
+	}
+	// 那个高级配置整块都该没了。
+	for _, gone := range []string{"theme_fetch_hosts", "本机地址白名单"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("后台不该再出现 %q", gone)
+		}
 	}
 }
 

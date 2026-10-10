@@ -1826,6 +1826,9 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
   padding: 7px 14px; border-radius: var(--r-sm);
   font: inherit; font-size: 13.5px; color: var(--muted);
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  /* 页签有两种：<button data-goto>（切面板）和 <a href>（跳到独立页面，
+     比如「主题」）。下面两条是给 <a> 用的，让两者外观完全一致。 */
+  text-decoration: none; display: inline-block;
 }
 .atab:hover { color: var(--fg); }
 .atab.on {

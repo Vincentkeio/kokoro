@@ -687,7 +687,10 @@ function renderRateChart(svg, pts) {
   if (!nav) return;
   var panels = Array.prototype.slice.call(
     document.querySelectorAll('.admin > .panel[data-atab]'));
-  var tabs = Array.prototype.slice.call(nav.querySelectorAll('.atab'));
+  // ⚠️ 只收带 data-goto 的页签。`<a class="atab">`（如「主题」——它跳到
+  // 独立的 /admin/themes 页面）没有 dataset.goto，混进来会被当成"当前页签"
+  // 高亮，点击时还会被改写成 #undefined。
+  var tabs = Array.prototype.slice.call(nav.querySelectorAll('.atab[data-goto]'));
   if (!panels.length) return;
 
   var DEFAULT = 'nodes';
