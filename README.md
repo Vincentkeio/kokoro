@@ -57,7 +57,7 @@ curl -fsSL https://<Hub域名>/i/<安装令牌> | sh
 ## 安全与资源占用
 
 - Hub 与 Agent 都使用 Go 编写；Hub 页面资源随程序一起打包，无需额外安装前端运行环境。
-- Agent 只执行预先定义的任务，不接受 Hub 下发的任意 Shell 命令、脚本地址或自定义执行参数。下载的程序和安装资源会校验 SHA-256。
+- Agent 按内置白名单校验 Hub 下发的结构化指令类型及参数；测试仅允许 `bench`、`ipquality`、`netquality`，SWAP、配置和探测操作也只接受各自规定的参数。Agent 拒绝任意 Shell 文本、可执行程序、命令参数、脚本地址、工作目录和超时设置；测试由 Agent 固定流程调用版本及 SHA-256 均受校验的脚本。下载的程序和安装资源会校验 SHA-256。
 - 管理员密码使用带随机盐的 PBKDF2-HMAC-SHA256 保存。Agent 默认通过 HTTPS 通信；Hub 服务以专用系统用户运行，并由 systemd 限制可写目录。
 - Agent 需要 root 权限采集主机信息及执行 SWAP 等管理操作；其 systemd 服务启用文件系统隔离，并将常驻服务的可写范围限制在配置目录。
 
