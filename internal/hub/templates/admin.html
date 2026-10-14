@@ -1,0 +1,728 @@
+{{define "admin.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>后台 · {{.SiteName}}</title>
+{{template "head.html" .}}
+</head>
+<body {{.Theme.Attrs}} data-k-theme="{{.Theme.ID}}" data-admin="1">
+<header class="top admin-topbar">
+  <div class="wrap">
+    <a class="brand admin-brand" href="/">{{template "kokoro-mark" .}}<span>{{.SiteName}}</span></a>
+    <div class="admin-top-tools">
+      {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode title="切换深色 / 浅色" aria-label="切换深色或浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
+      <a class="btn ghost admin-front" href="/"><span aria-hidden="true">↗</span> 前台</a>
+      <span class="admin-user-chip"><i aria-hidden="true"></i>{{.OwnerDisplayName}}</span>
+      <form class="admin-logout-form" method="post" action="/admin/logout">
+        <button class="btn ghost admin-exit" type="submit">退出</button>
+      </form>
+    </div>
+  </div>
+</header>
+
+<main class="wrap admin">
+  <section class="admin-heading">
+    <div>
+      <p class="console-kicker"><span></span> KOKORO / CONTROL ROOM</p>
+      <h1>控制台</h1>
+      <p>节点、告警与站点设置</p>
+    </div>
+  </section>
+  <div class="admin-task-live" data-admin-task-live data-status="{{if .TaskMsgError}}failed{{else if .TaskMsg}}queued{{end}}" role="{{if .TaskMsgError}}alert{{else}}status{{end}}" aria-live="polite" {{if not .TaskMsg}}hidden{{end}}>
+    <span class="admin-task-live-mark" aria-hidden="true"></span>
+    <span data-admin-task-live-text>{{.TaskMsg}}</span>
+    <button type="button" class="admin-task-live-close" data-admin-task-live-close aria-label="关闭任务消息">×</button>
+  </div>
+  {{/* ---- 选项卡 ----
+       后台原来 10 个区块一路往下堆，找一个设置要滚半天。
+       分组走 hash（#nodes / #sys / …），所以老链接仍然能用：
+       比如「去填名片」指到 #profile，会直接打开"名片"那一页。
+
+       ⚠️ 默认页签是「节点」—— 那是站长最常来的地方。
+       安装令牌虽然排在最前面（新站第一步要用），但日常不常看。 ---- */}}
+  <nav class="atabs" role="tablist">
+    <button type="button" class="atab" data-goto="nodes">节点</button>
+    <button type="button" class="atab" data-goto="comments">互动{{if .PendingN}}<span class="abadge">{{.PendingN}}</span>{{end}}</button>
+    <button type="button" class="atab" data-goto="profile">名片</button>
+    <button type="button" class="atab" data-goto="alerts">告警</button>
+    <button type="button" class="atab" data-goto="themes">主题</button>
+    <button type="button" class="atab" data-goto="sys">系统</button>
+  </nav>
+
+  <section class="panel" data-atab="sys">
+    <h3>一键安装令牌</h3>
+    <p class="hint">生成一条命令，在小鸡上粘贴执行即可接入。令牌可设有效期与使用次数。</p>
+    <form class="row" method="post" action="/admin/tokens">
+      <input type="hidden" name="action" value="create">
+      <input name="label" placeholder="备注，如节点 A" required>
+      <input name="ttl_hours" type="number" placeholder="有效小时(留空永久)" style="width:11rem">
+      <input name="max_uses" type="number" placeholder="可用次数(留空不限)" style="width:11rem">
+      <button class="btn" type="submit">生成</button>
+    </form>
+
+    {{if .Tokens}}
+    <table class="tbl">
+      <thead><tr><th>备注</th><th>令牌</th><th>已用</th><th>安装命令</th><th></th></tr></thead>
+      <tbody>
+      {{range .Tokens}}
+      <tr>
+        <td>{{.Label}}</td>
+        <td><code>{{.Token}}</code></td>
+        <td>{{.Uses}}{{if .MaxUses}} / {{.MaxUses}}{{end}}</td>
+        <td>
+          <div class="install-command">
+            <code class="cmd">curl -fsSL {{$.HubURL}}/i/{{.Token}} | sh</code>
+            <button class="btn ghost small" type="button" data-copy-install aria-live="polite">复制</button>
+          </div>
+        </td>
+        <td>
+          <form method="post" action="/admin/tokens">
+            <input type="hidden" name="action" value="revoke">
+            <input type="hidden" name="token" value="{{.Token}}">
+            <button class="btn danger" type="submit">吊销</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="empty">还没有令牌，用上面的表单生成一个。</p>
+    {{end}}
+  </section>
+
+  <section class="panel" data-atab="nodes">
+    <h3>节点（{{len .Nodes}}）</h3>
+    <form method="post" action="/admin/tasks" class="node-bulk-test" id="node-selected-tests">
+      <input type="hidden" name="kind" value="selected-nodes">
+      <div class="node-selection-tools">
+        <button class="btn ghost small" type="button" data-node-select="all" {{if not .Nodes}}disabled{{end}}>全选</button>
+        <button class="btn ghost small" type="button" data-node-select="invert" {{if not .Nodes}}disabled{{end}}>反选</button>
+        <button class="btn ghost small" type="button" data-node-select="none" {{if not .Nodes}}disabled{{end}}>取消全部</button>
+        <span class="node-selection-count" data-node-selection-count role="status" aria-live="polite">已选 0 / {{len .Nodes}} 台</span>
+      </div>
+      <button class="btn" type="submit" data-test-selected disabled>一键测试选中的服务器</button>
+      <a class="btn ghost task-list-link" href="/admin/tasks">任务列表</a>
+    </form>
+    {{if .GroupMsg}}<p class="admin-task-feedback" role="status">{{.GroupMsg}}</p>{{end}}
+    <section class="group-manager" aria-labelledby="group-manager-title">
+      <div class="group-manager-heading">
+        <div>
+          <h4 id="group-manager-title">分组管理</h4>
+          <p class="hint">在这里创建、改名或删除分组。节点分组请在下方节点列表中调整。</p>
+        </div>
+        <form method="post" action="/admin/groups" class="group-create-form">
+          <input type="hidden" name="action" value="create">
+          <input id="new-node-group" name="name" maxlength="32" placeholder="新分组名称" aria-label="新分组名称" required>
+          <button class="btn small" type="submit">创建分组</button>
+        </form>
+      </div>
+      {{if .Groups}}
+      <div class="group-manager-tags" role="group" aria-label="选择要管理的分组">
+        {{range .Groups}}<button class="group-manager-tag" type="button" data-group-action="{{.Name}}" aria-pressed="{{if eq $.SelectedGroup .Name}}true{{else}}false{{end}}">{{.Name}}</button>{{end}}
+      </div>
+      <div class="group-actions-list" aria-live="polite">
+        {{range .Groups}}
+        <div class="group-actions" data-group-actions="{{.Name}}" {{if ne $.SelectedGroup .Name}}hidden{{end}}>
+          <form method="post" action="/admin/groups" class="group-rename-form">
+            <input type="hidden" name="action" value="rename">
+            <input type="hidden" name="old_name" value="{{.Name}}">
+            <label>分组名称<input name="new_name" maxlength="32" value="{{.Name}}" aria-label="{{.Name}} 的新分组名称" required></label>
+            <button class="btn small" type="submit">保存名称</button>
+          </form>
+          <form method="post" action="/admin/groups" class="group-delete-form" onsubmit="return confirm('删除分组「{{.Name}}」？其中 VPS 将返回未分组。')">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="name" value="{{.Name}}">
+            <span class="hint">删除后，{{.Count}} 台 VPS 将变为未分组。</span>
+            <button class="btn danger small" type="submit">删除分组</button>
+          </form>
+        </div>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="empty group-manager-empty">还没有分组。先创建一个分组。</p>
+      {{end}}
+    </section>
+    <dialog class="swap-dialog group-assign-dialog" id="node-group-assign-dialog" aria-labelledby="node-group-assign-title">
+      <div class="swap-dialog-body">
+        <h3 id="node-group-assign-title">加入分组</h3>
+        <p class="hint" data-group-assign-count>所选节点会加入目标分组，并从原分组移出。</p>
+        <form method="post" action="/admin/groups" class="col" data-group-assign-form>
+          <input type="hidden" name="action" value="assign">
+          <div data-group-assign-node-inputs></div>
+          <label for="node-group-target">目标分组</label>
+          <select id="node-group-target" name="name" required>
+            {{range .Groups}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
+          </select>
+          <div class="row swap-dialog-actions">
+            <button class="btn ghost" type="button" data-group-assign-close>取消</button>
+            <button class="btn" type="submit">加入分组</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+    {{if .Nodes}}
+    <table class="tbl admin-node-table">
+      {{/* 没有「架构」列：所有节点都是 amd64，一列全一样的值没有信息量。
+         地区/国家码也不在这里编辑 —— 那是 agent 上报的（见 hostFactsOf）。 */}}
+      <thead><tr><th class="node-select-cell"><label class="node-select-control"><input type="checkbox" data-node-select-all aria-label="全选节点"></label></th><th>名称</th><th>分组</th><th>地区</th><th>状态</th><th>展示</th><th>操作</th></tr></thead>
+      <tbody>
+      {{range .NodeGroups}}
+      <tr class="admin-node-group" data-group-section="{{.Name}}"><th colspan="7"><div class="admin-node-group-head"><div><span>{{.Name}}</span><small>{{len .Nodes}} 台服务器</small></div><button class="btn small ghost" type="button" data-group-assign-open {{if not $.Groups}}disabled{{end}}>加入分组</button></div></th></tr>
+      {{range .Nodes}}
+      <tr data-node-group-row="{{if .Group}}{{.Group}}{{else}}未分组{{end}}">
+        <td class="node-select-cell"><label class="node-select-control"><input type="checkbox" name="node_ids" value="{{.ID}}" form="node-selected-tests" data-node-select-item aria-label="选择 {{.Name}}"></label></td>
+        <td>
+          <form class="row" method="post" action="/admin/nodes">
+            <input type="hidden" name="action" value="rename">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <input name="name" value="{{.Name}}" style="width:11rem" title="小鸡名称">
+            <input name="tags" value="{{joinTags .Tags}}" placeholder="标签（逗号分隔）" style="width:9rem" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 8 个">
+            {{/* 到期日 / 续费费用。这两样跟"这台机器"绑定，
+                 和名字、标签是同一类"站长填的资料"，所以放同一栏。
+                 （原来藏在文章编辑器里，找起来别扭。） */}}
+            {{/* 到期日。type=date 给原生日历选择器，
+                 库里存的就是 YYYY-MM-DD，格式天然一致。
+                 要带 label —— 光一个空日期框看不出是干吗的。 */}}
+            {{$ex := ""}}{{with index $.Profiles .ID}}{{$ex = .ExpireAt}}{{end}}
+            <label class="fld">
+              <span>到期日</span>
+              <span class="fld-row">
+                <span class="date-entry">
+                  <input name="expire_at" type="text" inputmode="numeric" autocomplete="off"
+                         placeholder="yyyy/mm/dd" value="{{if ne $ex "永久"}}{{$ex}}{{end}}"
+                         data-exp-date title="格式：yyyy/mm/dd；留空表示还没定">
+                  <input class="date-entry-picker" type="date" aria-hidden="true" tabindex="-1" data-exp-picker>
+                  <button class="date-entry-button" type="button" data-exp-picker-button aria-label="选择到期日" title="选择到期日">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3.5" width="12" height="10.5" rx="1.5"/><path d="M5 2v3M11 2v3M2 6.5h12"/></svg>
+                  </button>
+                </span>
+                {{/* 「永久」和"没填"是两回事：前者是明确的"不会到期"，
+                     后者是"还没想好"。所以做成勾选框而不是一个日期选项
+                     —— 勾上了就把日期框禁用，避免两个值打架。 */}}
+                <label class="chk" title="勾上表示这台不会到期">
+                  <input type="checkbox" name="expire_forever" value="1"
+                         data-exp-forever {{if eq $ex "永久"}}checked{{end}}> 永久
+                </label>
+              </span>
+            </label>
+            {{/* 「设费用」按钮已删（boss 要求）—— 那一行控件太多了。
+                 费用仍在**文章编辑器**里能改，数据字段也照常保留。 */}}
+            {{/* ⚠️ 这里**没有**地区和国家的输入框：
+                 它们由 agent 上报（从所在网络问 Cloudflare 得到），
+                 手填多半会填错 —— 而且 IP 归属库对 VPS 本来就不准
+                 （IP 地理库结果可能与实际机房位置不同）。 */}}
+            <button class="btn small" type="submit">保存</button>
+          </form>
+        </td>
+        <td>{{if .Group}}<span class="node-group-badge">{{.Group}}</span>{{else}}<span class="node-group-empty">未分组</span>{{end}}</td>
+        <td>{{if .Region}}{{.Region}}{{else}}{{.Country}}{{end}}</td>
+        <td>{{if .Online}}<span class="ok">在线</span>{{else}}<span class="bad">离线</span>{{end}}</td>
+        <td>
+          {{$shown := ne .Visibility "private"}}
+          <form method="post" action="/admin/nodes" class="inline">
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <button type="submit" class="switch {{if $shown}}on{{end}}" title="一键显示/隐藏">
+              <span class="knob"></span>
+              <span class="switch-text">{{if $shown}}显示中{{else}}已隐藏{{end}}</span>
+            </button>
+          </form>
+        </td>
+        {{/* 「可见性」下拉已删 —— boss 说得对：上面那个「展示」开关
+             本身就起到公开 / 不公开的作用，两套控件管同一件事
+             只会让人犹豫该动哪个，而且它们必然有不一致的时候。
+
+             那个开关的语义是 public <-> private（详情页也跟着 404）。
+             model 里还留着 unlisted，但界面上不再有入口。 */}}
+        <td>
+          {{/* ⚠️ 必须包一层 .row（flex）：删除按钮外面套着 <form>，
+               而 form 是**块级**元素 —— 不包的话它独占一行，
+               变成「删除」在上面、「测试/文章/查看」在下面，四个按钮排成两行。
+               （2026-10-11 boss 截图反馈的就是这个。） */}}
+          <div class="row">
+            <form method="post" action="/admin/nodes" onsubmit="return confirm('确认删除该节点？')">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="id" value="{{.ID}}">
+              <button class="btn danger small" type="submit">删除</button>
+            </form>
+            <a class="btn small ghost" href="/admin/tasks?node={{.ID}}">测试</a>
+            <button class="btn small ghost" type="button" data-swap-open data-node-id="{{.ID}}" data-node-name="{{.Name}}">调整 SWAP</button>
+            <a class="btn small ghost" href="/admin/post?node={{.ID}}">文章</a>
+            <a class="btn small ghost" href="/n/{{.Slug}}">查看</a>
+          </div>
+        </td>
+      </tr>
+      {{end}}
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="empty">还没有节点接入。</p>
+    {{end}}
+
+    <dialog class="swap-dialog" id="swap-dialog" aria-labelledby="swap-dialog-title">
+      <div class="swap-dialog-body">
+        <h3 id="swap-dialog-title">调整 SWAP <span data-swap-node-name></span></h3>
+        <p class="hint">SWAP 只支持增加，不支持减少；目标容量不能低于当前总容量。</p>
+        <form method="post" action="/admin/nodes" class="col">
+          <input type="hidden" name="action" value="swap">
+          <input type="hidden" name="id" data-swap-node-id>
+          <label for="swap-size-gib">目标容量（GiB）</label>
+          <input id="swap-size-gib" name="swap_gib" type="number" min="0.5" max="512" step="0.5" value="2" required>
+          <span class="hint">范围：0.5–512 GiB，每次以 0.5 GiB 调整。更改会排队执行。</span>
+          <div class="row swap-dialog-actions">
+            <button class="btn ghost" type="button" data-swap-close>取消</button>
+            <button class="btn" type="submit">确认调整</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    {{/* 三网分省探测范围。默认只探三网基线（北京 × 电信/联通/移动），
+          分省按需勾选 —— 全选 / 反选 / 全不选 / 点几个都行。
+          保存走 fetch，改动秒级下发到各台机器（命令通道），不用重启。 */}}
+    <h4 class="sub">三网分省探测范围</h4>
+    <form class="col" id="netq-form">
+      <p class="hint">
+        默认只探「上海 × 电信/联通/移动」三个点（明细页的三张卡就是它）。
+        分省探测是重活：一个省三个点，默认**连续探测**（打完一轮歇几秒就打下一轮）。
+        当前选中 <b>{{len .NetQProvinces}}</b> 个省 = <b>{{.NetQTargets}}</b> 个探测点。
+        保存后各台机器 <b>数秒内</b> 生效，不重启。
+      </p>
+      <div class="row">
+        <button class="btn ghost small" type="button" data-netq-all>全选</button>
+        <button class="btn ghost small" type="button" data-netq-invert>反选</button>
+        <button class="btn ghost small" type="button" data-netq-none>全不选</button>
+        <span class="hint">全不选 = 关掉分省探测，只保留三网基线</span>
+      </div>
+      <div class="netq-prov" id="netq-prov">
+        {{/* 省份勾选框：数据来自内置探测表（internal/netprobe），
+              勾中的是当前生效范围。
+              通率来自**本机实测**（近 2 天全部机器上报聚合）——
+              社区表只提供候选 IP，"通不通"以我们小鸡 ping 的结果为准
+              （boss 2026-10-12）。0% 的省直接置灰，别去勾。 */}}
+        {{range .NetQProvOpts}}
+        <label class="chk{{if eq .HitPct 0.0}} dead{{end}}"
+               title="{{if gt .Samples 0}}本机实测通率 {{printf "%.0f" .HitPct}}%（{{.Samples}} 个样本）{{else}}还没有探测数据{{end}}">
+          <input type="checkbox" name="provinces" value="{{.Name}}" {{if .On}}checked{{end}}> {{.Name}}
+          {{if gt .Samples 0}}<span class="nq-hit{{if eq .HitPct 0.0}} zero{{end}}">{{printf "%.0f" .HitPct}}%</span>{{end}}
+        </label>
+        {{end}}
+      </div>
+      <div class="row">
+        {{/* 探测间隔：0=连续（默认，一轮几十秒，小范围完全无压力）、
+               -1=关、正数=分钟（勾了几十个省、一轮要几分钟时才用 ——
+               防把机器和目标都打爆）。 */}}
+        <label class="hint" for="netq-interval">探测间隔</label>
+        <input id="netq-interval" name="interval_min" type="number" min="-1" step="1"
+               value="{{.NetQInterval}}" style="width:6rem"
+               title="0=连续探测；-1=关闭；正数=每隔几分钟">
+        <span class="hint">0 = 连续（默认）· -1 = 关 · 正数 = 分钟</span>
+        <button class="btn" type="submit">保存探测范围</button>
+        <span class="hint" id="netq-msg"></span>
+      </div>
+      {{/* 探测点表是外部每日更新的（spiritLHLS/icmp_targets），点一下从上游
+            拉最新并落库；各台机器几秒内被推送到新表，不用重新部署。 */}}
+      <div class="row">
+        <button class="btn ghost small" type="button" id="netq-refresh">更新探测点列表（从 GitHub）</button>
+        <span class="hint" id="netq-refresh-msg">
+          探测点表来自社区项目 spiritLHLS/icmp_targets（每日更新，每省每网 3 个候选 IP，探测时依次回退）
+        </span>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" id="alerts" data-atab="alerts">
+    <h3>告警与通知</h3>
+
+    <h4 class="sub">Telegram Bot</h4>
+    <form class="col" id="notify-form">
+      <div class="row">
+        <label class="chk"><input type="checkbox" name="telegram_enabled" value="1" {{if .NotifyOn}}checked{{end}}> 启用 Telegram</label>
+        <label class="chk"><input type="checkbox" name="telegram_silent" value="1" {{if .NotifySilent}}checked{{end}}> 静音发送</label>
+      </div>
+      <div class="row">
+        <input name="telegram_bot_token" placeholder="Bot Token（留空或保持打码值表示不改）" value="{{.NotifyToken}}" style="min-width:22rem;flex:1">
+        <input name="telegram_chat_id" placeholder="Chat ID，如 -100123456789" value="{{.NotifyChat}}" style="width:16rem">
+      </div>
+      <div class="row">
+        <span class="hint">免打扰时段：</span>
+        <input name="quiet_hours_start" type="number" min="-1" max="23" value="{{.NotifyQuietStart}}" style="width:6rem" title="起始整点，-1 表示不设">
+        <span class="hint">点到</span>
+        <input name="quiet_hours_end" type="number" min="-1" max="23" value="{{.NotifyQuietEnd}}" style="width:6rem" title="结束整点，-1 表示不设">
+        <span class="hint">这段时间内只记录不推送（当前 {{.NotifyQuiet}}）</span>
+      </div>
+      <div class="row">
+        <input name="webhook_url" placeholder="Webhook URL（可选，POST JSON）" value="{{.WebhookURL}}" style="min-width:18rem;flex:1">
+        <label class="chk"><input type="checkbox" name="webhook_enabled" value="1" {{if .WebhookOn}}checked{{end}}> 启用 Webhook</label>
+      </div>
+      <div class="row">
+        <button class="btn" type="submit">保存通知配置</button>
+        <button class="btn ghost" type="button" id="notify-test">发一条测试</button>
+        <span class="hint" id="notify-msg"></span>
+      </div>
+    </form>
+
+    <h4 class="sub">告警规则</h4>
+    {{if .AlertRules}}
+    <table class="tbl" id="rule-tbl">
+      <thead><tr><th>作用域</th><th>条件</th><th>持续</th><th>静默</th><th></th></tr></thead>
+      <tbody>
+      {{range .AlertRules}}
+      <tr data-id="{{.ID}}">
+        <td>{{if .NodeID}}<code>{{.NodeID}}</code>{{else}}<span class="tag">全部小鸡</span>{{end}}</td>
+        <td>{{metricName .Metric}} {{if eq .Op "lt"}}&lt;{{else}}&gt;{{end}} {{.Threshold}}</td>
+        <td>{{if .Duration}}{{.Duration}} 秒{{else}}立刻{{end}}</td>
+        <td>{{if .Silenced}}<span class="warn">已静默</span>{{else}}<span class="ok">生效</span>{{end}}</td>
+        <td><button class="btn small danger" type="button" data-del="{{.ID}}">删除</button></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="empty">还没有告警规则。加一条：CPU 连续 5 分钟超过 80% 就发 Telegram。</p>
+    {{end}}
+
+    <form class="row" id="rule-form" style="margin-top:10px">
+      <select name="node_id">
+        <option value="">全部小鸡</option>
+        {{range .Nodes}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+      </select>
+      <select name="metric">
+        <option value="cpu">CPU 使用率 %</option>
+        <option value="mem">内存使用率 %</option>
+        <option value="disk">磁盘使用率 %</option>
+        <option value="swap">SWAP 使用率 %</option>
+        <option value="load1">1 分钟负载</option>
+        <option value="net_up">上行速率 MB/s</option>
+        <option value="net_down">下行速率 MB/s</option>
+        <option value="offline">离线时长 秒</option>
+        <option value="traffic">本月总流量 GB</option>
+      </select>
+      <select name="op"><option value="gt">大于</option><option value="lt">小于</option></select>
+      <input name="threshold" type="number" step="any" placeholder="阈值" required style="width:8rem">
+      <input name="duration" type="number" placeholder="持续秒数" style="width:9rem" title="条件连续满足多少秒才触发，留空表示立刻">
+      <button class="btn" type="submit">添加规则</button>
+      <span class="hint" id="rule-msg"></span>
+    </form>
+
+    {{if .AlertEvents}}
+    <h4 class="sub">最近告警</h4>
+    <table class="tbl">
+      <thead><tr><th>时间</th><th>小鸡</th><th>内容</th><th>状态</th></tr></thead>
+      <tbody>
+      {{range .AlertEvents}}
+      <tr>
+        <td class="nowrap">{{tsShort .FiredAt}}</td>
+        <td>{{if .NodeName}}{{.NodeName}}{{else}}<span class="muted">{{.NodeID}}</span>{{end}}</td>
+        <td>{{.Message}}</td>
+        <td>{{if .Resolved}}<span class="ok">已恢复</span>{{else}}<span class="bad">告警中</span>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{end}}
+  </section>
+
+  {{/* 面板自身所在机器的资源占用。
+       原来只在 /dashboard 上有，那个页面删掉之后就并在后台这里 ——
+       "面板会不会先撑不住"是站长该关心的事，但跟访客无关。 */}}
+  <section class="panel" id="hostself" data-atab="sys">
+    <h3>面板主机自身</h3>
+    <p class="hint" style="margin-top:0">Hub 所在机器的资源占用。面板跑不动了，所有小鸡都会显示离线。</p>
+    {{if .Host}}
+    <div class="kv-grid">
+      <div>
+        <span>CPU</span>
+        <b>{{printf "%.1f" .Host.CPU.Usage}}%</b>
+      </div>
+      <div>
+        <span>内存</span>
+        <b>{{if gt .Host.Mem.Total 0}}{{printf "%.0f" .HostMemPct}}%{{else}}—{{end}}
+        {{if gt .Host.Mem.Total 0}}<small>{{fmtBytes .Host.Mem.Used}} / {{fmtBytes .Host.Mem.Total}}</small>{{end}}</b>
+      </div>
+      <div>
+        <span>磁盘</span>
+        <b>{{if gt .Host.Disk.Total 0}}{{printf "%.0f" .HostDiskPct}}%{{else}}—{{end}}
+        {{if gt .Host.Disk.Total 0}}<small>{{fmtBytes .Host.Disk.Used}} / {{fmtBytes .Host.Disk.Total}}</small>{{end}}</b>
+      </div>
+      <div><span>负载</span><b>{{printf "%.2f" .Host.CPU.Load1}}<small> {{printf "%.2f" .Host.CPU.Load5}} / {{printf "%.2f" .Host.CPU.Load15}}</small></b></div>
+      <div><span>开机</span><b>{{if gt .Host.Host.Uptime 0}}{{fmtDur .Host.Host.Uptime}}{{else}}—{{end}}</b></div>
+    </div>
+    {{else}}
+    <p class="hint">{{if .HostNote}}{{.HostNote}}{{else}}当前平台不支持读取本机资源{{end}}</p>
+    {{end}}
+  </section>
+
+  <section class="panel" id="comments" data-atab="comments">
+    <h3>评论审核{{if .PendingN}} <small class="bad">{{.PendingN}} 条待处理</small>{{end}}</h3>
+    <form class="row" method="post" action="/admin/settings">
+      <label class="chk"><input type="checkbox" name="comment_enabled" value="1" {{if .CommentOn}}checked{{end}}> 开放评论</label>
+      <label class="chk"><input type="checkbox" name="comment_auto_approve" value="1" {{if .AutoApprove}}checked{{end}}> 免审核直接上墙</label>
+      <button class="btn small" type="submit">保存</button>
+      <span class="hint">关掉免审核后，新评论要先在这里点「通过」才会显示在前台。</span>
+    </form>
+
+    {{if .CommentsByNode}}
+    {{/* 按小鸡分组显示 —— boss 要求。
+         一个平铺的长表格里，"这条是评哪台机器的"要靠中间那一列去认，
+         留言一多根本对不上。分组之后每台一块，一眼看清。 */}}
+    {{range .CommentsByNode}}
+    <div class="cmt-group">
+      <h4 class="sub">
+        {{if .Name}}<a href="/n/{{.Slug}}">{{.Name}}</a>{{else}}<span class="muted">{{.NodeID}}</span>{{end}}
+        <span class="muted">· {{len .Comments}} 条</span>
+      </h4>
+      <table class="tbl">
+        <thead><tr><th>时间</th><th>评论</th><th>联系方式</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>
+        {{range .Comments}}
+        <tr{{if .Pinned}} class="pinned-row"{{end}}>
+          <td class="nowrap">{{tsShort .CreatedAt}}</td>
+          <td class="cmt-cell">
+            {{if .Pinned}}<span class="pin-badge" title="已置顶">📌</span>{{end}}
+            <b>{{.Author}}</b>{{if .ParentID}} <span class="muted">（回复）</span>{{end}}
+            <div class="cmt-text">{{.Content}}</div>
+          </td>
+          <td>{{if .Contact}}<code>{{.Contact}}</code>{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>
+            {{if eq .Status "approved"}}<span class="ok">已上墙</span>
+            {{else if eq .Status "spam"}}<span class="bad">垃圾</span>
+            {{else}}<span class="warn">待审核</span>{{end}}
+          </td>
+          <td class="nowrap">
+            <form method="post" action="/admin/comments" class="inline">
+              <input type="hidden" name="id" value="{{.ID}}">
+              {{if ne .Status "approved"}}<button class="btn small" name="action" value="approve">通过</button>{{end}}
+              {{/* 已上墙的评论也能管理：置顶 / 取消置顶 / 退回待审 / 删除。
+                   置顶按钮只对已上墙的显示 —— 置顶一条还没放行的评论没意义。 */}}
+              {{if eq .Status "approved"}}
+                {{if .Pinned}}
+                <button class="btn small ghost" name="action" value="unpin">取消置顶</button>
+                {{else}}
+                <button class="btn small ghost" name="action" value="pin">置顶</button>
+                {{end}}
+                <button class="btn small ghost" name="action" value="pending">下墙</button>
+              {{end}}
+              {{if ne .Status "spam"}}<button class="btn small ghost" name="action" value="spam">垃圾</button>{{end}}
+              <button class="btn small danger" name="action" value="delete"
+                      onclick="return confirm('确认删除这条评论？删了不可恢复。')">删除</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+    {{else}}
+    <p class="empty">还没有评论。</p>
+    {{end}}
+  
+    {{/* 站内消息：购买咨询无论外部推送状态都会保存在这里。 */}}
+    <details class="adv" style="margin-top:var(--s4)">
+      <summary>站内消息 · 购买咨询（{{len .BuyIntents}}）</summary>
+      {{if .BuyIntents}}
+      <table class="tbl">
+        <thead><tr><th>时间</th><th>机器</th><th>联系方式</th><th>备注</th><th>保存与推送</th></tr></thead>
+        <tbody>
+        {{range .BuyIntents}}
+        <tr>
+          <td class="nowrap">{{tsShort .CreatedAt}}</td>
+          <td>{{if .NodeName}}{{.NodeName}}{{else}}<span class="muted">节点已删除</span>{{end}}</td>
+          <td><code>{{.Contact}}</code></td>
+          <td>{{if .Note}}{{.Note}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>{{if .Notified}}<span class="ok">已保存 · 外部通知至少一路送达</span>{{else}}<span class="warn">已保存 · 未外发</span>{{end}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="empty">暂无站内消息。</p>
+      {{end}}
+    </details>
+</section>
+
+  <section class="panel" id="account" data-atab="sys">
+    <h3>唯一管理员账户</h3>
+    {{if .AccountMsg}}<p class="{{if .AccountBad}}bad{{else}}ok{{end}}">{{.AccountMsg}}</p>{{end}}
+    <form class="row" method="post" action="/admin/account">
+      <input name="username" value="{{.AdminUser}}" placeholder="用户名" autocomplete="username" style="width:12rem" required>
+      <input type="password" name="current_password" placeholder="当前密码（必填）" autocomplete="current-password" style="width:12rem" required>
+      <input type="password" name="new_password" placeholder="新密码（留空只改用户名）" autocomplete="new-password" style="width:14rem">
+      <input type="password" name="confirm_password" placeholder="再输一次新密码" autocomplete="new-password" style="width:14rem">
+      <button class="btn" type="submit">保存</button>
+    </form>
+    <p class="hint">系统只有这一个管理员账户；保存用户名或密码会直接更新该账户。改密码会注销所有已登录会话。密码经过加盐哈希存储，不保存明文。</p>
+  </section>
+
+  <section class="panel" id="profile" data-atab="profile">
+    <h3>站长名片</h3>
+    <p class="hint">头像和签名会显示在首页顶部与每台小鸡的页面底部。头像支持 png / jpg / webp / gif，不超过 2MB。</p>
+    <form class="row" method="post" action="/admin/profile" enctype="multipart/form-data">
+      <input name="owner_name" placeholder="昵称" value="{{.OwnerName}}" style="width:12rem">
+      <input name="owner_bio" placeholder="签名档，一句话介绍自己" value="{{.OwnerBio}}" style="min-width:16rem;flex:1">
+      <input type="file" name="avatar" accept="image/png,image/jpeg,image/webp,image/gif">
+      <label class="chk"><input type="checkbox" name="avatar_clear" value="1"> 清除头像</label>
+      <button class="btn" type="submit">保存</button>
+    </form>
+    {{if .OwnerAvatar}}<p class="row" style="margin-top:10px">
+      <img src="{{.OwnerAvatar}}" alt="当前头像" style="width:48px;height:48px;border-radius:50%;object-fit:cover">
+      <span class="hint">当前头像</span>
+    </p>{{end}}
+  </section>
+
+{{/* ---- 续费费用弹窗 ----
+     金额 + 货币 + 周期三件套。做成弹窗而不是三个输入框排在表格里：
+     一行已经放了名字/标签/到期日，再塞三个控件会把表格挤爆。 ---- */}}
+
+{{/* ---- 主题面板 ----
+     主题管理（卡片列表、启用/导出/删除、一键获取别人的主题、导入、
+     壁纸、主题范例下载）就在这里，和「节点」「告警」一样是后台的一个页签
+     —— 不再单独开一页：单独一页时，从后台点进去像是"跳走了"，
+     而且顶栏还要多挂一个入口按钮。
+
+     ⚠️ 它是一组 panel，**共用同一个 data-atab="themes"**：多个面板挂同一个
+     页签值，切换时一起显示/隐藏，CSS 的 [data-atab] 选择器一行都不用改。 ---- */}}
+{{template "theme-panels" .}}
+
+</main>
+{{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
+     以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
+     表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
+<script src="/static/app.js?v=125"></script>
+<script>
+/* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
+(function () {
+  'use strict';
+  function say(el, good, text) {
+    if (!el) return;
+    el.className = good ? 'hint ok' : 'hint bad';
+    el.textContent = text;
+  }
+  function post(url, params) {
+    var body = new URLSearchParams();
+    Object.keys(params).forEach(function (k) {
+      if (params[k] !== '') body.set(k, params[k]);
+    });
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      body: body.toString(),
+      credentials: 'same-origin'
+    }).then(function (r) {
+      return r.json().catch(function () { return { ok: false, error: '返回不是 JSON' }; });
+    });
+  }
+  function collect(form) {
+    var p = {};
+    new FormData(form).forEach(function (v, k) { p[k] = v; });
+    return p;
+  }
+
+  var nf = document.getElementById('notify-form');
+  if (nf) nf.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var msg = document.getElementById('notify-msg');
+    post('/admin/notify', collect(nf)).then(function (d) {
+      say(msg, !!(d && d.ok), d && d.ok ? '已保存' : ('失败：' + ((d && d.error) || '未知错误')));
+    });
+  });
+
+  var tb = document.getElementById('notify-test');
+  if (tb) tb.addEventListener('click', function () {
+    var msg = document.getElementById('notify-msg');
+    say(msg, true, '发送中…');
+    post('/admin/alerts/test', {}).then(function (d) {
+      say(msg, !!(d && d.ok), d && d.ok ? '测试消息已发出，去看 Telegram' : ('失败：' + ((d && d.error) || '检查 token 与 chat id')));
+    });
+  });
+
+  // 三网分省探测范围：全选 / 反选 / 全不选 + 保存。
+  // 保存后 Hub 会把新范围随下一次上报响应推给各台机器（数秒生效）。
+  var nqf = document.getElementById('netq-form');
+  if (nqf) {
+    function netqBoxes() {
+      return [].slice.call(nqf.querySelectorAll('input[name="provinces"]'));
+    }
+    function eachBox(fn) { netqBoxes().forEach(fn); }
+    var nbAll = document.querySelector('[data-netq-all]');
+    var nbInv = document.querySelector('[data-netq-invert]');
+    var nbNone = document.querySelector('[data-netq-none]');
+    if (nbAll) nbAll.addEventListener('click', function () { eachBox(function (b) { b.checked = true; }); });
+    if (nbInv) nbInv.addEventListener('click', function () { eachBox(function (b) { b.checked = !b.checked; }); });
+    if (nbNone) nbNone.addEventListener('click', function () { eachBox(function (b) { b.checked = false; }); });
+
+    // 更新探测点列表：从上游社区项目拉最新「可用 ICMP」表 → 落库 →
+    // 各探针按版本号自愈拉取（netq_catalog 命令），不用重新部署。
+    var nqr = document.getElementById('netq-refresh');
+    if (nqr) nqr.addEventListener('click', function () {
+      var msg = document.getElementById('netq-refresh-msg');
+      nqr.disabled = true;
+      say(msg, true, '正在从 GitHub 拉取…');
+      post('/admin/netq/refresh', {}).then(function (d) {
+        nqr.disabled = false;
+        if (d && d.ok) {
+          say(msg, true, '已更新：' + d.targets + ' 个探测点（' + d.fetchedAt + '），各机器数秒内生效');
+        } else {
+          say(msg, false, '失败：' + ((d && d.error) || '拉取失败（服务器能不能上 GitHub？）'));
+        }
+      }).catch(function () {
+        nqr.disabled = false;
+        say(msg, false, '拉取失败');
+      });
+    });
+
+    nqf.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var msg = document.getElementById('netq-msg');
+      var params = new URLSearchParams();
+      netqBoxes().forEach(function (b) { if (b.checked) params.append('provinces', b.value); });
+      var iv = nqf.querySelector('[name="interval_min"]');
+      if (iv) params.append('interval_min', iv.value || '0');
+      say(msg, true, '保存中…');
+      fetch('/admin/netq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+        body: params.toString(),
+        credentials: 'same-origin'
+      }).then(function (r) {
+        return r.json().catch(function () { return { ok: r.ok }; });
+      }).then(function (d) {
+        if (d && d.ok) {
+          var n = netqBoxes().filter(function (b) { return b.checked; }).length;
+          say(msg, true, '已保存：' + n + ' 个省 · ' + n * 3 + ' 个点，各机器数秒内生效');
+        } else {
+          say(msg, false, '失败：' + ((d && d.error) || '未知错误'));
+        }
+      }).catch(function () { say(msg, false, '保存失败'); });
+    });
+  }
+
+  var rf = document.getElementById('rule-form');
+  if (rf) rf.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var msg = document.getElementById('rule-msg');
+    post('/admin/alerts', collect(rf)).then(function (d) {
+      if (d && d.ok) { location.reload(); return; }
+      say(msg, false, '失败：' + ((d && d.error) || '请检查阈值'));
+    });
+  });
+
+  document.querySelectorAll('[data-del]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.getAttribute('data-del');
+      post('/admin/alerts', { action: 'delete', id: id }).then(function (d) {
+        if (d && d.ok) {
+          var tr = document.querySelector('#rule-tbl tr[data-id="' + id + '"]');
+          if (tr) tr.parentNode.removeChild(tr);
+        }
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>
+{{end}}

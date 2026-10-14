@@ -1,0 +1,39 @@
+[Unit]
+Description=Kokoro Hub (probe control panel)
+Documentation=https://github.com/Vincentkeio/kokoro
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kokoro
+Group=kokoro
+WorkingDirectory=/opt/kokoro
+Environment=KOKORO_DATA_DIR=/var/lib/kokoro
+ExecStart=/opt/kokoro/kokoro serve --listen 127.0.0.1:8799 --data /var/lib/kokoro --domain panel.example.com --tls proxy
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+# Hub 只监听 127.0.0.1:8799，由 Nginx 反代对外提供 443
+# 部署前创建 kokoro 系统用户，只授予数据目录写权限。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/kokoro
+ReadOnlyPaths=/var/lib/kokoro/dist
+InaccessiblePaths=-/var/lib/kokoro/swapfile -/var/lib/kokoro/swapfile.new -/var/lib/kokoro/swapfile.old
+
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kokoro-hub
+
+[Install]
+WantedBy=multi-user.target

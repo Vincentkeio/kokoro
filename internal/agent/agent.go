@@ -1,0 +1,1113 @@
+// Package agent 是跑在子机上的 Kokoro 探针运行时：
+// 负责注册、定时上报指标、断线重连与补报、执行 Hub 下发的命令。
+//
+// 只依赖标准库，采集能力通过 Collector 接口由 cmd 层注入。
+package agent
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"math/rand"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Vincentkeio/kokoro/internal/model"
+)
+
+// Version 是 agent 版本，注册时上报给 Hub。
+var Version = "0.1.1"
+
+const logPrefix = "[kokoro-agent] "
+
+const (
+	defaultIntervalMS = 2000
+	minIntervalMS     = 500
+	maxIntervalMS     = 600000
+	// replayBufferSize 断线期间最多缓冲的指标条数（恢复后按序补报）。
+	replayBufferSize = 30
+
+	initialBackoff = 1 * time.Second
+	maxBackoff     = 60 * time.Second
+
+	reportTimeout   = 15 * time.Second
+	registerTimeout = 30 * time.Second
+	resultTimeout   = 10 * time.Second
+	shutdownWait    = 3 * time.Second
+
+	cmdQueueSize = 64
+	// maxResponseBytes 限制 Hub 响应体大小，避免异常响应打爆内存。
+	maxResponseBytes = 1 << 20
+)
+
+var logger = log.New(os.Stderr, logPrefix, log.LstdFlags|log.Lmsgprefix)
+
+// Collector 采集器接口。真实实现在 internal/collector 包，由 cmd 层注入，
+// 本包只依赖接口，不依赖实现。
+type Collector interface {
+	Collect() (*model.Metrics, error)
+}
+
+// fallbackCollector 是未注入采集器时的兜底：只填协议必需字段，
+// 保证 agent 自身可独立编译运行（不依赖 collector 包的实现进度）。
+type fallbackCollector struct {
+	start time.Time
+}
+
+func (f fallbackCollector) Collect() (*model.Metrics, error) {
+	return &model.Metrics{
+		V:    model.ProtocolVersion,
+		Ts:   time.Now().UnixMilli(),
+		Host: model.HostStat{Uptime: int64(time.Since(f.start).Seconds())},
+	}, nil
+}
+
+// fatalError 表示不可恢复的错误（401/403）：agent 必须停止并提示重新注册。
+type fatalError struct{ err error }
+
+func (e *fatalError) Error() string { return e.err.Error() }
+func (e *fatalError) Unwrap() error { return e.err }
+
+// retryAfterError 携带 429 响应里 Retry-After 指定的等待时长。
+type retryAfterError struct {
+	err error
+	d   time.Duration
+}
+
+func (e *retryAfterError) Error() string { return e.err.Error() }
+func (e *retryAfterError) Unwrap() error { return e.err }
+
+// Agent 是一台子机上的运行时实例。
+type Agent struct {
+	cfg       *model.AgentConfig
+	collector Collector
+
+	hub        string // 规范化后的 Hub 地址（含 scheme、无结尾斜杠）
+	hubHost    string // Hub 主机名，用于证书校验
+	client     *http.Client
+	configPath string
+
+	mu                sync.Mutex
+	interval          time.Duration
+	seq               int64
+	buf               []*model.Metrics // 断线缓冲，按时间顺序，最多 replayBufferSize 条
+	factsSent         bool             // Hub 确认收到静态信息前，每条上报都带着它
+	factsTick         int              // 距上次重查静态信息过了几条上报
+	lastFacts         *model.HostFacts // 上次发出去的静态信息，用来比对有没有变
+	lastRTTms         float64
+	cmdCh             chan model.Command
+	cmdDone           chan struct{}
+	closed            bool
+	cmdWG             sync.WaitGroup
+	activeTaskCancels map[string]context.CancelFunc
+	cancelledTasks    map[string]bool
+	warnNoColl        bool
+	taskMu            sync.Mutex
+	taskRecords       map[string]*taskRecord
+	taskCompleted     map[string]bool
+	taskResultWake    chan struct{}
+
+	// netqSel 是三网分省探测的当前范围（省份名列表，空 = 不探测）。
+	// 由 Hub 的 netq_targets 命令改写，见 netq.go。
+	netqSel   []string
+	netqSelMu sync.Mutex
+	netqWake  chan struct{} // 范围变了就唤醒探测循环，立刻重跑
+}
+
+// New 构造 agent。c 为采集器，传 nil 时使用内置兜底采集器。
+func New(cfg *model.AgentConfig, c Collector) (*Agent, error) {
+	if cfg == nil {
+		return nil, errors.New("配置不能为空")
+	}
+	hub := strings.TrimSpace(cfg.Hub)
+	if hub == "" {
+		return nil, errors.New("配置缺少 hub 地址")
+	}
+	if !strings.Contains(hub, "://") {
+		hub = "https://" + hub
+	}
+	hub = strings.TrimRight(hub, "/")
+	u, err := url.Parse(hub)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") ||
+		u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, fmt.Errorf("hub 地址非法：%s", cfg.Hub)
+	}
+
+	interval := clampInterval(cfg.IntervalMS)
+	if c == nil {
+		c = fallbackCollector{start: time.Now()}
+	}
+	a := &Agent{
+		cfg:               cfg,
+		collector:         c,
+		hub:               hub,
+		hubHost:           u.Hostname(),
+		interval:          time.Duration(interval) * time.Millisecond,
+		configPath:        ConfigPath(),
+		buf:               make([]*model.Metrics, 0, replayBufferSize),
+		netqWake:          make(chan struct{}, 1),
+		activeTaskCancels: make(map[string]context.CancelFunc),
+		cancelledTasks:    make(map[string]bool),
+	}
+	if err := a.buildClient(); err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+// clampInterval 把上报间隔限制在合理区间内。
+func clampInterval(ms int) int {
+	switch {
+	case ms <= 0:
+		return defaultIntervalMS
+	case ms < minIntervalMS:
+		return minIntervalMS
+	case ms > maxIntervalMS:
+		return maxIntervalMS
+	default:
+		return ms
+	}
+}
+
+// buildClient 构造 HTTP 客户端：自签 CA 模式下按 SPKI 指纹固定校验服务端证书。
+func (a *Agent) buildClient() error {
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	if fp := strings.TrimSpace(a.cfg.CAFingerprint); fp != "" {
+		pin, err := normalizeFingerprint(fp)
+		if err != nil {
+			return err
+		}
+		// 自签 CA 无法走系统根证书链校验，改为自行比对 SPKI 指纹 + 主机名。
+		tlsCfg.InsecureSkipVerify = true
+		want, host := pin, a.hubHost
+		tlsCfg.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			return verifyPinned(rawCerts, want, host)
+		}
+		logger.Printf("已启用 CA 指纹固定：%s", maskFingerprint(pin))
+	} else if a.cfg.Insecure {
+		tlsCfg.InsecureSkipVerify = true
+		logger.Printf("警告：insecure=true，已跳过服务端证书校验")
+	}
+
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.TLSClientConfig = tlsCfg
+	origin, err := url.Parse(a.hub)
+	if err != nil {
+		return err
+	}
+	originPort := func(u *url.URL) string {
+		if port := u.Port(); port != "" {
+			return port
+		}
+		if u.Scheme == "https" {
+			return "443"
+		}
+		return "80"
+	}
+	a.client = &http.Client{Timeout: reportTimeout, Transport: tr, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("Hub 重定向次数过多")
+		}
+		if req.URL.User != nil || req.URL.Scheme != origin.Scheme || !strings.EqualFold(req.URL.Hostname(), origin.Hostname()) || originPort(req.URL) != originPort(origin) {
+			return errors.New("安全限制：拒绝 Hub 跨站或降级重定向")
+		}
+		return nil
+	}}
+	return nil
+}
+
+// normalizeFingerprint 把 `sha256/xxxx` 形式的指纹统一成标准 base64。
+// 同时兼容裸 base64、URL-safe base64 与十六进制写法。
+func normalizeFingerprint(fp string) (string, error) {
+	raw := strings.TrimSpace(fp)
+	if i := strings.Index(raw, "/"); i >= 0 {
+		alg := strings.ToLower(strings.TrimSpace(raw[:i]))
+		if alg != "sha256" {
+			return "", fmt.Errorf("不支持的指纹算法 %q，只支持 sha256", alg)
+		}
+		raw = strings.TrimSpace(raw[i+1:])
+	}
+	cands := [](func(string) ([]byte, error)){
+		base64.StdEncoding.DecodeString,
+		base64.RawURLEncoding.DecodeString,
+		func(s string) ([]byte, error) { return hex.DecodeString(s) },
+	}
+	for _, dec := range cands {
+		if b, err := dec(raw); err == nil && len(b) == sha256.Size {
+			return base64.StdEncoding.EncodeToString(b), nil
+		}
+	}
+	return "", fmt.Errorf("ca_fingerprint 格式非法：%s", fp)
+}
+
+// verifyPinned 校验服务端证书链里任意一张证书的 SPKI sha256 与指纹一致，
+// 并对叶子证书做主机名校验（因为 InsecureSkipVerify 会跳过默认校验）。
+func verifyPinned(rawCerts [][]byte, wantFp, host string) error {
+	if len(rawCerts) == 0 {
+		return errors.New("服务端未提供证书")
+	}
+	matched := false
+	for _, raw := range rawCerts {
+		c, err := x509.ParseCertificate(raw)
+		if err != nil {
+			return fmt.Errorf("解析服务端证书失败：%w", err)
+		}
+		sum := sha256.Sum256(c.RawSubjectPublicKeyInfo)
+		got := base64.StdEncoding.EncodeToString(sum[:])
+		if subtle.ConstantTimeCompare([]byte(got), []byte(wantFp)) == 1 {
+			matched = true
+		}
+	}
+	if !matched {
+		return fmt.Errorf("服务端证书链的 SPKI 指纹与 ca_fingerprint 不匹配，拒绝连接")
+	}
+	leaf, err := x509.ParseCertificate(rawCerts[0])
+	if err != nil {
+		return fmt.Errorf("解析叶子证书失败：%w", err)
+	}
+	if host != "" {
+		if err := leaf.VerifyHostname(host); err != nil {
+			return fmt.Errorf("服务端证书主机名校验失败：%w", err)
+		}
+	}
+	return nil
+}
+
+// Run 阻塞运行：必要时先注册，然后循环采集上报、执行 Hub 下发的命令，
+// 直到 ctx 被取消或遇到不可恢复错误（401/403）。
+func (a *Agent) Run(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+	if err := a.ensureToken(ctx); err != nil {
+		return err
+	}
+
+	a.cmdCh = make(chan model.Command, cmdQueueSize)
+	a.cmdDone = make(chan struct{})
+	if err := a.initTaskJournal(); err != nil {
+		return fmt.Errorf("初始化测试任务记录失败：%w", err)
+	}
+	a.cmdWG.Add(1)
+	go a.commandWorker(ctx)
+	go a.taskResultLoop(ctx)
+	// 三网探测是独立循环：低频、重活，失败不影响指标上报
+	go a.netqLoop(ctx)
+	defer func() { cancelRun(); a.shutdown() }()
+
+	logger.Printf("已启动：hub=%s interval=%s token=%s…", a.hub, a.interval, maskToken(a.token()))
+
+	bo := newBackoff()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		a.collectOnce()
+		if err := a.flush(ctx); err != nil {
+			var fe *fatalError
+			if errors.As(err, &fe) {
+				return err
+			}
+			var ra *retryAfterError
+			var d time.Duration
+			if errors.As(err, &ra) {
+				d, bo = ra.d, newBackoff()
+			} else {
+				d = bo.next()
+			}
+			logger.Printf("上报失败：%v；%.1fs 后重试", err, d.Seconds())
+			if !sleepCtx(ctx, d) {
+				return nil
+			}
+			continue
+		}
+		bo.reset()
+		if !sleepCtx(ctx, a.getInterval()) {
+			return nil
+		}
+	}
+}
+
+// RegisterOnce 只执行一次注册并把 node_token/ca_fingerprint 落盘（安装脚本用）。
+func (a *Agent) RegisterOnce(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	installToken := a.installToken()
+	if installToken == "" {
+		return &fatalError{err: errors.New("缺少 install_token：请在配置文件写 install_token 或设置环境变量 " + InstallTokenEnv)}
+	}
+
+	reqBody, err := json.Marshal(a.buildRegisterRequest(installToken))
+	if err != nil {
+		return fmt.Errorf("构造注册请求失败：%w", err)
+	}
+	rctx, cancel := context.WithTimeout(ctx, registerTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(rctx, http.MethodPost, a.hub+"/api/v1/register", bytes.NewReader(reqBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("请求注册接口失败：%w", err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusUnauthorized:
+		return &fatalError{err: errors.New("注册失败 401：install_token 无效或已用尽")}
+	case http.StatusForbidden:
+		return &fatalError{err: errors.New("注册失败 403：该节点已被吊销")}
+	default:
+		return fmt.Errorf("注册失败 HTTP %d：%s", resp.StatusCode, truncate(string(b), 200))
+	}
+
+	var out model.RegisterResponse
+	if err := json.Unmarshal(b, &out); err != nil {
+		return fmt.Errorf("解析注册响应失败：%w", err)
+	}
+	if out.NodeToken == "" {
+		return errors.New("注册响应缺少 node_token")
+	}
+
+	// 更新内存配置
+	a.mu.Lock()
+	a.cfg.Token = out.NodeToken
+	a.cfg.NodeID = out.NodeID
+	if out.CAFingerprint != "" {
+		a.cfg.CAFingerprint = out.CAFingerprint
+	}
+	a.mu.Unlock()
+
+	// 指纹可能变化，重建客户端
+	if err := a.buildClient(); err != nil {
+		return err
+	}
+	if out.IntervalMS > 0 {
+		a.setInterval(out.IntervalMS)
+	}
+
+	token, fp, interval, nodeID := out.NodeToken, out.CAFingerprint, out.IntervalMS, out.NodeID
+	if err := saveConfig(a.configPath, func(raw map[string]string) {
+		raw["token"] = token
+		if nodeID != "" {
+			raw["node_id"] = nodeID
+		}
+		if fp != "" {
+			raw["ca_fingerprint"] = fp
+		}
+		if interval > 0 {
+			raw["interval_ms"] = strconv.Itoa(clampInterval(interval))
+		}
+	}); err != nil {
+		// token 已在内存里，进程本次运行仍然可用，只告警不中断。
+		logger.Printf("警告：token 写入配置文件 %s 失败（仅存在于内存）：%v", a.configPath, err)
+	}
+
+	logger.Printf("注册成功：node_id=%s token=%s… hub_version=%s", out.NodeID, maskToken(out.NodeToken), out.HubVersion)
+	return nil
+}
+
+// ensureToken 没有 token 时先注册，失败按退避重试直到成功或遇到致命错误。
+func (a *Agent) ensureToken(ctx context.Context) error {
+	tok := strings.TrimSpace(a.token())
+	// 安装脚本会把一次性安装令牌写在 token 键里，它不能用来上报，必须先换成正经的节点令牌。
+	if tok != "" && !strings.HasPrefix(tok, "it_") {
+		return nil
+	}
+	if tok == "" {
+		logger.Printf("未配置 node_token，开始注册")
+	} else {
+		logger.Printf("检测到安装令牌，先注册换取节点令牌")
+	}
+	bo := newBackoff()
+	for {
+		err := a.RegisterOnce(ctx)
+		if err == nil {
+			return nil
+		}
+		var fe *fatalError
+		if errors.As(err, &fe) {
+			return err
+		}
+		d := bo.next()
+		logger.Printf("注册失败：%v；%.1fs 后重试", err, d.Seconds())
+		if !sleepCtx(ctx, d) {
+			return ctx.Err()
+		}
+	}
+}
+
+// collectOnce 采集一次指标，分配 seq 并入缓冲（缓冲区只保留最近 30 条）。
+func (a *Agent) collectOnce() {
+	m, err := a.collector.Collect()
+	if err != nil {
+		logger.Printf("采集失败：%v", err)
+		return
+	}
+	if m == nil {
+		return
+	}
+	m.V = model.ProtocolVersion
+	if m.Ts <= 0 {
+		m.Ts = time.Now().UnixMilli()
+	}
+
+	a.mu.Lock()
+	a.seq++
+	m.Seq = a.seq
+	// 静态信息（虚拟化/CPU/加速）一直带在每条上报里，**直到 Hub 确认收到**。
+	//
+	// 不只在注册时发：已经注册过的机器不会重新注册，新字段永远填不上。
+	// 也不只发第一条：那一条可能撞上"Hub 还没升级"或网络抖动 ——
+	// 那就再也补不上了。等 Hub 在响应里回了 facts_ok 才停。
+	// 体积很小（一百来字节），多带几条无所谓。
+	//
+	// ⚠️ **但"确认后就再也不发"是错的**：这些字段在机器上会变 ——
+	// 开/关 BBR、加 swap、换内核（虚拟化类型跟着变）、换 CPU 型号。
+	// 只发一次的话，Hub 上永远是接入那天的快照。
+	// （实测踩到：在 wawo 上开了 BBR，卡片上还一直显示 cubic。）
+	// 所以每 factsRecheckEvery 条重查一次，**值变了才重发** ——
+	// 不变就不发，不会白白增加流量。
+	a.factsTick++
+	if !a.factsSent || a.factsTick >= factsRecheckEvery {
+		a.factsTick = 0
+		cur := hostFactsOf()
+		if !a.factsSent || !sameFacts(cur, a.lastFacts) {
+			m.Facts = cur
+			a.lastFacts = cur
+		}
+	}
+	if m.NetQ == nil && a.lastRTTms > 0 {
+		m.NetQ = &model.NetQStat{HubLatencyMS: a.lastRTTms}
+	}
+	// 带上当前三网探测范围：Hub 拿它和设置项比对，不一致就随响应
+	// 下发 netq_targets 命令。agent 重启后靠这条自愈回站长的选择。
+	m.NetQProvinces = a.netqSelection()
+	// 探测间隔一起带上：单独改间隔（范围没动）时 Hub 靠它发现差异
+	m.NetQIntervalMin = a.cfg.NetQIntervalMin
+	// 探测点目录版本：后台「更新探测点列表」后，Hub 靠它发现差异并推新目录。
+	m.NetQCatalogVer = a.netqCatalogVer()
+	a.buf = append(a.buf, m)
+	if n := len(a.buf); n > replayBufferSize {
+		a.buf = append([]*model.Metrics(nil), a.buf[n-replayBufferSize:]...)
+	}
+	a.mu.Unlock()
+}
+
+// flush 按序补报缓冲里的全部指标；任一条失败即返回错误（保留缓冲下次再试）。
+func (a *Agent) flush(ctx context.Context) error {
+	for {
+		a.mu.Lock()
+		if len(a.buf) == 0 {
+			a.mu.Unlock()
+			return nil
+		}
+		m := a.buf[0]
+		a.mu.Unlock()
+
+		resp, err := a.sendReport(ctx, m)
+		if err != nil {
+			return err
+		}
+		a.mu.Lock()
+		if resp != nil && resp.FactsOK {
+			a.factsSent = true // Hub 认了，之后不用再带
+		}
+		if len(a.buf) > 0 && a.buf[0] == m {
+			a.buf = a.buf[1:]
+		}
+		a.mu.Unlock()
+		if resp != nil {
+			a.applyReport(resp)
+		}
+	}
+}
+
+// sendReport 上报一条指标并解析 Hub 响应。
+func (a *Agent) sendReport(ctx context.Context, m *model.Metrics) (*model.ReportResponse, error) {
+	// Refresh delivery state at send time, including when replaying old metrics.
+	snapshot := *m
+	snapshot.Tasks = a.taskHeartbeat()
+	body, err := json.Marshal(&snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("序列化指标失败：%w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.hub+"/api/v1/report", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+a.token())
+
+	start := time.Now()
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求上报接口失败：%w", err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+
+	// 记录到 Hub 的往返延迟，供下一轮 netq 使用
+	a.mu.Lock()
+	a.lastRTTms = float64(time.Since(start).Microseconds()) / 1000.0
+	a.mu.Unlock()
+
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		var out model.ReportResponse
+		if err := json.Unmarshal(b, &out); err != nil {
+			return nil, fmt.Errorf("解析上报响应失败：%w", err)
+		}
+		if !out.OK {
+			return nil, fmt.Errorf("hub 返回 ok=false：%s", truncate(string(b), 200))
+		}
+		return &out, nil
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return nil, &fatalError{err: fmt.Errorf("HTTP %d：节点令牌无效或节点被禁用，请重新注册", resp.StatusCode)}
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return nil, &retryAfterError{
+			err: fmt.Errorf("HTTP 429：被限流"),
+			d:   parseRetryAfter(resp.Header.Get("Retry-After")),
+		}
+	default:
+		return nil, fmt.Errorf("HTTP %d：%s", resp.StatusCode, truncate(string(b), 200))
+	}
+}
+
+// applyReport 处理上报响应：更新间隔、分发命令。
+func (a *Agent) applyReport(resp *model.ReportResponse) {
+	if len(resp.Commands) > cmdQueueSize || len(resp.CancelledTasks) > cmdQueueSize {
+		logger.Printf("拒绝超出数量限制的任务响应")
+		return
+	}
+	if ms := clampInterval(resp.IntervalMS); resp.IntervalMS > 0 && ms != int(a.getInterval()/time.Millisecond) {
+		logger.Printf("上报间隔调整为 %dms", ms)
+		a.setInterval(ms)
+	}
+	for _, id := range resp.CancelledTasks {
+		a.cancelTask(id)
+	}
+	for _, cmd := range resp.Commands {
+		a.enqueue(cmd)
+	}
+}
+
+// ---- 本机信息（注册用，跨平台 best-effort）----
+
+// buildRegisterRequest 组装注册请求，本机信息 best-effort 采集，取不到就留空。
+func (a *Agent) buildRegisterRequest(installToken string) *model.RegisterRequest {
+	info := hostInfo()
+	return &model.RegisterRequest{
+		InstallToken: installToken,
+		Hostname:     info.hostname,
+		OS:           info.os,
+		Kernel:       info.kernel,
+		Arch:         info.arch,
+		Virt:         info.virt,
+		AgentVersion: Version,
+		CPUModel:     info.cpuModel,
+		CPUCores:     info.cpuCores,
+		TCPCC:        info.tcpCC,
+		TCPQdisc:     info.tcpQdisc,
+		LocalIPs:     info.localIPs,
+		MemTotal:     info.memTotal,
+		DiskTotal:    info.diskTotal,
+	}
+}
+
+type hostFacts struct {
+	hostname, os, kernel, arch, virt, cpuModel string
+	tcpCC, tcpQdisc                            string
+	localIPs                                   []string
+	cpuCores                                   int
+	memTotal, diskTotal                        int64
+}
+
+// hostInfo 采集注册所需本机信息。平台相关的细节交给 exec/文件读取，
+// 取不到时返回空值而不是报错，避免在精简容器里注册失败。
+func hostInfo() hostFacts {
+	f := hostFacts{
+		// OS 不再用 runtime.GOOS（只能给出 "linux" / "darwin" 这种平台名），
+		// 而是读 /etc/os-release 的 PRETTY_NAME，拿到 "Debian GNU/Linux 12"、
+		// "Ubuntu 22.04.4 LTS" 这种具体的。读不到时降级到 lsb_release，再降级 "linux"。
+		os:       detectDistro(),
+		arch:     runtime.GOARCH,
+		cpuCores: runtime.NumCPU(),
+	}
+	if h, err := os.Hostname(); err == nil {
+		f.hostname = h
+	}
+	f.kernel = readCommand("uname", "-r")
+	f.virt = detectVirt()
+	f.cpuModel = detectCPUModel()
+	f.memTotal = detectMemTotal()
+	f.diskTotal = detectDiskTotal()
+	f.tcpCC = detectTCPCC()
+	f.tcpQdisc = detectTCPQdisc()
+	f.localIPs = localIPv4s()
+	return f
+}
+
+// hostFactsOf 把 hostInfo 的结果收成上报用的静态信息。
+//
+// 只在启动时调一次（主机名/CPU/虚拟化这些开机后不会变）。
+func hostFactsOf() *model.HostFacts {
+	f := hostInfo()
+	// 位置探测走网络请求，比读 /proc 慢得多，所以**只在第一次**探，
+	// 结果缓存在 geoOnce 里 —— 机器不会跑来跑去。
+	country, region := geoOnce()
+	return &model.HostFacts{
+		Virt:     f.virt,
+		CPUModel: f.cpuModel,
+		CPUCores: f.cpuCores,
+		TCPCC:    f.tcpCC,
+		TCPQdisc: f.tcpQdisc,
+		LocalIPs: f.localIPs,
+		Country:  country,
+		Region:   region,
+	}
+}
+
+// factsRecheckEvery 是静态信息的重查间隔（按上报条数算）。
+// 上报默认 2 秒一条，150 条 ≈ 5 分钟 —— 够快能及时发现改动，
+// 又不至于频繁读 /proc。
+const factsRecheckEvery = 150
+
+// sameFacts 比较两份静态信息是否等价。
+//
+// LocalIPs **先排序再比**：网卡枚举顺序本来就不保证稳定，
+// 直接 Join 会让"同一组地址换了个顺序"被误判成变了 ——
+// 后果是白白多发一次上报（不致命，但没必要）。
+func sameFacts(a, b *model.HostFacts) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Virt == b.Virt &&
+		a.CPUModel == b.CPUModel &&
+		a.CPUCores == b.CPUCores &&
+		a.TCPCC == b.TCPCC &&
+		a.TCPQdisc == b.TCPQdisc &&
+		a.Country == b.Country &&
+		a.Region == b.Region &&
+		sameIPSet(a.LocalIPs, b.LocalIPs)
+}
+
+// sameIPSet 比较两组地址是不是同一集合（与顺序无关）。
+func sameIPSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	as := append([]string(nil), a...)
+	bs := append([]string(nil), b...)
+	sort.Strings(as)
+	sort.Strings(bs)
+	for i := range as {
+		if as[i] != bs[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// detectTCPCC 读当前生效的 TCP 拥塞控制算法（bbr / cubic / …）。
+//
+// 直接读 /proc 而不是跑 sysctl：少一次 fork，而且 /proc 到处都有。
+// BBR 是 VPS 圈最常被问的一项 —— 开了 BBR 的机器丢包时吞吐明显更稳。
+func detectTCPCC() string {
+	return readProcLine("/proc/sys/net/ipv4/tcp_congestion_control")
+}
+
+// detectTCPQdisc 读默认队列规则（fq / fq_codel / pfifo_fast…）。
+//
+// BBR 官方建议配 fq，所以这两个要一起看：光有 bbr 没配 fq 效果会打折。
+func detectTCPQdisc() string {
+	return readProcLine("/proc/sys/net/core/default_qdisc")
+}
+
+// readProcLine 读 /proc 下的一行小文件，读不到返回空串。
+func readProcLine(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// localIPv4s 取本机网卡上的 IPv4。
+//
+// **只用来判 NAT**：Hub 那边把这份列表和它看到的来源 IP 比一下，
+// 对不上就说明机器在 NAT 后面。Hub 不存这些地址、也不展示。
+func localIPv4s() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, ifc := range ifaces {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			if v4 := ipnet.IP.To4(); v4 != nil {
+				out = append(out, v4.String())
+			}
+		}
+	}
+	return out
+}
+
+// detectDistro 读 /etc/os-release 取发行版名。
+//
+// 原本 agent 注册时 OS 字段是 runtime.GOOS="linux"，看不出是 Debian / Ubuntu / CentOS。
+// /etc/os-release 是 systemd 起的标准文件，几乎所有主流发行版都有：
+//
+//	PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+//	NAME="Debian GNU/Linux"
+//
+// 读不到时降级到 lsb_release，最后降级到 GOOS。
+func detectDistro() string {
+	if b, err := os.ReadFile("/etc/os-release"); err == nil {
+		kv := map[string]string{}
+		for _, line := range strings.Split(string(b), "\n") {
+			if i := strings.IndexByte(line, '='); i > 0 {
+				kv[line[:i]] = strings.Trim(strings.TrimSpace(line[i+1:]), "\"")
+			}
+		}
+		// 优先拼「Debian 13」这种紧凑写法：PRETTY_NAME 常常是
+		// "Debian GNU/Linux 13 (trixie)"，卡片上放不下。
+		if id, ver := kv["ID"], kv["VERSION_ID"]; id != "" && ver != "" {
+			return titleASCII(id) + " " + ver
+		}
+		for _, k := range []string{"PRETTY_NAME", "NAME"} {
+			if v := kv[k]; v != "" {
+				return v
+			}
+		}
+	}
+	if v := readCommand("lsb_release", "-d", "-s"); v != "" {
+		return v
+	}
+	return runtime.GOOS
+}
+
+// titleASCII 把 "debian" 这种全小写的发行版 ID 首字母大写，其余不动。
+// 不用 strings.Title（已废弃），也不用 cases 包（引入依赖不值当）。
+func titleASCII(s string) string {
+	if s == "" || s[0] < 'a' || s[0] > 'z' {
+		return s
+	}
+	return string(s[0]-32) + s[1:]
+}
+
+// readCommand 执行命令并取首行输出，失败返回空串。
+func readCommand(name string, args ...string) string {
+	out, err := exec.Command(name, args...).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// detectVirt 猜测虚拟化类型。
+func detectVirt() string {
+	if v := readCommand("systemd-detect-virt"); v != "" && v != "none" {
+		return v
+	}
+	for _, path := range []string{
+		"/sys/class/dmi/id/product_name",
+		"/sys/class/dmi/id/sys_vendor",
+		"/sys/class/dmi/id/product_version",
+	} {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		s := strings.ToLower(string(b))
+		for _, k := range []string{"kvm", "qemu", "vmware", "virtualbox", "xen", "hyper-v", "microsoft", "amazon", "openstack", "docker", "lxc", "parallels", "bhyve"} {
+			if strings.Contains(s, k) {
+				return k
+			}
+		}
+	}
+	return ""
+}
+
+// detectCPUModel 读取 CPU 型号。
+func detectCPUModel() string {
+	if b, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+		// ⚠️ /proc/cpuinfo 长这样：`model name\t: Intel(R) Xeon(...)`
+		// —— 键和冒号之间**有一个制表符**。
+		// 以前搜 "model name:" 是搜不到的，所以 CPU 型号一直是空的。
+		// 正确做法是按冒号切、把左边的键 TrimSpace 再比。
+		for _, line := range strings.Split(string(b), "\n") {
+			i := strings.Index(line, ":")
+			if i < 0 {
+				continue
+			}
+			key := strings.TrimSpace(line[:i])
+			if key != "model name" && key != "Hardware" && key != "Processor" {
+				continue
+			}
+			if v := strings.TrimSpace(line[i+1:]); v != "" {
+				return v
+			}
+		}
+	}
+	if v := readCommand("sysctl", "-n", "machdep.cpu.brand_string"); v != "" {
+		return v
+	}
+	return os.Getenv("PROCESSOR_IDENTIFIER")
+}
+
+// detectMemTotal 读取内存总字节数。
+func detectMemTotal() int64 {
+	if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(line, "MemTotal:") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 {
+					if kb, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+						return kb * 1024
+					}
+				}
+			}
+		}
+	}
+	if v := readCommand("sysctl", "-n", "hw.memsize"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+// detectDiskTotal 用 df 估算根分区总字节数（取不到返回 0）。
+func detectDiskTotal() int64 {
+	root := "/"
+	if runtime.GOOS == "windows" {
+		return 0
+	}
+	out := readCommand("df", "-P", "-k", root)
+	lines := strings.Split(out, "\n")
+	if len(lines) < 2 {
+		return 0
+	}
+	fields := strings.Fields(lines[1])
+	if len(fields) < 2 {
+		return 0
+	}
+	if kb, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+		return kb * 1024
+	}
+	return 0
+}
+
+// ---- 小工具 ----
+
+func (a *Agent) token() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.Token
+}
+
+// installToken 取注册用的一次性安装令牌。
+//
+// 取值顺序：环境变量 → 命令行/配置里的 token（仅当它是 it_ 前缀）→ 配置文件 install_token → 配置文件 token。
+// 最后一项是为了兼容安装脚本：脚本把安装令牌写在 token 键里，注册成功后该键会被替换成节点令牌。
+func (a *Agent) installToken() string {
+	if v := strings.TrimSpace(os.Getenv(InstallTokenEnv)); v != "" {
+		return v
+	}
+	a.mu.Lock()
+	cfgTok := strings.TrimSpace(a.cfg.Token)
+	a.mu.Unlock()
+	if strings.HasPrefix(cfgTok, "it_") {
+		return cfgTok
+	}
+	if b, err := os.ReadFile(a.configPath); err == nil {
+		m := parseFlatTOML(string(b))
+		if v := strings.TrimSpace(m["install_token"]); v != "" {
+			return v
+		}
+		return strings.TrimSpace(m["token"])
+	}
+	return ""
+}
+
+func (a *Agent) getInterval() time.Duration {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.interval
+}
+
+func (a *Agent) setInterval(ms int) {
+	a.mu.Lock()
+	a.interval = time.Duration(clampInterval(ms)) * time.Millisecond
+	a.cfg.IntervalMS = clampInterval(ms)
+	a.mu.Unlock()
+}
+
+// shutdown 停止命令 worker（最多等 3 秒）并关闭空闲连接。
+func (a *Agent) shutdown() {
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return
+	}
+	a.closed = true
+	close(a.cmdDone)
+	a.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		a.cmdWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(shutdownWait):
+		logger.Printf("等待在途命令结束超时（%s），强制退出", shutdownWait)
+	}
+	if a.client != nil {
+		a.client.CloseIdleConnections()
+	}
+	logger.Printf("已停止")
+}
+
+// backoff 指数退避：1s 起步、60s 封顶、±20% 抖动。
+type backoff struct {
+	cur time.Duration
+}
+
+func newBackoff() *backoff {
+	return &backoff{cur: initialBackoff}
+}
+
+func (b *backoff) next() time.Duration {
+	d := b.cur
+	// ±20% 抖动
+	jitter := 0.8 + 0.4*rand.Float64()
+	d = time.Duration(float64(d) * jitter)
+	if b.cur < maxBackoff {
+		b.cur *= 2
+		if b.cur > maxBackoff {
+			b.cur = maxBackoff
+		}
+	}
+	if d > maxBackoff*6/5 {
+		d = maxBackoff * 6 / 5
+	}
+	return d
+}
+
+func (b *backoff) reset() { b.cur = initialBackoff }
+
+// parseRetryAfter 解析 Retry-After：支持秒数与 HTTP 日期两种形式。
+func parseRetryAfter(v string) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return initialBackoff
+	}
+	if sec, err := strconv.Atoi(v); err == nil && sec >= 0 {
+		return clampDur(time.Duration(sec)*time.Second, initialBackoff, maxBackoff)
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		return clampDur(time.Until(t), initialBackoff, maxBackoff)
+	}
+	return initialBackoff
+}
+
+func clampDur(d, lo, hi time.Duration) time.Duration {
+	if d < lo {
+		return lo
+	}
+	if d > hi {
+		return hi
+	}
+	return d
+}
+
+// sleepCtx 可被 ctx 打断的 sleep，返回 false 表示 ctx 已取消。
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		select {
+		case <-ctx.Done():
+			return false
+		default:
+			return true
+		}
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}
+
+// maskToken 只暴露 token 前 6 位，避免日志泄露凭据。
+func maskToken(t string) string {
+	if len(t) <= 6 {
+		return "******"
+	}
+	return t[:6]
+}
+
+// maskFingerprint 指纹只打前 12 位。
+func maskFingerprint(fp string) string {
+	if len(fp) > 12 {
+		return fp[:12] + "…"
+	}
+	return fp
+}
+
+// truncate 截断字符串，避免把大段响应体打进日志。
+func truncate(s string, n int) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}

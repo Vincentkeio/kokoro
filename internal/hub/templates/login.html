@@ -1,0 +1,25 @@
+{{define "login.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>登录 · {{.SiteName}}</title>
+{{template "head.html" .}}
+</head>
+<body {{.Theme.Attrs}} data-k-theme="{{.Theme.ID}}">
+<main class="wrap login">
+  <div class="panel narrow">
+    <h2>{{.SiteName}} 后台</h2>
+    {{if .Error}}<p class="bad">{{.Error}}</p>{{end}}
+    <form method="post" action="/admin">
+      <input type="text" name="username" placeholder="管理员用户名" value="{{.User}}" autocomplete="username" autofocus required>
+      <input type="password" name="password" placeholder="密码" autocomplete="current-password" required>
+      <button class="btn" type="submit">进入</button>
+    </form>
+    <a class="btn ghost login-home" href="/">← 返回首页</a>
+    <p class="hint">忘记密码？可以在 VPS 输入 <code>kokoro</code> 打开菜单重置，也可以直接运行下面这一行：<br>
+<code>kokoro passwd --user 新用户名 --password '新密码'</code></p>
+  </div>
+</main>
+</body>
+</html>
+{{end}}

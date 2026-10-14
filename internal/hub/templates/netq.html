@@ -1,0 +1,147 @@
+{{/* 一格：当前值 + 最近 N 轮波动。
+     历史不足 2 轮（新收敛的范围）时没有波，只出数字/不通。 */}}
+{{define "nqcell"}}
+<span class="nqcell">
+  <span class="nqcurrent">{{if not .HasData}}<span class="miss">—</span>{{else if .OK}}<span class="{{latClass .Latency}}">{{fmtMS .Latency}} ms</span>{{else}}<span class="miss">不通</span>{{end}}</span>
+  {{if .WaveLine}}
+  <svg class="nqwave" viewBox="0 0 108 22" preserveAspectRatio="none" aria-hidden="true">
+    <path class="wa" d="{{.WaveArea}}"/><path class="wl" d="{{.WaveLine}}"/>
+  </svg>
+  {{end}}
+</span>
+{{end}}
+
+{{define "netq.html"}}
+<section class="panel netq" id="nq-detail" data-wave-range="{{.WaveRange}}">
+<style>
+.netq .nq-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.netq .nq-head h3 { margin: 0; }
+.netq .nq-head-tools { display:flex; align-items:center; gap:12px; margin-left:auto; }
+.netq.nq-loading { opacity:.7; }
+.netq .nq-ranges { display:flex; align-items:center; gap:4px; }
+.netq .nq-ranges button { border:1px solid var(--line); border-radius:var(--r-sm); background:transparent; color:var(--muted); padding:5px 8px; cursor:pointer; font:inherit; font-size:12px; }
+.netq .nq-ranges button:hover,.netq .nq-ranges button:focus-visible { color:var(--fg); border-color:var(--accent); }
+.netq .nq-ranges button[aria-pressed="true"] { background:var(--bg-soft); color:var(--fg); border-color:var(--accent); }
+.netq .nq-sum { color: var(--muted); font-size: 12.5px; }
+.netq .nq-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 14px 0; }
+.netq .nq-isp {
+  background: var(--bg-soft); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: 10px 12px;
+}
+.netq .nq-isp .nm { color: var(--muted); font-size: 12px; }
+.netq .nq-isp .big { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.netq .nq-isp .big small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.netq .nq-isp .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.netq .nq-ext { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin: 0 0 14px; }
+.netq table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.netq th, .netq td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.netq th { color: var(--muted); font-weight: 500; font-size: 12px; }
+.netq td.p { font-weight: 500; }
+.netq .ok { color: var(--ok); }
+.netq .warn { color: var(--warn); }
+.netq .bad { color: var(--bad); }
+.netq .miss { color: var(--muted); }
+/* 分省格子的波动小图：和卡片三网同一张脸（netqWavePaths 算的路径），
+   中性灰不抢数字的颜色（ok/warn/bad 已经在数字上表达了）。
+   vector-effect 防 preserveAspectRatio="none" 把线拉成一头粗一头细。 */
+.netq .nqcell { display: grid; grid-template-columns: 1fr; gap: 4px; min-width: 0; }
+.netq .nqcurrent { white-space:nowrap; }
+.netq .nqwave { display:block; width:min(100%, 240px); height:34px; }
+.netq .nqwave .wa { fill: color-mix(in srgb, var(--muted) 16%, transparent); }
+.netq .nqwave .wl { fill: none; stroke: var(--muted); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.netq td { vertical-align: middle; }
+.netq .nq-more { margin-top: 10px; }
+.netq .nq-hidden { display: none; }
+.netq .nq-note { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 12px 0 0; }
+.netq .nq-stale { color: var(--warn); font-size: 12.5px; }
+@media (max-width: 700px) {
+  .netq .nq-head-tools { width:100%; margin-left:0; justify-content:space-between; flex-wrap:wrap; }
+  .netq .nq-ranges { flex-wrap:wrap; }
+  .netq .nqwave { width:min(100%, 180px); height:30px; }
+  .netq table { min-width:640px; }
+  .netq { overflow-x:auto; }
+}
+</style>
+
+  <div class="nq-head">
+    <h3>网络质量 · 三网分省</h3>
+    <span class="nq-sum">
+      探测方式 {{.ModeLabel}} · 更新于 {{.Age}} · 范围 {{.Provinces}} 省 / 有记录 {{.Total}} 个探测点（通 {{.OKN}}）
+    </span>
+    <div class="nq-head-tools">
+      <span class="nq-sum">三网基准：上海</span>
+      <div class="nq-ranges" role="group" aria-label="分省波动图时间范围">
+        {{range .WaveRanges}}<button type="button" data-nq-range="{{.Key}}" aria-pressed="{{if eq .Key $.WaveRange}}true{{else}}false{{end}}">{{.Label}}</button>{{end}}
+      </div>
+    </div>
+    {{if .Stale}}<span class="nq-stale">数据偏旧，agent 可能没在跑</span>{{end}}
+  </div>
+
+  <div class="nq-cards">
+    {{range .ISPs}}
+    <div class="nq-isp">
+      <div class="nm">{{.Label}} · 上海</div>
+      <div class="big {{latClass .Latency}}">{{if .Latency}}{{fmtMS .Latency}}<small>ms</small>{{else}}<span class="miss">—</span>{{end}}</div>
+      <div class="sub">{{if .Total}}丢包 {{printf "%.0f" .Loss}}% · 抖动 {{fmtMS .Jitter}}ms{{else}}上海未纳入探测范围或暂无上报{{end}}</div>
+    </div>
+    {{end}}
+  </div>
+
+  {{if .Best}}
+  <div class="nq-ext">
+    <span>最快：
+      {{range $i, $r := .Best}}{{if $i}} · {{end}}{{$r.Province}} <b class="ok">{{fmtMS $r.Avg}}ms</b>{{end}}
+    </span>
+    <span>最慢：
+      {{range $i, $r := .Worst}}{{if $i}} · {{end}}{{$r.Province}} <b class="bad">{{fmtMS $r.Avg}}ms</b>{{end}}
+    </span>
+  </div>
+  {{end}}
+
+  <table>
+    <thead>
+      <tr><th>省份</th><th>电信</th><th>联通</th><th>移动</th><th>平均</th></tr>
+    </thead>
+    <tbody>
+      {{range $i, $r := .Rows}}
+      <tr{{if ge $i 10}} class="nq-hidden nq-extra"{{end}}>
+        <td class="p">{{$r.Province}}</td>
+        <td>{{with $r.Telecom}}{{template "nqcell" .}}{{end}}</td>
+        <td>{{with $r.Unicom}}{{template "nqcell" .}}{{end}}</td>
+        <td>{{with $r.Mobile}}{{template "nqcell" .}}{{end}}</td>
+        <td>{{if $r.Avg}}<b>{{fmtMS $r.Avg}}</b>{{else}}<span class="miss">—</span>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+
+  {{if gt (len .Rows) 10}}
+  <div class="nq-more">
+      <button class="link" id="nq-toggle" type="button" data-total="{{len .Rows}}">展开全部 {{len .Rows}} 个省 ▾</button>
+  </div>
+  {{end}}
+
+  {{if .Overseas}}
+  <table style="margin-top:14px">
+    <thead><tr><th>境外 / 港澳台</th><th>延迟</th></tr></thead>
+    <tbody>
+      {{range .Overseas}}
+      <tr>
+        <td class="p">{{.Province}}</td>
+        <td>{{with .Telecom}}{{template "nqcell" .}}{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  <p class="nq-note">
+    延迟单位 ms。上方三网以本机到上海三网节点为基准；下表按省份显示各自最近一次实际上报，未轮到时保留上次结果，无历史显示横线。<br>
+    境外为当地单点。运营商 DNS 常限制跨网访问，「不通」仅表示该探测点未响应。
+  </p>
+
+  {{/* 展开/收起的绑定在 app.js（bindNQToggle）—— 这块是 SSE netq 事件的
+        局部更新目标，整块替换后内联 <script> 不会重跑，事件就丢了。
+        委托式绑定放外面更稳（见 app.js 的同名函数）。 */}}
+</section>
+{{end}}

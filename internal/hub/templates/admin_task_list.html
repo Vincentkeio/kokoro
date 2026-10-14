@@ -1,0 +1,85 @@
+{{define "admin_task_list.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>任务列表 · {{.SiteName}} 后台</title>
+{{template "head.html" .}}
+<style>
+.task-wrap { max-width: 72rem; }
+.task-list-head { display:flex; align-items:center; justify-content:space-between; gap:var(--s3); flex-wrap:wrap; margin:0 0 var(--s4); }
+.task-list-head h1 { margin:0; font-size:20px; }
+.task-list-head p { margin:4px 0 0; color:var(--muted); font-size:13px; }
+.task-list-panel { padding:var(--s4); }
+.task-list { list-style:none; margin:0; padding:0; }
+.task-list li { display:flex; align-items:baseline; gap:var(--s3); flex-wrap:wrap; padding:var(--s3) 0; border-top:1px solid var(--line); }
+.task-list li:first-child { border-top:0; }
+.task-list .st { flex:none; padding:2px 8px; border-radius:var(--r-sm); font-size:11px; }
+.task-list .st-queued { background:var(--sunken); color:var(--muted); }
+.task-list .st-running { background:color-mix(in srgb,var(--accent) 18%,transparent); color:var(--accent); }
+.task-list .st-done { background:color-mix(in srgb,var(--ok) 16%,transparent); color:var(--ok); }
+.task-list .st-failed { background:color-mix(in srgb,var(--bad) 16%,transparent); color:var(--bad); }
+.task-list .st-cancelled { background:var(--sunken); color:var(--faint); }
+.task-list .task-node { flex:none; color:var(--muted); font-size:12px; }
+.task-list .task-sum { flex:1; min-width:12rem; font-size:13px; overflow-wrap:anywhere; }
+.task-list .task-time { color:var(--faint); font:11px var(--mono); white-space:nowrap; }
+.task-list .task-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.task-list .task-actions form { margin:0; }
+.task-list .task-err { color:var(--bad); }
+.task-list-empty { padding:16px 0; color:var(--muted); }
+@media(max-width:620px) { .task-list-panel { padding:var(--s3); } .task-list .task-sum { min-width:100%; order:3; } .task-list .task-actions { margin-left:0; } }
+</style>
+</head>
+<body {{.Theme.Attrs}} data-k-theme="{{.Theme.ID}}" data-admin="1">
+<header class="top"><div class="wrap">
+  <a class="brand" href="/">{{.SiteName}} 后台</a>
+  <div class="top-tools"><a class="btn ghost small" href="/admin#nodes">← 后台</a></div>
+</div></header>
+<main class="wrap task-wrap">
+  <div class="task-list-head">
+    <div><h1>任务列表</h1><p>最近 50 项，任务状态会自动更新。</p></div>
+  </div>
+  <div class="admin-task-live" data-admin-task-live data-status="{{if .Err}}failed{{else if .Msg}}queued{{end}}" role="{{if .Err}}alert{{else}}status{{end}}" aria-live="polite" {{if and (not .Msg) (not .Err)}}hidden{{end}}>
+    <span class="admin-task-live-mark" aria-hidden="true"></span>
+    <span data-admin-task-live-text>{{if .Err}}{{.Err}}{{else}}{{.Msg}}{{end}}</span>
+    <button type="button" class="admin-task-live-close" data-admin-task-live-close aria-label="关闭任务消息">×</button>
+  </div>
+  <section class="panel task-list-panel" aria-labelledby="task-list-title">
+    <h2 id="task-list-title" class="sr-only">最近任务</h2>
+    {{template "admin_task_list_rows.html" .Rows}}
+  </section>
+</main>
+<script src="/static/app.js?v=125"></script>
+</body>
+</html>
+{{end}}
+
+{{define "admin_task_list_rows.html"}}
+<div id="admin-task-list-rows" data-global-task-list role="region" aria-label="最近任务列表" aria-live="polite">
+  {{if .}}
+  <ul class="task-list">
+    {{range .}}
+    <li>
+      <span class="st st-{{.Task.Status}}">{{if eq .Task.Status "queued"}}排队中{{else if eq .Task.Status "running"}}执行中{{else if eq .Task.Status "done"}}已完成{{else if eq .Task.Status "cancelled"}}已取消{{else}}失败{{end}}</span>
+      <a class="task-node" href="/admin/tasks?node={{.Task.NodeID}}">{{if .NodeName}}{{.NodeName}}{{else}}已删除节点{{end}}</a>
+      <span class="task-sum"><b>{{.Task.Title}}</b>{{if .Task.Summary}} · {{.Task.Summary}}{{end}}{{if .Task.Error}} · <span class="task-err">{{.Task.Error}}</span>{{end}}</span>
+      <span class="task-time">{{fmtTime .Task.CreatedAt}}</span>
+      <span class="task-actions">
+        <a class="btn small ghost" href="/admin/tasks?node={{.Task.NodeID}}">详情</a>
+        {{if or (eq .Task.Status "queued") (eq .Task.Status "running")}}
+        <form method="post" action="/admin/tasks">
+          <input type="hidden" name="action" value="cancel">
+          <input type="hidden" name="scope" value="all">
+          <input type="hidden" name="node" value="{{.Task.NodeID}}">
+          <input type="hidden" name="task_id" value="{{.Task.ID}}">
+          <button class="btn small ghost task-cancel" type="submit">取消</button>
+        </form>
+        {{end}}
+      </span>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="task-list-empty">还没有测试任务。</p>
+  {{end}}
+</div>
+{{end}}

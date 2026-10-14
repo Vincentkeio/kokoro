@@ -1,0 +1,610 @@
+{{define "home.html"}}
+<!doctype html>
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<head>
+<title>{{if .Query}}搜索「{{.Query}}」 · {{.SiteName}}{{else}}{{.SiteName}} · 小鸡列表{{end}}</title>
+<meta name="description" content="{{.SiteName}} · 每台小鸡都有一颗心">
+{{template "head.html" .}}
+</head>
+<body {{.Theme.Attrs}} data-k-theme="{{.Theme.ID}}" data-k-list-mode="{{.Theme.ListMode}}" data-k-card-columns="3">
+{{template "topbar.html" .}}
+
+<main class="wrap">
+
+  {{if not .Hero.Enabled}}
+  <section class="console-intro" aria-labelledby="console-title">
+    <div class="console-intro-copy">
+      <p class="console-kicker"><span></span> INFRASTRUCTURE / LIVE</p>
+      <h1 id="console-title">服务器概况</h1>
+      <p>全球节点、资源使用与链路质量的实时状态。</p>
+    </div>
+    <div class="console-clock-slot" aria-label="当前时间">
+      {{template "clockchip.html" .}}
+    </div>
+    <div class="console-summary" aria-label="节点状态">
+      <div><b>{{.Total}}</b><span>节点总数</span></div>
+      <div class="is-online"><b data-field="online">{{.Online}}</b><span>当前在线</span></div>
+    </div>
+  </section>
+  {{end}}
+
+  {{/* 只有主题开了 Hero 才渲染这一行。 */}}
+  {{if .Hero.Enabled}}
+  {{/* ⚠️ 判据是 Hero.Enabled 而不是 Title —— Title 永远等于站点名（非空），
+        用它判的话整行永远渲染。 */}}
+  <section class="hero">
+    {{if .Hero.Enabled}}{{if or .Hero.Title .Hero.Subtitle}}
+    <div class="hero-txt">
+      <h1>{{if .Hero.Title}}{{.Hero.Title}}{{else}}{{.SiteName}}{{end}}</h1>
+      {{if .Hero.Subtitle}}<p>{{.Hero.Subtitle}}</p>{{end}}
+      {{/* 这里刻意**不再放**「N 台小鸡 / M 在线」：下面的统计卡已经有一份，
+          同一屏出现两次同样的数字，只会让人犹豫哪个才是准的。 */}}
+    </div>
+    {{end}}{{end}}
+  </section>
+  {{end}}
+
+  {{/* 名片已并进顶栏（partials.html 的 top-owner）。这里只剩「名片没填」的
+        管理员引导 —— 访客看不到"这里缺东西"。 */}}
+  {{if .OwnerEmptyHint}}
+  <div class="home-top">
+  <section class="panel owner-empty">
+    <span class="tag-admin">仅你可见</span>
+    <span>还没填站长名片（名字 / 头像 / 个性签名）。填完这里就会公开显示给所有访客。</span>
+    <a class="btn small" href="/admin#profile">去填 →</a>
+  </section>
+  </div>{{/* /.home-top */}}
+  {{end}}
+
+  {{/* 波动图数据。放在 <script type="application/json"> 而不是内联 JS 里：
+       数据里的 </script> 不会提前闭合标签，也不会被 HTML 转义坏。 */}}
+  {{if .Dash.Points}}
+  <script id="rate-data" type="application/json">{{.DashJSON}}</script>
+  {{end}}
+  {{/* CPU / 内存平均使用率图的数据。和速率曲线同一个 1 小时窗口，
+       所以是单独的块而不是塞进 rate-data —— 两套点的个数未必相同
+       （某台机器某分钟没上报占用率），硬凑一个数组只会互相拖累。 */}}
+  {{if .Dash.ResPoints}}
+  <script id="res-data" type="application/json">{{.ResJSON}}</script>
+  {{end}}
+
+  {{/* 统计卡整排已拆掉：节点总数/在线/离线/覆盖地区 收进「总览」，
+       今日/本月流量 收进「全网速率」，探测点按 boss 要求删除。
+       同一屏出现两遍同样的数字，访客只会犹豫哪个准。 */}}
+
+
+
+  {{if .Query}}
+  <p class="hint result-line">
+    「{{.Query}}」命中 {{.Total}} 台 · <a href="/">返回全部</a>
+  </p>
+  {{end}}
+
+  {{/* 全球节点这一行：右侧是点阵地球，左侧空出来的区域放"动态/榜单"这类
+       信息密度高的内容。窄屏时自动叠成一列。 */}}
+  <div class="home-band">
+    {{/* 全网速率：从仪表盘搬过来的。
+         取代了原来的「实时动态」卡片 —— 动态流是"发生了什么"，
+         速率是"现在怎么样"，后者跟旁边的地球更配（都是实时状态）。
+
+         动态流没有删掉，只是首页不显示了；内容仍在 events 表里，
+         后台和节点页还能看到历史。 */}}
+    <section class="panel home-side-new" id="speed">
+      <div class="live-head">
+        <h3>全网速率</h3>
+        <span class="live-pulse" aria-hidden="true"></span>
+      </div>
+      {{if .Online}}
+      <div class="rate-row">
+        <div class="rate">
+          <span class="rl">↑ 上行</span>
+          <b class="rv">{{fmtRate .Dash.NetUp}}</b>
+        </div>
+        <div class="rate">
+          <span class="rl">↓ 下行</span>
+          <b class="rv">{{fmtRate .Dash.NetDown}}</b>
+        </div>
+      </div>
+      {{/* 今日 / 本月流量并进来 —— 跟实时速率是同一件事的两个时标：
+           此刻多快、今天跑了多少、这个月跑了多少。 */}}
+      <div class="rate-row traf">
+        <div class="rate">
+          <span class="rl">今日流量</span>
+          <b class="rv sm">{{fmtBytes .Dash.TodayTotal}}</b>
+          <span class="rs">↑ {{fmtBytes .Dash.TodayUp}} · ↓ {{fmtBytes .Dash.TodayDown}}</span>
+        </div>
+        <div class="rate">
+          <span class="rl">本月流量</span>
+          <b class="rv sm">{{fmtBytes .Dash.MonthTotal}}</b>
+          <span class="rs">↑ {{fmtBytes .Dash.MonthUp}} · ↓ {{fmtBytes .Dash.MonthDown}}</span>
+        </div>
+      </div>
+      {{else}}
+      <p class="hint">没有在线节点。</p>
+      {{end}}
+
+      {{/* 最近一小时的全网速率曲线（从仪表盘搬过来的）。
+           和上面的四个数字配着看：数字是"此刻"，曲线是"这一小时怎么变的" ——
+           只看数字的话，分不清刚才是平稳还是正在飙。 */}}
+      {{if .Dash.Points}}
+      {{/* 曲线的时间范围与刻度：折线本身看不出"这是多久、多高算高"。
+           刻度数值不能写进 SVG —— 它用 preserveAspectRatio="none" 拉伸，
+           文字会跟着变形，所以放一个 HTML 覆盖层（服务端直接渲染）。 */}}
+      <div class="rate-chart-wrap">
+        <svg class="rate-chart" viewBox="0 0 600 180" preserveAspectRatio="none"
+             role="img" aria-label="最近一小时全网上下行速率" data-rate-chart></svg>
+        <div class="rate-axis" aria-hidden="true">
+          <span>{{fmtRate .Dash.ScaleMax}}</span>
+          <span>{{fmtRate .Dash.ScaleMid}}</span>
+          <span>0</span>
+        </div>
+      </div>
+      <div class="rate-legend">
+        <span class="rate-range">{{.Dash.SpanLabel}}</span>
+        <span><i style="background:var(--cpu)"></i>上行 峰值 {{fmtRate .Dash.PeakUp}}</span>
+        <span><i style="background:var(--mem)"></i>下行 峰值 {{fmtRate .Dash.PeakDown}}</span>
+        <span>{{len .Dash.Points}} 个采样点</span>
+      </div>
+      {{else}}
+      <p class="hint">最近一小时采样点还不够，再等等。</p>
+      {{end}}
+
+      {{/* 第二张：CPU / 内存 平均使用率。
+            和上面的速率曲线同一个时间窗 —— 速率回答"此刻多快"，
+            这张回答"这些小鸡在忙什么"。纵轴固定 0–100%（占用率
+            不能按峰值自适应：两台空闲机器能把 50% 画成爆满）。
+            刻度文字同样走 HTML 覆盖层，原因同上一张图。 */}}
+      {{if .Dash.ResPoints}}
+      <div class="rate-sub">CPU / 内存 平均使用率</div>
+      <div class="res-chart-wrap">
+        <svg class="rate-chart" viewBox="0 0 600 180" preserveAspectRatio="none"
+             role="img" aria-label="最近一小时全网 CPU 内存平均使用率" data-res-chart></svg>
+        <div class="rate-axis" aria-hidden="true">
+          <span>100%</span>
+          <span>50%</span>
+          <span>0%</span>
+        </div>
+      </div>
+      <div class="rate-legend">
+        <span class="rate-range">{{.Dash.SpanLabel}}</span>
+        <span><i style="background:var(--cpu)"></i>CPU 平均 {{printf "%.1f" .Dash.ResAvgCPU}}%</span>
+        <span><i style="background:var(--mem)"></i>内存 平均 {{printf "%.1f" .Dash.ResAvgMem}}%</span>
+        <span>{{len .Dash.ResPoints}} 个采样点</span>
+      </div>
+      {{end}}
+    </section>
+
+    {{/* 没有可定位的节点时整块地球不渲染——画一个空球没意义 */}}
+    {{if .Globe.Places}}
+    <section class="map-card">
+      <div class="map-head">
+        <h2>全球节点</h2>
+        <div class="map-legend">
+          {{/* 只保留三个图例项。原来这里还有一条
+               <span><i class="i-hub"></i>主机</span>，而 .i-hub 从来没写过
+               样式 —— 那个点是透明的，图例里就变成"在线 主机 离线 主机"
+               两个"主机"，其中一个前面还没有点。属于改到 i-cur 时忘了删的
+               遗留，2026-10-11 一并清掉。 */}}
+          <span><i class="i-on"></i>在线</span>
+          <span><i class="i-off"></i>离线</span>
+          {{if .Globe.HasHub}}<span><i class="i-cur"></i>主机</span>{{end}}
+        </div>
+
+
+      </div>
+      <div class="globe" id="globe" data-land="{{.GlobeLandURL}}"
+           aria-label="节点分布地球"></div>
+      <div class="map-foot">
+        <span>拖动旋转 · 滚轮缩放</span>
+        <span>{{len .Globe.Places}} 个可定位节点</span>
+      </div>
+    </section>
+    {{end}}
+  </div>
+
+{{if .Nodes}}
+{{/* 首页分组是筛选器：节点卡片始终只渲染一份，切换时过滤可见卡片。 */}}
+<div class="group-head home-list-toolbar">
+  <nav class="home-group-filters" role="group" aria-label="按分组筛选节点">
+    {{range $i, $filter := .GroupFilters}}
+    <button class="home-group-filter{{if eq $i 0}} is-active{{end}}" type="button" data-home-group-filter="{{$filter.Key}}" aria-pressed="{{if eq $i 0}}true{{else}}false{{end}}">
+      <span>{{$filter.Name}}</span><span class="home-group-filter-count">{{$filter.Count}}</span>
+    </button>
+    {{end}}
+  </nav>
+  <label class="grid-control">
+    <span>排列</span>
+    <select data-card-columns aria-label="每行卡片数量">
+      <option value="3">3 × N</option>
+      <option value="4">4 × N</option>
+      <option value="5">5 × N</option>
+    </select>
+  </label>
+  <form class="search list-search" method="get" action="/search" role="search">
+    <input type="search" name="q" value="{{if .Query}}{{.Query}}{{end}}" placeholder="搜小鸡：名字 / 地区 / 机房 / 标签…" aria-label="搜索小鸡">
+    <button class="btn small" type="submit">搜索</button>
+  </form>
+</div>
+  <section class="grid home-node-grid" data-home-node-grid aria-label="VPS 节点列表">
+    {{range .Nodes}}
+    <article class="card{{if not .Online}} off{{end}}" data-node="{{.ID}}" data-home-node-card data-home-node-group="{{if .Group}}group:{{.Group}}{{else}}ungrouped{{end}}">
+      <div class="card-columns">
+      <div class="card-column card-primary">
+      <div class="card-identification">
+      <div class="card-head">
+        <h2>{{if .FlagCode}}<span class="flag">{{flag .FlagCode}}</span>{{end}}<a href="/n/{{.Slug}}">{{.Name}}</a></h2>
+        {{/* data-field="dot" 是 SSE 实时更新在线状态的钩子。
+               ⚠️ 卡片底部原本也有一个带这个钩子的绿点，删掉之后
+               这里就是**唯一**的了 —— 忘了挂上，在线状态就再也不会
+               随上报实时变（页面看着像卡住了）。 */}}
+        <span class="status {{if .Online}}on{{else}}off{{end}}" data-field="dot"><i></i><b data-field="dottext">{{if .Online}}在线{{else}}离线{{end}}</b></span>
+      </div>
+
+      {{/* 第二行的地名已删（boss 2026-10-11）：这一行整个留给标签。
+            地区信息详情页有，卡片上重复一遍只是噪音。 */}}
+
+      {{/* 标签行：NAT（固定 tag）+ 自定义标签 + **到期倒计时**。
+            倒计时是**必须**有的那个 —— 站长一眼就知道还有几天。
+            NAT 原来在规格表的「网络」项里，boss 2026-10-11 要求挪到
+            这里当固定 tag：它和"大盘鸡"是同一性质的信息（机器属性），
+            规格表只留大小快慢这类硬指标。
+            到期槽固定保留；没有到期日显示横线，卡片保持同一行高。 */}}
+      <div class="tags">
+        <div class="tag-list">
+          {{if .NAT}}<span class="tag nat" title="NAT：共享公网 IP，没有独立 IPv4">NAT</span>{{end}}
+          {{range .Tags}}<span class="tag">{{.}}</span>{{end}}
+        </div>
+        <span class="tag expire-slot {{if .ExpireText}}{{.ExpireLv}}{{else}}exp-empty{{end}}" title="到期时间">{{if .ExpireText}}{{.ExpireText}}{{else}}—{{end}}</span>
+      </div>
+      </div>
+
+      {{/* 机器规格：CPU 型号（独占一行）/ 核心数 / 内存 / Swap / 磁盘 /
+            系统 / 虚拟化 / 加速 / 运行。
+            放在指标条**上面** —— 先看清是什么机器，再看它现在忙不忙。
+            ⚠️ 这里是**唯一**一块规格，不要再在下面加第二块（曾经加重复过）。
+            ⚠️ CPU 型号必须独占一行：它比别的字段长得多，塞半栏会被裁掉。
+            ⚠️ CPU 型号**不带标签**（Bare）：型号本身就是小标题，
+            再写个"CPU"标签是同一句话说两遍（boss 2026-10-11）。 */}}
+      {{if .Specs}}
+      <dl class="specs">
+        {{range .Specs}}
+        <div class="{{if .Full}}full {{end}}{{if .Bare}}bare {{end}}{{if .Wide}}wide {{end}}{{if .Level}}lv-{{.Level}}{{end}}">
+          {{if not .Bare}}<dt>{{.Label}}</dt>{{end}}<dd{{if .Tip}} title="{{.Tip}}"{{end}}>{{if .Icon}}<svg class="osi" viewBox="0 0 24 24" style="--os-brand:{{.IconColor}}" aria-hidden="true"><path d="{{.Icon}}"/></svg>{{end}}<span class="spec-value"{{if eq .Label "Swap"}} data-field="swap"{{end}}>{{.Value}}</span></dd>
+        </div>
+        {{end}}
+      </dl>
+      {{end}}
+
+      {{if .Latest}}
+      <div class="gauges">
+        <div class="g"><span class="gl">CPU</span>
+          <i class="bar"><i class="cpu lv-{{.CPULv}}" style="width:{{printf "%.1f" .CPUPct}}%" data-field="cpu-bar"></i></i>
+          <em class="lv-{{.CPULv}}" data-field="cpu">{{printf "%.1f" .CPUPct}}%</em></div>
+        <div class="g"><span class="gl">内存</span>
+          <i class="bar"><i class="mem lv-{{.MemLv}}" style="width:{{printf "%.1f" .MemPct}}%" data-field="mem-bar"></i></i>
+          <em class="lv-{{.MemLv}}" data-field="mem">{{printf "%.1f" .MemPct}}%</em></div>
+        <div class="g"><span class="gl">磁盘</span>
+          <i class="bar"><i class="disk lv-{{.DiskLv}}" style="width:{{printf "%.1f" .DiskPct}}%" data-field="disk-bar"></i></i>
+          <em class="lv-{{.DiskLv}}" data-field="disk">{{printf "%.1f" .DiskPct}}%</em></div>
+      </div>
+
+      <div class="net">
+        {{if .SparkLine}}
+        {{/* 曲线的时间范围与量级：光一条折线，看不出"这是多久的、多大算大"。
+             左边写时段（固定近 1 小时，数据来自 5 分钟汇总表），
+             右边写窗口内的峰值当刻度。 */}}
+        <div class="spark-cap">
+          <span>近 1 小时</span>
+          <span>峰值 {{fmtRate .SparkPeak}}</span>
+        </div>
+        <svg class="spark" viewBox="0 0 260 40" preserveAspectRatio="none" aria-hidden="true">
+          <path class="sp-area" d="{{.SparkArea}}"/>
+          <path class="sp-line" d="{{.SparkLine}}"/>
+          {{/* 流量粒子：与全球节点的彗星呼应——从左到右扫过曲线，表示"小鸡的
+              数据在往里流"。SMIL 实现，不依赖 JS；begin 用节点 ID 哈希做相位
+              偏移，避免十几张卡片上的粒子同步扫过。 */}}
+          <g class="spark-flow">
+            <circle cx="0" cy="38" r="0" fill="var(--accent)">
+              <animate attributeName="cx" from="-4" to="264" dur="3.2s"
+                       begin="{{sparkDelay .ID}}s" repeatCount="indefinite"/>
+              <animate attributeName="r" values="0;2.4;2.4;0" keyTimes="0;0.18;0.82;1"
+                       dur="3.2s" begin="{{sparkDelay .ID}}s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.18;0.82;1"
+                       dur="3.2s" begin="{{sparkDelay .ID}}s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="0" cy="38" r="0" fill="var(--accent)" opacity="0">
+              <animate attributeName="cx" from="-4" to="264" dur="3.2s"
+                       begin="{{sparkDelayTail .ID}}s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0;0.45;0.45;0" keyTimes="0;0.18;0.82;1"
+                       dur="3.2s" begin="{{sparkDelayTail .ID}}s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+        </svg>
+        {{else}}
+        <div class="spark-cap"><span>近 1 小时</span><span>暂无曲线</span></div>
+        <div class="spark-empty" aria-hidden="true"></div>
+        {{end}}
+        <div class="net-num">
+          <span class="up">↑ <b data-field="up">{{fmtRate .Latest.Net.Up}}</b></span>
+          <span class="down">↓ <b data-field="down">{{fmtRate .Latest.Net.Down}}</b></span>
+          <span class="lat">延迟
+            <i class="bar mini"><i class="cpu lv-{{.LatLv}}" style="width:{{printf "%.0f" .LatencyPct}}%"></i></i>
+            {{.LatencyText}}</span>
+        </div>
+      </div>
+
+      {{else}}
+      <div class="gauges gauges-empty" aria-label="等待资源数据">
+        <div class="g"><span class="gl">CPU</span><i class="bar"><i></i></i><em>—</em></div>
+        <div class="g"><span class="gl">内存</span><i class="bar"><i></i></i><em>—</em></div>
+        <div class="g"><span class="gl">磁盘</span><i class="bar"><i></i></i><em>—</em></div>
+      </div>
+      <div class="net net-empty-data">
+        <div class="spark-cap"><span>近 1 小时</span><span>等待上报</span></div>
+        <div class="spark-empty" aria-hidden="true"></div>
+        <div class="net-num"><span class="up">↑ —</span><span class="down">↓ —</span><span class="lat">延迟 —</span></div>
+      </div>
+      {{end}}
+
+      <div class="vote-actions" aria-label="评价这台服务器">
+        <button type="button" class="act vote up {{if .MineUp}}on{{end}}"
+                data-target="node" data-id="{{.ID}}" data-slug="{{.Slug}}" data-vote="up"
+                title="赞一下（再点取消）">
+          <span class="i">▲</span><span class="n" data-vote-up>{{.VoteUp}}</span>
+        </button>
+        <button type="button" class="act vote down {{if .MineDown}}on{{end}}"
+                data-target="node" data-id="{{.ID}}" data-slug="{{.Slug}}" data-vote="down"
+                title="踩一下（再点取消）">
+          <span class="i">▼</span><span class="n" data-vote-down>{{.VoteDown}}</span>
+        </button>
+      </div>
+
+      </div>
+      <div class="card-column card-secondary">
+
+      {{if .Uptime}}{{template "uptime.html" .Uptime}}{{else}}<div class="uptime-empty" aria-label="等待在线历史"><span>在线率历史采集中</span><b>—</b></div>{{end}}
+
+      {{/* ---- 检测摘要 ----
+           展示回程、IP 质量和上报到的硬件跑分；完整字段保留在浮窗。
+           容器按结果行数自适应，避免较长线路结果被裁切。
+
+           内容来自检测脚本上报的线路 / IP / CPU / 磁盘 / 内存跑分。
+           没跑过脚本时显示「未运行检测脚本」，而不是整块消失：
+           消失会让访客以为"这机器没这功能"，显示占位符才是
+           "还缺一道工序"，一看就知道该去跑脚本。
+
+           鼠标悬停/聚焦时弹浮窗给完整结果，由 JS 管理顶层浮窗与位置。 */}}
+      {{template "task_card.html" .}}
+
+      {{/* ---- 流量 ----
+            紧凑几行，固定高度（跟 IP 卡一个道理：没数据的卡片
+            不该比有数据的矮一截，否则网格参差）。
+
+            流量是估算值（窗口平均速率 × 时长），不是精确计数。
+            每行都带一个同宽的左标签（本日 / 本月），值列才能对齐。
+            原来流量挤在一行、用「今」「月」当行内前缀，两行标签宽度
+            不一致，值就对不齐 —— 拆成独立两行反而更整齐。 ---- */}}
+      <div class="netcard">
+        <p class="netrow">
+          <span class="nl">本日</span>
+          <span class="nv" title="本日估算">{{if .TodayUp}}↑{{.TodayUp}} ↓{{.TodayDown}}{{else}}—{{end}}</span>
+        </p>
+        <p class="netrow">
+          <span class="nl">本月</span>
+          <span class="nv" title="本月估算">{{if .MonthUp}}↑{{.MonthUp}} ↓{{.MonthDown}}{{else}}—{{end}}</span>
+        </p>
+      </div>
+
+      {{/* 三网质量留在右栏，用短行排布控制高度。 */}}
+      {{if .Net3}}{{template "netq_rows.html" .}}{{else}}<div class="netqrows netq-empty" id="netq-rows-{{.ID}}" aria-label="暂无三网延迟记录"><span>三网延迟</span><b>—</b></div>{{end}}
+
+      <div class="card-actions">
+      {{/* 文章、评论与购买操作留在右栏底部。 */}}
+      <div class="actbar">
+        <button type="button" class="act btnlike{{if .Articles}} has-articles{{else}} dim{{end}}" data-dlg="{{.Slug}}" data-panel="art"
+                title="看这台机器的文章">
+          📄 {{if .Articles}}文章 {{.Articles}}{{else}}无文章{{end}}
+        </button>
+        <button type="button" class="act btnlike" data-dlg="{{.Slug}}" data-panel="cmt"
+                title="看这台机器的评论">
+          💬 评论 {{.Comments}}
+        </button>
+      </div>
+      <div class="buyrow">
+        <button type="button" class="btn small buy" data-buy="{{.Slug}}" data-buyname="{{.Name}}"
+                title="留下联系方式，站长会来联系你">
+          我想买它
+        </button>
+        <a class="btn small ghost more" href="/n/{{.Slug}}">查看详情</a>
+      </div>
+      </div>
+
+      </div>
+      </div>
+
+    </article>
+    {{end}}
+  </section>
+  <p class="home-group-empty" data-home-group-empty role="status" hidden>这个分组还没有 VPS。</p>
+  {{else if .Query}}
+  <section class="empty-state">
+    <h2>没搜到</h2>
+    <p>换个词试试，或者 <a href="/">看看全部小鸡</a>。</p>
+  </section>
+  {{else}}
+  <section class="empty-state">
+    <h2>还没有小鸡接入</h2>
+    <p>到 <a href="/admin">后台</a> 拿一条一键命令，在小鸡上执行即可。</p>
+  </section>
+  {{end}}
+
+
+{{/* ---- 两个独立的弹窗 ----
+     文章、评论**各一个**，不共用一个带页签的弹窗：
+     点「文章」出来文章弹窗，点「评论」出来评论弹窗。
+
+     原来做的是右侧滑出的侧边栏，改成**居中弹窗**——
+     侧边栏贴着屏幕边缘，正文容易被拉到很窄；居中更好读。
+
+     默认都是关着的（hidden），点了才弹出；
+     点遮罩、按 ESC、点 ✕ 都能关掉 —— 不做常驻面板，
+     那会一直占着一块地方，而访客大多数时候不看这两样。
+
+     数据按需拉（/n/<slug>/articles.json、comments.json），
+     不预先塞进首页 —— 评论可能上百条，而绝大多数访客根本不点。 ---- */}}
+{{/* ⚠️ 弹窗必须**放在遮罩里面**。
+     遮罩是 flex 容器，靠它把弹窗居中；放成兄弟节点的话
+     弹窗没有定位、会作为一个普通块级元素沉到页面底部 ——
+     表现是"点开只有一片灰背景，看不到内容"。（踩过一次） */}}
+<div class="dlg-scrim" id="dlg-scrim" hidden>
+
+<div class="dlg" id="d-art" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="文章">
+    <header class="dlg-head">
+      <b class="dlg-title">文章</b>
+      <span class="dlg-admin" id="d-art-admin"></span>
+      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body" id="d-art-body"></div>
+  </div>
+
+  <div class="dlg" id="d-cmt" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="评论">
+    <header class="dlg-head">
+      <b class="dlg-title">评论</b>
+      <span class="dlg-admin" id="d-cmt-admin"></span>
+      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body" id="d-cmt-body"></div>
+    {{/* 留言表单：**卡片弹窗里直接发**。详情页的留言区已下线，
+          这里是唯一入口。提交走 JSON（原地刷新列表），不跳页。 */}}
+    <form class="dcmt-form" id="d-cmt-form" hidden>
+      <div class="row">
+        <input name="author" placeholder="昵称（可留空）" maxlength="32">
+        <input name="contact" placeholder="联系方式，可选 —— 只有站长看得到" maxlength="120">
+      </div>
+      <textarea name="content" rows="3" maxlength="2000"
+                placeholder="说点什么… 想收 / 出这台机器也可以直接写在这里"></textarea>
+      <div class="row">
+        <button class="btn small" type="submit">发出留言</button>
+        <span class="hint" id="d-cmt-msg"></span>
+      </div>
+    </form>
+    <footer class="dlg-foot" id="d-cmt-foot"></footer>
+  </div>
+
+</div>
+
+{{/* ---- 购买意向弹窗 ----
+     ⚠️ 它必须和 #dlg-scrim **平级**，不能嵌进那个遮罩里。
+
+     #dlg-scrim 是文章/评论共用的遮罩，默认 hidden。买它弹窗一旦被放进去，
+     JS 里的 scrim.hidden = false 确实执行了、DOM 属性也变了，
+     但父元素还藏着 —— 整棵子树都不渲染，表现就是"点了没反应"，
+     而且**不报任何错**。（2026-10-11 boss 报的就是这个。）
+
+     它自己带 .dlg-scrim，所以有自己的遮罩和居中，不需要借别人的。 ---- */}}
+<div class="dlg-scrim" id="buy-scrim" hidden>
+  <div class="dlg" id="d-buy" aria-hidden="true" role="dialog" aria-modal="true" aria-label="我想买它">
+    <header class="dlg-head">
+      <b class="dlg-title" id="buy-title">我想买它</b>
+      <button type="button" class="dlg-x" data-buyclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body">
+      <p class="hint" id="buy-intro">留个联系方式，站长会主动联系你。这只是意向，不产生任何付款。</p>
+      <form id="buy-form" class="col">
+        <input type="hidden" name="slug" id="buy-slug">
+        <label for="buy-contact">联系方式<span class="req">*</span>
+          <input id="buy-contact" name="contact" maxlength="120" required
+                 placeholder="微信 / QQ / 邮箱 / 手机号，任选">
+        </label>
+        <label for="buy-note">想说点什么（可选）
+          <textarea id="buy-note" name="note" maxlength="200" rows="3" placeholder="例如：想要月付，主要跑…"></textarea>
+        </label>
+        <p class="hint err" id="buy-err" hidden></p>
+      </form>
+      <p class="ok" id="buy-result" role="status" aria-live="polite" hidden></p>
+    </div>
+    <footer class="dlg-foot">
+      <button type="button" class="btn ghost small" data-buyclose>取消</button>
+      <button type="button" class="btn small" id="buy-send">发送</button>
+    </footer>
+  </div>
+</div>
+
+</main>
+
+<footer class="site-credit" aria-label="站点构建信息">
+  <span class="site-credit-mark" aria-hidden="true">K</span>
+  <span>Powered by <a href="/" aria-label="Kokoro 首页">Kokoro</a></span>
+</footer>
+
+{{if .Globe.Places}}
+{{/* 地球数据用 JSON 塞进来，而不是让前端再发一次请求：
+     首屏就能画，省一个来回；数据量也小（几十个点）。 */}}
+<script id="globe-data" type="application/json">{{.GlobeJSON}}</script>
+{{template "kglobe.html" .}}
+{{end}}
+
+<script src="/static/app.js?v=125"></script>
+</body>
+</html>
+{{end}}
+
+{{/* 三网延迟行（卡片用）。**SSE netq 事件的局部更新目标** ——
+     renderPartial("netq_rows.html", …) 在探测结果入库后渲染它，
+     前端拿整块 HTML 替换 #netq-rows-<节点ID>。所以这个片段是完整
+     自包含的（外层 div + id 都在这里），改结构记得同步 broadcastNetQ。 */}}
+{{define "netq_rows.html"}}
+<div class="netqrows" id="netq-rows-{{.ID}}">
+  {{range .Net3}}
+  <div class="nqr{{if .Level}} lv-{{.Level}}{{end}}">
+    <i class="dot" aria-hidden="true"></i>
+    <span class="nm">{{.Label}}</span>
+    <span class="ms">{{if .Unavailable}}无响应{{else}}{{.MS}}<em>ms</em>{{end}}</span>
+    {{if .SparkLine}}
+    <svg class="wave" viewBox="0 0 108 22" preserveAspectRatio="none" aria-hidden="true">
+      <path class="wa" d="{{.SparkArea}}"/>
+      <path class="wl" d="{{.SparkLine}}"/>
+    </svg>
+    {{end}}
+    <span class="ls">{{if .HasLoss}}丢包 {{printf "%.1f" .Loss}}%{{else if .Unavailable}}无响应{{end}}</span>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "task_card.html"}}
+<div class="ipcard" id="task-card-{{.ID}}"{{if .TaskItems}} tabindex="0"{{end}}>
+  {{if .TaskOffline}}
+  <p class="task-line queued"><span aria-hidden="true">◷</span>节点离线，任务进度待恢复确认{{if .TaskSummary}} · 显示最近结果{{end}}</p>
+  {{else if .TaskRunning}}
+  <p class="task-line running"><span class="spin"></span>测试进行中…{{if .TaskSummary}} · 显示最近结果{{end}}</p>
+  {{else if .TaskQueued}}
+  <p class="task-line queued"><span aria-hidden="true">◷</span>{{if .Online}}测试排队中，等待节点执行{{else}}节点离线，测试已排队{{end}}{{if .TaskSummary}} · 显示最近结果{{end}}</p>
+  {{end}}
+  {{if .TaskSummary}}
+  <div class="task-hover">
+    <div class="task-line task-summary" tabindex="0" aria-label="测试结果">
+      {{range .TaskSummaryRows}}<div class="task-result-row"><span class="task-result-label">{{.Label}}</span><span class="task-result-value">{{.Value}}</span></div>{{end}}
+    </div>
+    {{if .TaskItems}}
+    <div class="task-pop" role="tooltip" popover="manual" tabindex="0">
+      <div class="tp-head"><b>最近测试结果</b><span>{{.TaskWhen}}</span></div>
+      {{range .TaskItems}}
+      <div class="tp-item">
+        <h5>{{.Label}}{{if not .OK}} <span class="bad">失败</span>{{end}}</h5>
+        {{if .Err}}<p class="tp-err">{{.Err}}</p>{{end}}
+        {{if .Fields}}
+        <dl class="tp-fields">
+          {{range .Fields}}<div{{if eq (index . 0) "用途明细"}} class="usage-detail"{{end}}><dt>{{index . 0}}</dt><dd>{{index . 1}}</dd></div>{{end}}
+        </dl>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+  {{else if not .TaskRunning}}
+  <p class="ip-empty"><span>未运行检测脚本</span><span>—</span></p>
+  {{end}}
+</div>
+{{end}}

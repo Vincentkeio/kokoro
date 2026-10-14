@@ -1,0 +1,16 @@
+# 行尾统一用 LF。
+#
+# ⚠️ 这条对 shell 脚本是**必须**的：在 Windows 上开发时 git 默认会把 LF
+# 换成 CRLF，而带 CRLF 的 .sh 在 Linux 上执行会报
+# `bash: /path/script.sh: /bin/bash^M: bad interpreter`。
+# 我们的 kokoro-bench.sh / install.sh 都是直接在小鸡上跑的，绝不能带 CR。
+* text=auto eol=lf
+
+# 二进制文件不要做行尾转换
+*.bin binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff2 binary
+*.exe binary

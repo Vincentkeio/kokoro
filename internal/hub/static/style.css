@@ -1,0 +1,3780 @@
+/* Kokoro 基础样式表
+   ---------------------------------------------------------------------------
+   这份文件里**没有任何具体颜色值**——全部走 --kokoro-* 变量，
+   变量由 Hub 在页面 <head> 里按当前主题注入（见 internal/theme）。
+
+   所以「换主题」不需要换 CSS：主题改的是变量值，布局差异则由
+   <body> 上的 data-k-* 属性 + 本文末尾的 [data-k-*] 规则承接。
+
+   分区：
+     1. 变量别名（把 --kokoro-* 映射成好用的短名，并提供降级默认值）
+     2. 基础重置与排版
+     3. 顶栏 / 卡片 / 详情页 / 投票 / 留言 / 后台 / 图表
+     4. 布局模式：card / table / compact（由主题 layout 决定默认值）
+     5. data-k-* 规则：顶栏形态、Hero、详情页头部、状态点、标签样式
+     6. 响应式
+*/
+
+/* ---- 1. 变量别名 ---- */
+:root {
+  /* 别名层：把主题变量接成本文件用的短名。
+     每个都有 fallback，万一主题系统挂掉（tokens 没注入）页面仍然可读——
+     这比"报错白屏"好得多。 */
+  --bg: var(--kokoro-color-bg, #ffffff);
+  --bg-soft: var(--kokoro-color-bg-subtle, #f6f8fa);
+  --panel: var(--kokoro-color-surface, #ffffff);
+  --raised: var(--kokoro-color-surface-raised, #ffffff);
+  --sunken: var(--kokoro-color-surface-sunken, #f6f8fa);
+  --fg: var(--kokoro-color-text, #1f2328);
+  --fg-strong: var(--kokoro-color-text, #0b0d10);
+  --muted: var(--kokoro-color-text-muted, #59636e);
+  --faint: var(--kokoro-color-text-faint, #818b98);
+  --line: var(--kokoro-color-border, #d0d7de);
+  --line-strong: var(--kokoro-color-border-strong, #8c959f);
+  --accent: var(--kokoro-color-primary, #2f6feb);
+  --accent-fg: var(--kokoro-color-primary-fg, #ffffff);
+  --accent-2: var(--kokoro-color-accent, #7c5cff);
+  /* ⚠️ 这条曾经漏了：`.dash-area-up` 用 var(--accent-soft) 当填充，
+     而它**从来没被定义过** —— var() 取不到值，fill 就整条失效，
+     回落到 SVG 的默认黑色。首页「全网速率」图的上行面积因此一直是一块黑，
+     看着像"深色填充的设计"，其实是 bug（2026-10-11 做毛玻璃主题时才发现）。 */
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  --ok: var(--kokoro-status-online, #1a7f37);
+  --warn: var(--kokoro-color-warning, #bf6a02);
+  --bad: var(--kokoro-status-offline, #cf222e);
+  /* 出问题了（掉线 / 告警）== 危险色，不要跟"离线灰"混为一谈。
+     --bad 按语义映射的是 status-offline（灰），而这里要的是 danger（红）。 */
+  --danger: var(--kokoro-color-danger, #cf222e);
+  --cpu: var(--kokoro-chart-series-1, #2f6feb);
+  --mem: var(--kokoro-chart-series-2, #7c5cff);
+  --disk: var(--kokoro-chart-series-3, #1a7f37);
+  /* 点阵地球的昼夜点色。不放进主题 token 白名单是因为它是"渲染参数"
+     而不是"皮肤样式"——皮肤改的是观感，这个改的是地球本身怎么画。
+     真要跟着皮肤变，改这里或让主题覆盖同名变量即可。 */
+  /* 昼侧点必须**看得见**。原先给 #c9d4e2（很浅），在白卡片上几乎隐形，
+     结果视觉上的"地球"只剩夜侧那团暗色，而昼侧的点还在更外面——
+     看起来就像"点散在地球外面"。这是对比度问题，不是几何问题。 */
+  /* 点阵地球的配色。**这几个终于开放给主题了**（2026-10-11）：
+     --kokoro-globe-* 由主题 tokens 注入，这里只留兜底默认值。
+     以前是硬编码的，注释说"它是渲染参数、不是皮肤样式"——但选什么色
+     确实是皮肤该管的事，而且换肤时地球是页面上最大的色块，不改会割裂。 */
+  --globe-day: var(--kokoro-globe-day, #93a4bd);
+  --globe-night: var(--kokoro-globe-night, #3b465c);
+  /* 球面（海洋）的昼夜底色。必须有足够对比度，否则白卡片上
+     整颗球只剩一圈点，"地球"这个实体就不存在了。 */
+  --globe-ocean-day: var(--kokoro-globe-ocean-day, #dce7f6);
+  --globe-ocean-night: var(--kokoro-globe-ocean-night, #b7c8e0);
+  --globe-rim: var(--kokoro-globe-rim, rgba(47, 111, 235, .18));
+
+  --r-sm: var(--kokoro-radius-sm, 4px);
+  --r: var(--kokoro-radius-md, 8px);
+  --r-lg: var(--kokoro-radius-lg, 12px);
+
+  --s1: var(--kokoro-space-1, 4px);
+  --s2: var(--kokoro-space-2, 8px);
+  --s3: var(--kokoro-space-3, 12px);
+  --s4: var(--kokoro-space-4, 16px);
+  --s5: var(--kokoro-space-5, 24px);
+  --s6: var(--kokoro-space-6, 32px);
+  /* ⚠️ s7 / s8 曾经漏了，而 .foot-page 等三处用 var(--s7) 当内边距 ——
+     var() 取不到值会让**整条 padding 声明失效**（不是退回 0），
+     所以那几个元素的间距是浏览器默认值，一直没人发现。 */
+  --s7: var(--kokoro-space-7, 48px);
+  --s8: var(--kokoro-space-8, 64px);
+
+  --font: var(--kokoro-font-sans, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
+  --mono: var(--kokoro-font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  --fs: var(--kokoro-font-size-md, 14px);
+
+  --shadow: var(--k-card-shadow, var(--kokoro-shadow-sm, 0 1px 2px rgba(31,35,40,.08)));
+  --shadow-md: var(--kokoro-shadow-md, 0 4px 12px rgba(31,35,40,.10));
+  --shadow-lg: var(--kokoro-shadow-lg, 0 16px 40px rgba(31,35,40,.16));
+
+  --t-fast: var(--kokoro-transition-fast, 120ms);
+  --t: var(--kokoro-transition-base, 200ms);
+  --t-slow: var(--kokoro-transition-slow, 320ms);
+  --ease: var(--kokoro-easing, cubic-bezier(.2,0,0,1));
+
+  --gap: var(--k-card-gap, var(--s5));
+  --maxw: var(--k-maxw, 1280px);
+  --head-h: var(--kokoro-header-height, 56px);
+  --pad: var(--kokoro-card-padding, 16px);
+  --ring: var(--kokoro-ring-width, 3px);
+  --ring-c: var(--kokoro-ring-color, rgba(47,111,235,.35));
+}
+
+/* ---- 2. 基础 ---- */
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  background-image: var(--kokoro-bg-image, none);
+  background-size: var(--kokoro-bg-size, auto);
+  background-repeat: var(--kokoro-bg-repeat, repeat);
+  background-attachment: var(--kokoro-bg-attachment, fixed);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: var(--fs);
+  line-height: var(--kokoro-font-line-height, 1.55);
+  letter-spacing: var(--kokoro-font-letter-spacing, 0);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--kokoro-color-link, var(--accent)); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1, h2, h3, h4 { font-weight: var(--kokoro-font-weight-bold, 700); }
+
+.wrap {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 var(--s5);
+}
+body[data-k-align="left"] > .wrap,
+body[data-k-align="left"] > main.wrap { margin-left: 0; margin-right: 0; }
+
+/* 尊重系统的"减少动态效果"设置 */
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}
+
+/* ---- 3. 顶栏 ---- */
+.top {
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  background: var(--kokoro-header-bg, var(--bg-soft));
+  color: var(--kokoro-header-fg, var(--fg));
+  position: sticky;
+  top: 0;
+  z-index: var(--kokoro-z-dropdown, 1000);
+}
+.top .wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  min-height: var(--head-h);
+  flex-wrap: wrap;
+}
+.brand {
+  font-weight: var(--kokoro-font-weight-bold, 700);
+  font-size: var(--kokoro-font-size-lg, 16px);
+  color: var(--kokoro-header-fg, var(--fg));
+  letter-spacing: -0.01em;
+}
+.brand:hover { text-decoration: none; }
+.top .stat { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+.top .stat b { color: var(--ok); }
+.top .spacer { margin-left: auto; }
+
+/* 顶栏右侧的小控件组 */
+.top-tools { display: flex; align-items: center; gap: var(--s2); margin-left: auto; }
+
+/* ---- 卡片 ---- */
+/* 卡片分组标题 + 搜索栏。标题只在主题 layout.home.list.groupBy 非 none 时
+   出现；搜索栏 2026-10-11 从顶栏挪到这里（boss：搜的就是这些卡片，
+   放同一行才对得上），不分组时这根条就只放搜索。
+   做成一根半透明条而不是普通标题 —— 分组是"分段器"，压过卡片风头会乱。 */
+.group-head {
+  display: flex; align-items: center; gap: var(--s3);
+  margin: var(--s5) 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  background: var(--bg-soft);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm);
+}
+/* 搜索栏推到右边：分组标题在左（阅读顺序），搜索在右（操作） */
+.group-head .list-search { margin-left: auto; }
+.list-search input { width: min(340px, 46vw); }
+/* 第一组上面不要再叠一层间距：它紧跟 Hero/时钟条 */
+.group-head:first-child { margin-top: 0; }
+.group-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--fg-strong); }
+.group-count { font-size: 12px; color: var(--faint); font-family: var(--mono); }
+
+/* 首页 VPS 分组是筛选栏，节点卡片保持在同一列表中切换显示。 */
+.home-list-toolbar { align-items: center; flex-wrap: wrap; }
+.home-group-filters { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
+.home-group-filter {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 34px; padding: 5px 10px; border: 1px solid var(--line);
+  border-radius: var(--r-sm, 6px); background: var(--panel); color: var(--muted);
+  font: inherit; font-size: 13px; line-height: 1.35; white-space: nowrap;
+  cursor: pointer; transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.home-group-filter:hover { border-color: var(--accent); color: var(--fg-strong); }
+.home-group-filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.home-group-filter.is-active { border-color: color-mix(in srgb, var(--accent) 48%, var(--line)); background: color-mix(in srgb, var(--accent) 11%, var(--panel)); color: var(--fg-strong); }
+.home-group-filter-count { color: var(--faint); font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.home-group-filter.is-active .home-group-filter-count { color: var(--accent); }
+.home-list-toolbar .grid-control { margin-left: auto; }
+.home-list-toolbar .list-search { margin-left: 0; }
+.home-node-grid > [data-home-node-card][hidden] { display: none !important; }
+.home-group-empty { margin: 0; padding: 18px 4px; color: var(--muted); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--k-card-min, 340px), 1fr));
+  gap: var(--gap);
+  padding: var(--gap) 0;
+}
+
+.card {
+  background: var(--kokoro-card-bg, var(--card, var(--panel)));
+  border: var(--kokoro-border-width, 1px) solid var(--kokoro-card-border, var(--line));
+  border-radius: var(--r);
+  padding: var(--pad);
+  box-shadow: var(--shadow);
+  transition: background var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              transform var(--t) var(--ease),
+              box-shadow var(--t) var(--ease);
+  position: relative;
+  min-width: 0;
+}
+.card:hover { background: var(--card-hover, color-mix(in srgb, var(--panel) 92%, var(--fg))); }
+a.card { display: block; color: inherit; }
+a.card:hover { text-decoration: none; }
+
+
+/* ---- 4. 列表模式：card / table / compact ----
+   默认卡片。table 与 compact 由 [data-k-list-mode] 切到对应规则，
+   主题可以在 layout.home.list.mode 里改这个默认值，访客也能临时覆盖。 */
+
+body[data-k-list-mode="table"] .grid { display: block; padding: var(--s2) 0; }
+body[data-k-list-mode="table"] .card {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.5fr) minmax(210px, 2fr) minmax(150px, 1.2fr) auto;
+  align-items: center; gap: var(--s3);
+  border: 0; border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: 0; box-shadow: none;
+  padding: var(--s2) var(--s1); min-height: 40px;
+}
+/* 表格/紧凑形态里，卡片不再是"一块"而是"一行"，悬停上浮会很怪 */
+body[data-k-list-mode="table"] .card:hover,
+body[data-k-list-mode="compact"] .card:hover { transform: none; box-shadow: none; }
+body[data-k-list-mode="table"] .meta,
+body[data-k-list-mode="table"] .tags,
+body[data-k-list-mode="table"] .specs,
+body[data-k-list-mode="table"] .spark,
+body[data-k-list-mode="table"] .net-empty,
+body[data-k-list-mode="table"] .status { display: none; }
+body[data-k-list-mode="table"] .gauges { flex-direction: row; gap: var(--s3); }
+body[data-k-list-mode="table"] .gauges .g { grid-template-columns: 0 1fr 46px; flex: 1; }
+body[data-k-list-mode="table"] .gauges .g .gl { display: none; }
+body[data-k-list-mode="table"] .net { border-top: 0; margin: 0; padding: 0; }
+body[data-k-list-mode="table"] .net-num { margin: 0; }
+body[data-k-list-mode="table"] .net-num .lat { margin-left: 0; }
+body[data-k-list-mode="table"] .bar { height: 5px; }
+
+body[data-k-list-mode="compact"] .grid { display: block; padding: var(--s2) 0; }
+body[data-k-list-mode="compact"] .card {
+  display: flex; align-items: center; gap: var(--s3);
+  min-height: var(--k-row-h, 44px);
+  border: 0; border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: 0; box-shadow: none; padding: var(--s1) var(--s2);
+}
+body[data-k-list-mode="compact"] .card-head { flex: 1 1 auto; min-width: 0; }
+body[data-k-list-mode="compact"] .card-head h2 { font-size: var(--kokoro-font-size-sm, 13px); }
+body[data-k-list-mode="compact"] .meta,
+body[data-k-list-mode="compact"] .tags,
+body[data-k-list-mode="compact"] .specs,
+body[data-k-list-mode="compact"] .foot,
+body[data-k-list-mode="compact"] .spark,
+body[data-k-list-mode="compact"] .net-empty,
+body[data-k-list-mode="compact"] .status { display: none; }
+body[data-k-list-mode="compact"] .gauges { flex: 0 0 170px; flex-direction: row; gap: var(--s2); }
+body[data-k-list-mode="compact"] .gauges .g { grid-template-columns: 0 1fr 40px; font-size: 11px; flex: 1; }
+body[data-k-list-mode="compact"] .gauges .g .gl { display: none; }
+body[data-k-list-mode="compact"] .net { border-top: 0; margin: 0; padding: 0; flex: 0 0 auto; }
+body[data-k-list-mode="compact"] .net-num { margin: 0; font-size: 11px; gap: 8px; }
+body[data-k-list-mode="compact"] .net-num .lat { display: none; }
+body[data-k-list-mode="compact"] .bar { height: 4px; }
+
+/* 分隔线开关：compact 模式可由主题关掉 */
+body[data-k-list-mode="compact"][data-k-divider="0"] .card { border-bottom: 0; }
+
+/* ---- 状态点 ---- */
+.dot {
+  width: 8px; height: 8px; border-radius: var(--kokoro-radius-full, 999px);
+  background: var(--muted); flex: none; display: inline-block;
+}
+.dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.dot.off { background: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 16%, transparent); }
+
+body[data-k-dot="glow"] .dot.on { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent), 0 0 10px var(--ok); }
+body[data-k-dot="glow"] .dot.off { box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 20%, transparent), 0 0 10px var(--bad); }
+body[data-k-dot="ring"] .dot { background: transparent; border: 2px solid currentColor; }
+body[data-k-dot="ring"] .dot.on { background: var(--ok); }
+body[data-k-dot="ring"] .dot.off { background: var(--bad); }
+body[data-k-dot="none"] .dot { display: none; }
+
+.card-head { display: flex; align-items: center; gap: var(--s2); }
+.card-head h2 {
+  margin: 0; font-size: var(--kokoro-font-size-lg, 16px);
+  font-weight: var(--kokoro-font-weight-bold, 700);
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+.card-head h2 a { color: inherit; }
+
+.meta { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); margin: var(--s1) 0 var(--s3); }
+
+/* ---- 资源条 ---- */
+.meter { display: flex; flex-direction: column; gap: 6px; }
+.meter-row {
+  display: grid; grid-template-columns: 3.2rem 1fr 3.4rem;
+  align-items: center; gap: var(--s2);
+  font-size: var(--kokoro-font-size-sm, 13px);
+}
+.meter-row span { color: var(--muted); }
+.meter-row b { text-align: right; font-variant-numeric: tabular-nums; font-weight: var(--kokoro-font-weight-medium, 500); }
+.bar {
+  height: 6px; background: var(--sunken);
+  border-radius: var(--kokoro-radius-full, 999px); overflow: hidden;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 60%, transparent);
+}
+.bar i {
+  display: block; height: 100%;
+  border-radius: var(--kokoro-radius-full, 999px);
+  transition: width var(--t-slow) var(--ease);
+}
+.bar i.cpu { background: var(--cpu); }
+.bar i.mem { background: var(--mem); }
+.bar i.disk { background: var(--disk); }
+
+/* usageBarStyle=gradient：给条加一层渐变，霓虹/午夜这类深色皮更好看 */
+body[data-k-bar="gradient"] .bar i.cpu { background: linear-gradient(90deg, var(--cpu), color-mix(in srgb, var(--cpu) 55%, var(--accent-2))); }
+body[data-k-bar="gradient"] .bar i.mem { background: linear-gradient(90deg, var(--mem), color-mix(in srgb, var(--mem) 55%, var(--accent-2))); }
+body[data-k-bar="gradient"] .bar i.disk { background: linear-gradient(90deg, var(--disk), color-mix(in srgb, var(--disk) 55%, var(--accent-2))); }
+
+/* usageBarStyle=segmented：终端皮的分段条，用 repeating-linear-gradient 画格子 */
+body[data-k-bar="segmented"] .bar i {
+  background-image: repeating-linear-gradient(90deg,
+    rgba(0,0,0,.35) 0 2px, transparent 2px 5px);
+}
+body[data-k-bar="none"] .bar { display: none; }
+
+.traffic {
+  display: flex; gap: var(--s3); flex-wrap: wrap;
+  margin: var(--s3) 0 0;
+  font-size: var(--kokoro-font-size-sm, 13px);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.traffic b { color: var(--fg); font-weight: var(--kokoro-font-weight-medium, 500); }
+
+.foot { display: flex; align-items: center; gap: var(--s2); margin: var(--s3) 0 0; flex-wrap: wrap; }
+.more { margin-left: auto; font-size: var(--kokoro-font-size-sm, 13px); color: var(--muted); }
+
+.tag {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border-radius: var(--kokoro-radius-full, 999px);
+  padding: 1px 8px;
+  font-size: var(--kokoro-font-size-xs, 12px);
+}
+body[data-k-tag="square"] .tag { border-radius: var(--r-sm); }
+body[data-k-tag="text"] .tag { background: none; color: var(--muted); padding: 0; }
+body[data-k-tag="text"] .tag::before { content: "#"; opacity: .5; }
+
+.empty { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+.empty-state { text-align: center; padding: 80px 20px; color: var(--muted); }
+.empty-state h2 { color: var(--fg); }
+
+/* ---- 5. 详情页 ---- */
+.detail { padding-bottom: var(--s6); }
+.detail-head h1 {
+  font-size: var(--kokoro-font-size-2xl, 26px);
+  margin: var(--s5) 0 var(--s1);
+  display: flex; align-items: center; gap: var(--s3);
+  letter-spacing: -0.02em;
+}
+.detail-head .price { color: var(--warn); font-size: var(--kokoro-font-size-sm, 13px); margin: 0; }
+
+.panel {
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--pad);
+  margin: var(--gap) 0;
+}
+.panel h3 {
+  margin: 0 0 var(--s3);
+  font-size: var(--kokoro-font-size-md, 14px);
+  font-weight: var(--kokoro-font-weight-bold, 700);
+}
+.panel.narrow { max-width: 360px; margin: 80px auto; }
+
+/* 详情页头部形态：hero / compact / none。
+   具体规则由主题引擎生成的 CSS 提供（min-height、padding 等），
+   这里只做兜底，保证 layout 缺失时也是紧凑的。 */
+.detail-head[data-k-detail-header="hero"] {
+  padding: var(--s6) 0 var(--s5);
+}
+.detail-head[data-k-detail-header="compact"] { padding: var(--s4) 0 0; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--s3); }
+.kpi {
+  background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: 10px 12px;
+  min-width: 0;
+}
+.kpi span { display: block; color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px); }
+.kpi b {
+  font-size: var(--kokoro-font-size-xl, 20px);
+  font-weight: var(--kokoro-font-weight-bold, 700);
+  font-variant-numeric: tabular-nums;
+  display: block;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.kpi small { display: block; color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px); }
+
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s3); margin-top: var(--s3); }
+/* 历史趋势标题与范围切换器同一行，控制样式与三网分省时间选择器一致。 */
+.chart-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s3); flex-wrap: wrap;
+}
+.chart-head h2 { margin: 0; font-size: var(--kokoro-font-size-lg, 16px); color: var(--fg-strong); }
+.ranges { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
+.range-btn {
+  padding: 5px 8px; font-size: var(--kokoro-font-size-xs, 12px);
+  color: var(--muted); border-radius: var(--r-sm); background: transparent;
+  border: var(--kokoro-border-width, 1px) solid var(--line); white-space: nowrap;
+  text-decoration: none;
+}
+.range-btn:hover, .range-btn:focus-visible { color: var(--fg); border-color: var(--accent); background: var(--sunken); text-decoration: none; }
+.range-btn.on {
+  color: var(--fg-strong); background: var(--bg-soft);
+  border-color: var(--accent); font-weight: 600;
+}
+.chart {
+  background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: 10px 12px;
+  min-width: 0;
+}
+.chart-label { display: block; color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px); margin-bottom: 4px; }
+.spark { width: 100%; height: var(--k-chart-h, 200px); display: block; }
+.spark path.area {
+  fill: var(--accent);
+  fill-opacity: var(--kokoro-chart-area-opacity, .18);
+  stroke: none;
+}
+.spark path.line {
+  fill: none; stroke: var(--accent);
+  stroke-width: var(--kokoro-chart-line-width, 1.75);
+  stroke-linejoin: round; stroke-linecap: round;
+}
+.spark.cpu path.line, .spark.cpu .spark-dot, .spark.cpu .spark-bar,
+.spark.up path.line, .spark.up .spark-dot, .spark.up .spark-bar { stroke: var(--cpu); fill: var(--cpu); }
+.spark.mem path.line, .spark.mem .spark-dot, .spark.mem .spark-bar,
+.spark.down path.line, .spark.down .spark-dot, .spark.down .spark-bar { stroke: var(--mem); fill: var(--mem); }
+.spark.cpu path.line, .spark.mem path.line, .spark.up path.line, .spark.down path.line { fill: none; }
+.spark.cpu path.area, .spark.up path.area { fill: var(--cpu); stroke: none; }
+.spark.mem path.area, .spark.down path.area { fill: var(--mem); stroke: none; }
+.spark path.area { stroke: none; fill-opacity: var(--kokoro-chart-area-opacity, .18); }
+.spark .spark-bar { opacity: var(--kokoro-chart-bar-opacity, .9); rx: var(--kokoro-chart-bar-radius, 3); }
+.spark .spark-dot, .spark .spark-bar { stroke: none; }
+.chart .grid { stroke: var(--kokoro-chart-grid, #eaeef2); stroke-width: 1; }
+.chart .axis { fill: var(--kokoro-chart-axis, #8c959f); font-size: 10px; }
+
+/* ---- 正文（服务端渲染的 Markdown） ---- */
+.prose .md { word-break: break-word; line-height: 1.75; font-size: var(--k-intro-font, var(--fs)); }
+.prose .md p { margin: 0 0 var(--s3); }
+.prose .md p:last-child { margin-bottom: 0; }
+.prose .md h3, .prose .md h4, .prose .md h5, .prose .md h6 {
+  margin: var(--s5) 0 var(--s2); font-size: var(--kokoro-font-size-lg, 16px);
+  font-weight: var(--kokoro-font-weight-bold, 700);
+}
+.prose .md h4, .prose .md h5, .prose .md h6 { font-size: var(--kokoro-font-size-md, 14px); }
+.prose .md ul, .prose .md ol { margin: 0 0 var(--s3); padding-left: 22px; }
+.prose .md li { margin: 3px 0; }
+.prose .md code {
+  font-family: var(--mono); font-size: .92em;
+  background: var(--kokoro-code-bg, var(--sunken));
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm); padding: 1px 5px;
+}
+.prose .md pre {
+  background: var(--kokoro-code-bg, var(--sunken));
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: var(--s3);
+  overflow-x: auto; margin: 0 0 var(--s3);
+}
+.prose .md pre code { border: 0; background: none; padding: 0; }
+.prose .md blockquote {
+  margin: 0 0 var(--s3); padding: 6px var(--s3);
+  border-left: 3px solid var(--accent); color: var(--muted);
+}
+.prose .md hr { border: 0; border-top: var(--kokoro-border-width, 1px) solid var(--line); margin: var(--s4) 0; }
+.prose .md a { text-decoration: underline; }
+.prose .md img { max-width: 100%; border-radius: var(--r); }
+
+/* ---- 投票 ---- */
+.votebar { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s3); flex-wrap: wrap; }
+.vote {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  color: var(--fg); cursor: pointer;
+  border-radius: var(--kokoro-radius-full, 999px);
+  padding: 4px 12px; font-size: var(--kokoro-font-size-sm, 13px);
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.vote:hover { border-color: var(--accent); }
+.vote .ico { font-size: 11px; }
+.vote b { font-variant-numeric: tabular-nums; font-weight: var(--kokoro-font-weight-medium, 500); }
+.vote.up.on { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); color: var(--accent); }
+.vote.down.on { background: color-mix(in srgb, var(--bad) 14%, transparent); border-color: var(--bad); color: var(--bad); }
+.vote.mini { padding: 2px 8px; font-size: var(--kokoro-font-size-xs, 12px); }
+.votebar .score { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+
+/* ---- 留言 ---- */
+.cmts { list-style: none; margin: 0 0 var(--s4); padding: 0; }
+.cmt { border-top: var(--kokoro-border-width, 1px) solid var(--line); padding: 10px 0; }
+.cmt:first-child { border-top: 0; }
+.cmt-head { display: flex; align-items: center; gap: var(--s2); font-size: var(--kokoro-font-size-sm, 13px); flex-wrap: wrap; }
+.cmt-head b { font-weight: var(--kokoro-font-weight-bold, 700); }
+.cmt-head time { color: var(--muted); }
+.cmt-head .reply { color: var(--accent); }
+.cmt-body { white-space: pre-wrap; word-break: break-word; margin: 6px 0; line-height: 1.65; }
+.cmt-contact {
+  font-size: var(--kokoro-font-size-sm, 13px); color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: var(--r-sm); padding: 4px 8px;
+  display: inline-block; margin-bottom: 6px;
+}
+.cmt-actions { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.link {
+  background: none; border: 0; color: var(--accent); cursor: pointer;
+  font-size: var(--kokoro-font-size-sm, 13px); padding: 2px 4px;
+  border-radius: var(--r-sm);
+}
+.link:hover { text-decoration: underline; }
+.link.bad { color: var(--bad); }
+.link.ok { color: var(--ok); }
+
+.cform { display: flex; flex-direction: column; gap: var(--s2); border-top: var(--kokoro-border-width, 1px) solid var(--line); padding-top: var(--s3); }
+.cform-row { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.cform-row input { flex: 1; min-width: 180px; }
+.cform textarea { width: 100%; resize: vertical; line-height: 1.6; font-family: inherit; }
+.cform-foot { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.cform-foot .btn { margin-left: auto; }
+
+/* ---- 表单与按钮 ---- */
+input, select, button, textarea {
+  font-family: inherit; font-size: var(--kokoro-font-size-sm, 13px);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  background: var(--sunken);
+  color: var(--fg);
+  max-width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: var(--ring) solid var(--ring-c);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+::placeholder { color: var(--faint); }
+
+.btn {
+  background: var(--accent); color: var(--accent-fg);
+  border: 1px solid transparent;
+  cursor: pointer; border-radius: var(--r-sm); padding: 6px 14px;
+  font-weight: var(--kokoro-font-weight-medium, 500);
+  transition: background var(--t-fast) var(--ease), filter var(--t-fast) var(--ease);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { filter: brightness(1.08); text-decoration: none; }
+.btn.ghost { background: transparent; color: var(--fg); border-color: var(--line); }
+.btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
+.btn.danger { background: var(--bad); }
+.btn.small { padding: 4px 10px; font-size: var(--kokoro-font-size-xs, 12px); }
+
+.row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+
+/* 纵向表单：一行一行往下排，行与行之间留出空隙。
+   ⚠️ 这个类在后台「告警与通知」的 Telegram 表单、以及首页的购买意向表单上
+   都用了，但样式表里**一直没定义它** —— 于是里面的 .row 紧贴成一片，
+   看起来就是"行与行太挤"（2026-10-11 boss 报的正是这里）。
+   定义成 flex column + gap 之后，那几行才有呼吸感。 */
+.col { display: flex; flex-direction: column; gap: var(--s3); }
+
+/* 后台开关 */
+.switch {
+  display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer;
+  background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--kokoro-radius-full, 999px);
+  padding: 3px 10px 3px 4px;
+  font-size: var(--kokoro-font-size-xs, 12px); color: var(--muted);
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.switch .knob {
+  width: 26px; height: 14px; border-radius: var(--kokoro-radius-full, 999px);
+  background: var(--line); position: relative;
+  transition: background var(--t-fast) var(--ease);
+  flex: none;
+}
+.switch .knob::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--muted);
+  transition: left var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.switch.on { color: var(--ok); border-color: var(--ok); }
+.switch.on .knob { background: var(--ok); }
+.switch.on .knob::after { left: 14px; background: #fff; }
+.switch-text { min-width: 3.6rem; text-align: left; }
+
+.chk { display: inline-flex; align-items: center; gap: 6px; font-size: var(--kokoro-font-size-md, 14px); }
+.chk input { padding: 0; width: 15px; height: 15px; }
+
+/* 三网分省探测的省份勾选网格：省份多（30+），排成多列而不是一长条。
+   每格固定最小宽，省名长短不一时列才齐。 */
+.netq-prov {
+  display: grid; gap: var(--s2) var(--s4);
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  padding: var(--s3); border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); background: var(--sunken);
+}
+/* 本机实测通率（boss 2026-10-12：通不通以我们小鸡 ping 的为准，
+   社区表只提供候选 IP）。0% 的省置灰 + 删除线通率值 —— 勾了也是
+   一片红叉，标出来省得试错。 */
+.netq-prov .chk.dead { opacity: .55; }
+.netq-prov .chk.dead input { cursor: not-allowed; }
+.netq-prov .nq-hit { color: var(--ok); font-size: 11px; font-variant-numeric: tabular-nums; margin-left: 2px; }
+.netq-prov .nq-hit.zero { color: var(--muted); text-decoration: line-through; }
+.inline { display: inline; }
+.nowrap { white-space: nowrap; }
+.cmt-cell { max-width: 420px; }
+.cmt-text { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); white-space: pre-wrap; word-break: break-word; }
+.muted { color: var(--muted); }
+.warn { color: var(--warn); }
+.err { color: var(--bad); font-size: var(--kokoro-font-size-sm, 13px); }
+.ok { color: var(--ok); }
+.bad { color: var(--bad); }
+.hint { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+
+/* ---- 表格 ---- */
+.tbl { width: 100%; border-collapse: collapse; font-size: var(--kokoro-font-size-sm, 13px); }
+.tbl th, .tbl td {
+  /* 行距给足一点：12px 的纵向内边距 + 1.5 的行高才不至于"每行都贴着"。
+     8px 那版在告警规则/最近告警这种多列表格里显得很局促。 */
+  text-align: left; padding: 11px 12px;
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  vertical-align: middle;
+}
+.tbl th { color: var(--muted); font-weight: var(--kokoro-font-weight-medium, 500); font-size: var(--kokoro-font-size-xs, 12px); white-space: nowrap; }
+.tbl tr:hover td { background: color-mix(in srgb, var(--sunken) 60%, transparent); }
+.tbl code { font-family: var(--mono); font-size: .92em; }
+.tbl code.cmd { color: var(--accent); word-break: break-all; }
+.install-command { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.install-command code.cmd { flex: 1; min-width: 0; }
+.install-command .btn { flex: none; white-space: nowrap; }
+
+/* ---- 登录 ---- */
+.login form { display: flex; flex-direction: column; gap: 10px; }
+.login h2 { margin: 0 0 var(--s3); font-size: var(--kokoro-font-size-xl, 20px); }
+.login label { display: flex; flex-direction: column; gap: 4px; font-size: var(--kokoro-font-size-sm, 13px); color: var(--muted); }
+
+/* 登录页：将小窄卡改为稳定的屏幕中央入口，表单控件提高可读性与触控面积。 */
+body[data-k-theme^="kokoro."] main.login {
+  display: grid; place-items: center; min-height: 100svh;
+  padding-top: 36px; padding-bottom: 36px;
+}
+body[data-k-theme^="kokoro."] .login > .panel.narrow {
+  width: min(100%, 560px); max-width: 560px; margin: 0 auto;
+  padding: clamp(28px, 5vw, 46px);
+}
+body[data-k-theme^="kokoro."] .login h2 {
+  margin-bottom: 24px; font-size: clamp(27px, 3vw, 34px); letter-spacing: -.035em;
+}
+body[data-k-theme^="kokoro."] .login form { gap: 13px; }
+body[data-k-theme^="kokoro."] .login form input {
+  width: 100%; min-height: 50px; padding: 12px 15px; font-size: 16px;
+}
+body[data-k-theme^="kokoro."] .login form .btn { min-height: 50px; justify-content: center; font-size: 16px; }
+body[data-k-theme^="kokoro."] .login .login-home {
+  display: flex; align-items: center; justify-content: center; min-height: 46px;
+  margin-top: 11px; font-size: 14px;
+}
+body[data-k-theme^="kokoro."] .login .hint { margin-top: 20px; font-size: 13px; line-height: 1.8; }
+@media (max-width: 600px) {
+  body[data-k-theme^="kokoro."] main.login { padding-top: 20px; padding-bottom: 20px; }
+  body[data-k-theme^="kokoro."] .login > .panel.narrow { padding: 26px 22px; }
+}
+
+.foot-page {
+  color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px);
+  padding: var(--s5) var(--s5) var(--s7);
+  text-align: center;
+  background: var(--kokoro-footer-bg, transparent);
+}
+
+/* ---- 国旗 ---- */
+.flag {
+  display: inline-flex; align-items: center; vertical-align: -2px;
+  margin-right: 5px; border-radius: 2px; overflow: hidden;
+  /* 这圈 1px 描边是**故意的**：日本、塞浦路斯这类白底旗
+     在浅色背景上没有边就完全看不见。
+     它必须贴着旗子（见下面 svg 的尺寸说明）——盒子比内容大的话，
+     描边会框出一片空白，那才是"白边"的来源。 */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--line-strong) 55%, transparent);
+  flex: none;
+}
+/* ⚠️ 宽高必须**相等**。
+   图标源（flag-icons）的 viewBox 是 `0 0 512 512`（正方形），
+   而每面旗的内容都铺满这个正方形。给它一个非正方的盒子（原来是 1.35×1.05），
+   浏览器按 preserveAspectRatio 默认的 "meet" 缩放 —— 内容缩成一半高、
+   居中，**左右各留一条空档**；外面那圈 1px 描边又把这整个更大的盒子框出来，
+   看起来就是"国旗左右各有一条白边"。（boss 报的"又有白边了"）
+
+   正方形的盒子才能和正方形的 viewBox 严丝合缝对上，空档消失。 */
+.flag svg { display: block; width: 1.15em; height: 1.15em; }
+.flag.lg svg { width: 1.4em; height: 1.4em; }
+
+/* ---- 搜索 ---- */
+.search { display: flex; gap: 6px; }
+.search input { width: min(320px, 42vw); }
+.result-line { margin: var(--s1) 0 0; }
+
+/* ---- 顶栏里的站长名片 ----
+   2026-10-11 从首页那张卡片挪进页眉（boss：不要单独一张卡）。
+   头像 / 名字 / 签名都是公开信息，放页眉每页都能看到"这是谁"，
+   首页也少一块压内容的大家伙。 */
+.top-owner { display: flex; align-items: center; gap: var(--s3); min-width: 0; flex: none; }
+.top-owner .avatar {
+  width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: var(--sunken);
+}
+.top-owner .avatar.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: var(--faint);
+}
+.top-owner-txt { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
+.top-owner-txt b {
+  font-size: var(--kokoro-font-size-md, 14px); white-space: nowrap;
+}
+.top-owner-txt i { font-style: normal; font-size: var(--kokoro-font-size-xs, 12px); color: var(--muted); }
+
+/* 顶栏时钟：跟名片一起从首页卡片挪来。卡片那套底子（背景/边框/内距）
+   全撤掉——页眉里再套一张小卡太吵，只留三层文字。 */
+.top-clock {
+  flex: none; text-align: left;
+  border: 0; background: none; padding: 0; min-width: 0;
+}
+.top-clock .t { font-size: 15px; }
+.top-clock .d { font-size: 10px; }
+
+/* 窄屏：签名先撤，再窄连时钟一起撤（工具按钮更重要） */
+@media (max-width: 1100px) { .top-owner-txt i { display: none; } }
+@media (max-width: 640px) { .top-clock { display: none; } }
+
+/* ---- 6. data-k-* 布局规则 ---- */
+
+/* 顶栏形态。
+   ⚠️ 三个变体都不许把 .top 的底擦成透明 —— 它是 position:sticky 的，
+   内容滚过去会从**页眉里面**透出来（2026-10-11 霓虹主题的 bordered
+   页眉就这么翻车：详情页一滚，网络质量卡的字从页眉后面穿出来）。
+   "transparent"变体因此只剩"去掉下边线"的含义 —— 本站没有
+   页眉压在 Hero 上的版式，透明没有任何好处。
+   背景色沿用 .top 基类的 var(--kokoro-header-bg)。 */
+body[data-k-header="transparent"] .top { border-bottom-color: transparent; }
+body[data-k-header="bordered"] .top {
+  border-bottom: 2px solid var(--accent);
+}
+body[data-k-header="blur"] .top {
+  backdrop-filter: blur(var(--kokoro-backdrop-blur, 0px)) saturate(150%);
+  background: color-mix(in srgb, var(--kokoro-header-bg, var(--panel)) 72%, transparent);
+}
+body[data-k-header="blur"] .top::after {
+  /* blur 需要底部一条线，否则内容从顶栏下面滚过去时边界会糊掉 */
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+/* Hero（首页）。data-k-hero 只在主题启用 Hero 时才有值，
+   所以下面这条就是"主题要了 Hero 才显示"的开关。 */
+body:not([data-k-hero]) .hero { display: none; }
+.hero {
+  margin: var(--s5) 0 0;
+  padding: var(--s7) var(--s5);
+  border-radius: var(--r-lg);
+  text-align: center;
+  background: var(--bg-soft);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+}
+body[data-k-hero="gradient"] .hero {
+  background-image: var(--kokoro-hero-overlay, rgba(0, 0, 0, .35)),
+                    var(--kokoro-hero-gradient);
+  border-color: transparent;
+}
+body[data-k-hero="gradient"] .hero h1,
+body[data-k-hero="gradient"] .hero p { color: var(--kokoro-color-text-inverse, #fff); }
+.hero h1 { margin: 0 0 var(--s2); font-size: var(--kokoro-font-size-3xl, 34px); letter-spacing: -0.02em; }
+.hero p { margin: 0; color: var(--muted); }
+body[data-k-align="left"] .hero { text-align: left; }
+.hero-stats {
+  display: flex; gap: var(--s5); justify-content: center; flex-wrap: wrap;
+  margin-top: var(--s5);
+}
+.hero-stats div { text-align: center; }
+.hero-stats b {
+  display: block; font-size: var(--kokoro-font-size-2xl, 26px);
+  font-variant-numeric: tabular-nums;
+}
+.hero-stats span { color: var(--muted); font-size: var(--kokoro-font-size-sm, 13px); }
+body[data-k-hero="gradient"] .hero-stats span { color: color-mix(in srgb, var(--kokoro-color-text-inverse, #fff) 80%, transparent); }
+
+/* 卡片 hover 上浮（主题可关） */
+body[data-k-lift="0"] .card:hover { transform: none; }
+.card:hover { transform: translateY(-2px); }
+body[data-k-list-mode="table"] .card:hover,
+body[data-k-list-mode="compact"] .card:hover { transform: none; }
+
+/* ---- 响应式 ---- */
+@media (max-width: 860px) {
+  body[data-k-list-mode="table"] .card { grid-template-columns: 1fr 80px; grid-template-areas: "head head" "meter meter"; }
+}
+
+@media (max-width: 640px) {
+  .wrap { padding: 0 var(--s3); }
+  .top .wrap { gap: var(--s2); }
+  .search { order: 3; width: 100%; }
+  .search input { width: 100%; }
+  .top-tools { width: 100%; order: 2; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .grid { grid-template-columns: 1fr; }
+  .hero { padding: var(--s5) var(--s3); }
+  .hero h1 { font-size: var(--kokoro-font-size-2xl, 26px); }
+  .home-list-toolbar { align-items: stretch; }
+  .home-group-filters { width: 100%; }
+  .home-list-toolbar .grid-control { order: 1; margin-left: 0; }
+  .home-list-toolbar .list-search { order: 2; width: 100%; }
+  body[data-k-list-mode="table"] .card { grid-template-columns: 1fr; }
+  body[data-k-list-mode="compact"] .meter { flex: 0 0 80px; }
+}
+/* ---- 7. 主题切换相关的新增组件 ---- */
+
+/* 顶栏右侧那组控件：列表形态三连按钮 + 深浅色按钮 */
+.modes {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--sunken);
+}
+.mode-btn {
+  background: none; border: 0; border-radius: 0;
+  padding: 3px 9px; cursor: pointer;
+  font-size: var(--kokoro-font-size-xs, 12px);
+  color: var(--muted);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.mode-btn + .mode-btn { border-left: 1px solid var(--line); }
+.mode-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.mode-btn.on {
+  background: var(--accent); color: var(--accent-fg);
+  font-weight: var(--kokoro-font-weight-medium, 500);
+}
+.mode-btn.on:hover { background: var(--accent); color: var(--accent-fg); }
+
+.mode-toggle { min-width: 32px; justify-content: center; font-size: 14px; line-height: 1; }
+
+/* 右上角的皮肤切换器（下拉）。
+   用 <details>/<summary> 实现：没有 JS 也能开合，JS 只负责
+   "点外面 / 按 Esc 时收起"，那是渐进增强而不是依赖。 */
+.skin { position: relative; }
+.skin > summary.skin-btn {
+  list-style: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--kokoro-font-size-sm, 13px);
+  color: var(--muted);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--kokoro-radius-full, 999px);
+  padding: 3px 10px;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+/* 去掉 Chrome 默认的那个小三角 */
+.skin > summary.skin-btn::-webkit-details-marker { display: none; }
+.skin > summary.skin-btn:hover,
+.skin[open] > summary.skin-btn { color: var(--fg); border-color: var(--accent); }
+.skin-ico { opacity: .75; }
+
+.skin-menu {
+  position: absolute; right: 0; top: calc(100% + 6px);
+  min-width: 220px; max-width: 320px;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--kokoro-radius-md, 10px);
+  box-shadow: var(--shadow-md);
+  padding: var(--s2);
+  /* 顶栏本身是 sticky 且带 z-index，下拉必须压在页面内容之上 */
+  z-index: var(--kokoro-z-dropdown, 1000);
+}
+.skin-item {
+  display: block; text-decoration: none;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--kokoro-radius-sm, 8px);
+  color: var(--fg);
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.skin-item:hover { background: var(--sunken); text-decoration: none; }
+.skin-item.on { border-color: var(--accent); background: var(--sunken); }
+.skin-item-name { font-size: var(--kokoro-font-size-sm, 13px); }
+/* 下拉按钮上显示的当前皮肤名。按钮本体是 muted 色（它是"控件"），
+   皮肤名要读得清，所以单独提亮一档。 */
+.skin-cur { color: var(--fg); }
+.skin-item small {
+  display: block; margin-top: 2px;
+  color: var(--faint); font-size: var(--kokoro-font-size-xs, 12px); line-height: 1.5;
+}
+/* "恢复默认"是退出动作，不是又一套皮肤：用虚线边区分开，
+   免得有人把它当成主题列表里的一项。 */
+.skin-item.reset {
+  margin-top: 2px;
+  border-style: dashed;
+  color: var(--faint);
+}
+.skin-item.reset:hover { color: var(--accent); border-color: var(--accent); }
+
+/* 「获取本站皮肤」是按钮不是链接（它开弹窗，不跳转），所以要补一遍
+   button 的 reset —— 否则会继承浏览器默认的灰底、居中文字和系统字体。
+   用虚线上边框和上面的皮肤列表分隔开：它是"拿东西走"，不是又一套皮肤。 */
+.skin-item.get {
+  width: 100%; text-align: left; cursor: pointer;
+  font: inherit; background: none;
+  color: var(--muted);
+  margin-top: var(--s2);
+  border-top: 1px solid var(--line);
+}
+.skin-item.get:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---- 「获取本站皮肤」弹窗：每套主题单独给出可复制的完整包地址。 */
+.skinget-lead { margin: 0 0 var(--s3); font-size: 13px; line-height: 1.75; color: var(--muted); }
+.skinget-current { margin: -4px 0 var(--s3); color: var(--muted); font-size: 13px; }
+.skinget-current b { color: var(--fg-strong); font-weight: 650; }
+.skinget-themes { display: grid; gap: 6px; }
+.skinget-theme { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-width: 0; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.skinget-theme:last-child { border-bottom: 0; }
+.skinget-theme-name { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--fg); }
+.skinget-theme-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skinget-current-badge { flex: none; padding: 2px 6px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); font-size: 10px; }
+.skinget-theme .btn { flex: none; }
+.skinget-step {
+  display: flex; gap: 8px; align-items: flex-start;
+  margin: 0 0 var(--s2); font-size: 13px; line-height: 1.7; color: var(--fg);
+}
+/* 序号做成小圆点。flex 子项默认会被压扁，所以 flex:none。
+   margin-top 让圆心和第一行文字的视觉中线对齐（纯 baseline 对齐会偏上）。 */
+.skinget-step b {
+  flex: none; min-width: 18px; height: 18px; margin-top: 3px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: var(--accent); color: var(--accent-fg);
+  font-size: 11px; font-weight: 600; line-height: 1;
+}
+/* 左缩进 = 序号宽度 + 间距，和上面的步骤文字左边缘对齐 */
+.skinget-row { display: flex; gap: var(--s2); align-items: center; margin: 0 0 var(--s3) 26px; }
+.skinget-row input {
+  flex: 1; min-width: 0;
+  font-family: var(--mono); font-size: 12.5px;
+  padding: 6px 9px;
+  color: var(--fg); background: var(--sunken);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm);
+}
+.skinget-hint {
+  margin: var(--s3) 0 0; padding-top: var(--s3);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  font-size: 12.5px; line-height: 1.7; color: var(--muted);
+}
+
+/* ==========================================================================
+   8. 首页信息面板：时钟 / 统计卡 / 点阵地球 / 富卡片
+   --------------------------------------------------------------------------
+   这一整块都是「首页改版」新增的。原则和前面一致：颜色与圆角全部走主题变量，
+   所以换皮肤时它跟着变，不需要单独适配。
+   ========================================================================== */
+
+/* 暗色模式下的地球配色：白天点压暗、夜里点更暗，辉光提亮。
+   同样接 --kokoro-globe-*（深色下的兜底值），主题可以在
+   tokensDark 里给另一套。 */
+html[data-k-mode="dark"], body[data-k-mode="dark"] {
+  --globe-day: var(--kokoro-globe-day, #5d6b82);
+  --globe-night: var(--kokoro-globe-night, #242c3a);
+  --globe-ocean-day: var(--kokoro-globe-ocean-day, #22304a);
+  --globe-ocean-night: var(--kokoro-globe-ocean-night, #0f1521);
+  --globe-rim: var(--kokoro-globe-rim, rgba(59, 130, 246, .26));
+}
+
+/* ---- 8.1 时钟条 ---- */
+.clocks {
+  display: flex; flex-wrap: wrap; gap: 1px;
+  background: var(--line); border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); overflow: hidden; margin-bottom: var(--gap);
+}
+.clock { flex: 1 1 140px; background: var(--panel); padding: 10px 14px; }
+/* 第一格是访客本地时间，给它一点主色，其余保持安静——一眼找到"自己的时间" */
+.clock:first-child { background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+.clock:first-child .tz { color: var(--accent); }
+.clock .tz { display: block; font-size: 11px; color: var(--faint); letter-spacing: .04em; }
+.clock b { font-family: var(--mono); font-size: 17px; color: var(--fg-strong); letter-spacing: .04em; }
+.clock .d { display: block; font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+/* ---- 8.2 统计卡 ---- */
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--gap); margin-bottom: var(--gap);
+}
+.stat {
+  position: relative; overflow: hidden;
+  background: var(--panel); border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: 13px 15px 12px;
+}
+/* 顶部一条主色细条：让一组数字看起来像「一块仪表」而不是六个白盒子 */
+.stat::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 12%, transparent));
+}
+.stat span { font-size: 12px; color: var(--faint); }
+.stat b { display: block; font-size: 23px; font-family: var(--mono); letter-spacing: -.02em;
+  color: var(--fg-strong); margin: 4px 0 2px; }
+.stat small { font-size: 11.5px; color: var(--muted); }
+
+/* ---- 8.3 点阵地球 ---- */
+.map-card {
+  background: var(--panel); border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); padding: 14px 16px 10px; margin-bottom: var(--gap);
+}
+.map-head { display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s3); flex-wrap: wrap; margin-bottom: 4px; }
+/* 地球卡片底部那行（左"拖动旋转 · 滚轮缩放"、右"N 个可定位节点"）。
+   这个类一直没写样式，于是两个 span 挨在一起，
+   看起来是"…滚轮缩放5 个可定位节点"——中间只隔着源码里的换行空格。 */
+.map-foot {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s3); flex-wrap: wrap; margin-top: 8px;
+  font-size: var(--kokoro-font-size-xs, 12px); color: var(--faint);
+}
+.map-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--fg-strong); }
+.map-legend { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); }
+.map-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 5px; vertical-align: middle; }
+.map-legend .i-on { background: var(--ok); }
+.map-legend .i-cur { background: var(--accent); }
+.map-legend .i-off { background: var(--faint); }
+.map-legend .hint-drag { color: var(--faint); }
+.globe {
+  position: relative; width: 100%; height: min(64vh, 560px);
+  max-width: 900px; margin: 8px auto 0;
+  border-radius: var(--r-sm); overflow: hidden; touch-action: none;
+  background: radial-gradient(70% 70% at 50% 45%,
+    color-mix(in srgb, var(--accent) 7%, transparent), transparent 72%);
+}
+/* 画布的**显示尺寸由 CSS 决定**，永远等于容器；globe.js 只管绘制分辨率
+   （canvas.width/height）。
+   为什么用 left/top + 100% 而不是 inset:0：后者和显式 width/height 同时
+   存在时会互相打架，写清楚更不容易被后人改坏。
+   ⚠️ 这里的 `!important` 不是随手加的：inline style（JS 里写
+   `canvas.style.height = n + 'px'`）的优先级高于普通作者样式，只有带
+   !important 的作者样式才能压过它。旧版 globe.js 就是这么写死的，而
+   用户浏览器里的 JS 有可能还是缓存里那份 —— 加了 !important 之后，
+   即便跑的是旧 JS，画布也照样撑满容器，不会出现"只有上面一条、
+   下面一片空白"。 */
+.globe canvas {
+  position: absolute; left: 0; top: 0;
+  width: 100% !important; height: 100% !important;
+  display: block;
+}
+.globe-ov { cursor: grab; }
+.globe-ov.grabbing { cursor: grabbing; }
+.globe-tip {
+  position: absolute; transform: translate(-50%, -100%); pointer-events: none;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: 3px 8px; font-size: 12px; line-height: 1.5;
+  white-space: nowrap; z-index: 3;
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--fg) 40%, transparent);
+}
+.globe-tip b { display: block; }
+.globe-tip span { color: var(--muted); font-size: 11px; }
+.globe-broken::after {
+  content: '地球加载失败（浏览器不支持 WebGL，或掩码没取到）';
+  color: var(--muted); position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---- 8.4 富卡片 ---- */
+.card-head h2 a { color: inherit; text-decoration: none; }
+.card-head h2 a:hover { color: var(--accent); }
+.status { display: inline-flex; align-items: center; gap: 5px; flex: none;
+  font-size: 11.5px; color: var(--muted); }
+.status i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.status.on { color: var(--ok); }
+.status.on i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.card.off { opacity: .62; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--s2); }
+
+.gauges { display: flex; flex-direction: column; gap: 6px; }
+.gauges .g {
+  display: grid; grid-template-columns: 3.2rem 1fr 3.4rem;
+  align-items: center; gap: var(--s2);
+  font-size: var(--kokoro-font-size-sm, 13px);
+}
+.gauges .g .gl { color: var(--muted); }
+.gauges .g em {
+  font-style: normal; text-align: right; font-family: var(--mono);
+  font-variant-numeric: tabular-nums; color: var(--fg);
+}
+.gauges .g em.lv-ok { color: var(--ok); }
+.gauges .g em.lv-warn { color: var(--warn); }
+.gauges .g em.lv-bad { color: var(--bad); }
+.bar.mini { height: 5px; width: 74px; flex: none; }
+
+.net { border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  margin-top: var(--s2); padding-top: var(--s2); }
+.card .spark { display: block; width: 100%; height: 40px; }
+/* 曲线的时间范围 + 量级标注：两端对齐的一行小字。
+   不是为了好看 —— 只画一条折线，访客不知道它覆盖多久、多高算高。 */
+.card .spark-cap {
+  display: flex; justify-content: space-between; gap: var(--s2);
+  font-size: 10.5px; color: var(--faint); font-family: var(--mono);
+  margin-bottom: 2px;
+}
+.card .sp-area { fill: color-mix(in srgb, var(--accent) 16%, transparent); stroke: none; }
+.card .sp-line { fill: none; stroke: var(--accent); stroke-width: 1.6;
+  stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.card.off .sp-line { stroke: var(--faint); }
+.card.off .sp-area { fill: color-mix(in srgb, var(--faint) 16%, transparent); }
+.net-empty { margin: 0 0 var(--s1); color: var(--faint); font-size: 11.5px; }
+.net-num {
+  display: flex; align-items: center; gap: 12px;
+  /* ⚠️ 不能换行：上下行速率 + 延迟条加起来本来就宽，允许 wrap 的话
+     窄卡片上会折成两行，看着像排版坏了。
+     宽度不够时让延迟条收缩，而不是整体折行。 */
+  flex-wrap: nowrap; min-width: 0;
+  margin-top: 5px; font-size: 11.5px; color: var(--muted); font-family: var(--mono);
+}
+.net-num .up, .net-num .down { flex: none; white-space: nowrap; }
+.net-num .up { color: var(--ok); }
+.net-num .down { color: var(--accent); }
+.net-num .lat { margin-left: auto; display: inline-flex; align-items: center;
+  gap: 6px; font-family: inherit; flex: 0 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; }
+.net-num .lat .bar.mini { width: 56px; flex: 0 1 56px; min-width: 18px; }
+
+.specs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin: var(--s2) 0 0;
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  padding-top: var(--s2); font-size: 11.5px;
+}
+.specs > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.specs dt { color: var(--faint); flex: none; }
+.specs dd {
+  margin: 0; color: var(--fg); font-family: var(--mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+}
+.specs dd i.bar { flex: 1 1 40px; min-width: 30px; }
+
+/* ---- 8.5 卡片底部的详情按钮 ----
+   不用"整张卡片可点"，也不用悬停弹详情：一个明确的按钮最不容易误触。 */
+.card .foot {
+  display: flex; align-items: center; gap: var(--s2);
+  margin-top: var(--s2); padding-top: var(--s2);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.card .foot .more { margin-left: auto; text-decoration: none; }
+
+/* 后台登录时、名片却空着 —— 首页给一条明确的引导。
+   这是 boss 真实踩过的：名片填在后台，但首页什么都没有，看起来像功能没做。 */
+.owner-empty {
+  display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+  margin-top: var(--gap);
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  color: var(--fg); font-size: 13px;
+}
+.owner-empty .tag-admin {
+  font-size: 11px; padding: 1px 7px; border-radius: var(--radius-full, 999px);
+  background: var(--accent); color: var(--accent-fg); flex: none;
+}
+
+
+/* ==========================================================================
+   9. 首页「全球节点」那一行：右侧地球，左侧留给信息密度高的动态区
+   --------------------------------------------------------------------------
+   地球独占一整行时右半边是空的（900px 宽只有 560px 高），浪费。
+   现在左侧放"最新留言"这类动态，右侧地球，窄屏叠成一列。
+   ========================================================================== */
+.home-band {
+  /* 这一行的高度由 --band-h 统一决定，两张卡都填满它 ——
+     高度交给内容撑的话，动态流短、地球高，两块就一高一矮很难看。
+     stretch 让网格项等高，卡片内部再用 flex 把内容区撑开。 */
+  --band-h: min(60vh, 480px);
+  display: grid;
+  /* auto-fit：只有左侧那一块时（没有可定位节点）它会占满整行，
+     两块都在时才是左右各一。用固定两列的话单块会留一个空洞。 */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--gap);
+  align-items: stretch;
+  margin-top: var(--gap);
+}
+
+/* 右侧地球：卡片本身占满整行高度，头部/脚注之外全给画布 */
+.home-band .map-card {
+  margin: 0;
+  height: var(--band-h);
+  /* 保底高度。--band-h 里含 vh，窗口一矮它就跟着缩；缩过头时
+     globe（flex:1 + 原来的 min-height:0）会被压成薄薄一条，
+     地球被压扁、看着就像"只显示了上半部分"。320px 是"地球还能看清"
+     的下限 —— 头部 + 脚注 + 内边距约 81px，剩下的留给画布。 */
+  min-height: 320px;
+  display: flex; flex-direction: column;
+}
+/* ⚠️ min-height 从 0 改成 240px：0 允许画布被压到没有高度，
+   那正是"地球被截成一条"的另一半成因。 */
+.home-band .globe { flex: 1; min-height: 240px; }
+
+/* 左侧动态流：同样占满整行高度，列表区内部滚动。
+   最新的在最上面（数据本来就是倒序），所以不需要初始滚动。 */
+.home-side-new {
+  min-width: 0;
+  height: var(--band-h);
+  display: flex; flex-direction: column;
+  /* ⚠️ .panel 自带 `margin: var(--gap) 0`，不清掉的话动态流整块会被
+     往下推一个 gap，两张卡的上/下边缘就对不齐了（等高也没用，
+     等的是内容盒，外边距在外面）。 */
+  margin: 0;
+}
+.home-side-new h3 { margin: 0 0 var(--s3); font-size: 15px; }
+.home-side-new .live-head { flex: none; }
+
+@media (max-width: 1024px) {
+  .home-band { grid-template-columns: 1fr; }
+  /* 窄屏叠成一列时不再强求等高：固定高度会让两块都出现大片空白 */
+  .home-band { --band-h: auto; }
+  .home-band .map-card { height: auto; }
+  .home-band .globe { height: min(52vh, 420px); flex: none; }
+  .home-side-new { height: auto; max-height: 60vh; }
+  /* auto 高度的卡片使用有界的图表盒子，SVG 与后面的图例保持在正常文档流。 */
+  .home-band > #speed .rate-chart-wrap,
+  .home-band > #speed .res-chart-wrap { height: 96px; }
+}
+
+/* ---- 9.0 实时动态流 ---- */
+.live-head { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s3); }
+.live-head h3 { margin: 0; }
+/* 一颗缓慢呼吸的小绿点，暗示"这条流是活的" */
+.live-pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent);
+  animation: live-pulse 2.4s var(--ease, ease-out) infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .live-pulse { animation: none; } }
+
+.feed {
+  list-style: none; margin: 0; padding: 0;
+  /* 内容超出就在这块内部滚，卡片高度不变 */
+  flex: 1; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  /* 给滚动条留出空间，否则最后一条会被压住 */
+  padding-right: var(--s2);
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.feed::-webkit-scrollbar { width: 8px; }
+.feed::-webkit-scrollbar-track { background: transparent; }
+.feed::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
+  border-radius: 999px;
+}
+.feed::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--fg) 32%, transparent); }
+.feed-item {
+  display: flex; gap: var(--s3); align-items: flex-start;
+  padding: var(--s2) 0;
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.feed-item:first-child { border-top: 0; padding-top: 0; }
+.feed-icon {
+  flex: none; width: 1.2em; text-align: center;
+  font-size: 13px; line-height: 1.5; color: var(--muted);
+}
+/* 上线下线用状态色，一眼能扫出来 */
+.feed-item.k-online .feed-icon  { color: var(--ok); }
+.feed-item.k-offline .feed-icon { color: var(--faint); }
+.feed-item.k-alert .feed-icon   { color: var(--warn, #bf8700); }
+.feed-item.k-resolved .feed-icon{ color: var(--ok); }
+.feed-item.k-comment .feed-icon { color: var(--accent); }
+.feed-item.k-post .feed-icon    { color: var(--accent); }
+.feed-body { min-width: 0; flex: 1; }
+.feed-text {
+  margin: 0; font-size: 13px; line-height: 1.55; color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.feed-time { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+
+/* ---- 9.1 主机时钟（在顶栏里，跟站长名片同一区） ---- */
+.hub-clock {
+  flex: none; text-align: right;
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r);
+  padding: var(--s2) var(--s4);
+  min-width: 11rem;
+}
+.hub-clock .tz {
+  display: block; font-size: 11px; color: var(--muted); letter-spacing: .04em;
+}
+.hub-clock .tz em { font-style: normal; color: var(--faint); }
+.hub-clock b {
+  display: block; font-family: var(--mono); font-size: 24px; letter-spacing: .02em;
+  color: var(--fg-strong); line-height: 1.25;
+}
+.hub-clock .d { display: block; font-size: 11px; color: var(--faint); font-family: var(--mono); }
+
+/* Hero：标题占满，不用管时钟（时钟已挪去顶栏） */
+.hero { align-items: center; }
+.hero-txt { min-width: 0; flex: 1 1 20rem; }
+
+/* ---- 卡片上的测试摘要 ----
+   跑分/解锁/线路这些结果是一句话，放在卡片底部一行。 */
+.card .task-line {
+  margin: var(--s2) 0 0; padding: var(--s2) var(--s3);
+  background: var(--sunken); border-radius: var(--r-sm);
+  font-size: 12.5px; line-height: 1.5; color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.card .task-line.running { color: var(--accent); display: flex; align-items: center; gap: var(--s2); }
+.card .task-line.queued { color: var(--muted); display: flex; align-items: center; gap: var(--s2); }
+.card .task-line .spin {
+  width: 10px; height: 10px; flex: none; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .card .task-line .spin { animation: none; } }
+
+/* ---- 详情页：测试结果 ----
+   一条测试 = 一个可折叠的卡片，展开看每一项的字段。 */
+.bench-list { display: flex; flex-direction: column; gap: var(--s3); }
+.bench-card {
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); background: var(--sunken);
+  padding: 0 var(--s4) var(--s4);
+  overflow: hidden;
+}
+.bench-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto 12px;
+  align-items: center; gap: 5px 14px;
+  margin: 0 calc(var(--s4) * -1); padding: 12px var(--s4);
+  border-bottom: 1px solid transparent;
+  cursor: pointer; list-style: none;
+}
+.bench-card[open] .bench-head { border-bottom-color: var(--line); }
+.bench-head::-webkit-details-marker { display: none; }
+.bench-head::after {
+  content: ""; grid-column: 3; grid-row: 1;
+  width: 7px; height: 7px; justify-self: end;
+  border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg) translateY(-2px); transition: transform .16s ease;
+}
+.bench-card[open] > .bench-head::after { transform: rotate(225deg) translate(-1px, -1px); }
+.bench-title { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.bench-title b { font-size: 14px; color: var(--fg-strong); }
+.bench-sum { grid-column: 1 / 3; grid-row: 2; min-width: 0; color: var(--muted); font-size: 12px; line-height: 1.55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bench-when { grid-column: 2; grid-row: 1; align-self: center; font-size: 11px; color: var(--faint); font-family: var(--mono); white-space: nowrap; }
+.st { font-size: 10px; line-height: 1.5; padding: 2px 8px; border-radius: 5px; flex: none; }
+.st-queued  { background: var(--panel); color: var(--muted); }
+.st-running { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.st-done    { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.st-failed  { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+
+.bench-item { margin-top: 0; padding: 14px 0 2px; border-top: 1px solid color-mix(in srgb, var(--line) 68%, transparent); }
+.bench-item:first-of-type { border-top: 0; }
+.bench-item h4 { margin: 0 0 9px; font-size: 12px; color: var(--fg-strong); letter-spacing: .02em; }
+.bench-item h4 .bad { color: var(--bad); font-size: 11px; font-weight: 400; }
+.bench-fields { margin: 0; display: grid; gap: 0 24px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bench-fields > div {
+  display: grid; grid-template-columns: minmax(76px, 104px) minmax(0, 1fr);
+  align-items: start; gap: 10px; min-width: 0; padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 42%, transparent);
+  font-size: 12px; line-height: 1.5;
+}
+.bench-fields dt { min-width: 0; color: var(--muted); }
+.bench-fields dd { margin: 0; min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
+.bench-fields > .usage-detail { grid-column: 1 / -1; }
+.bench-fields > .usage-detail dd { white-space: nowrap; overflow-wrap: normal; }
+.bench-err {
+  margin: var(--s2) 0 0; padding: var(--s2) var(--s3); font-size: 12.5px;
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  border-radius: var(--r-sm); color: var(--bad); overflow-wrap: anywhere;
+}
+@media (max-width: 920px) {
+  .bench-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; }
+}
+@media (max-width: 600px) {
+  .bench-card { padding: 0 12px 12px; }
+  .bench-head { grid-template-columns: minmax(0, 1fr) 12px; gap: 6px 8px; margin-inline: -12px; padding: 11px 12px; }
+  .bench-head::after { grid-column: 2; }
+  .bench-title { grid-column: 1; gap: 8px; }
+  .bench-title b { font-size: 13px; }
+  .bench-when { grid-column: 1 / 3; grid-row: 2; justify-self: start; font-size: 10px; }
+  .bench-sum { grid-column: 1 / 3; grid-row: 3; }
+  .bench-fields { grid-template-columns: minmax(0, 1fr); }
+  .bench-fields > div { grid-template-columns: minmax(84px, 30%) minmax(0, 1fr); padding: 7px 0; }
+  .bench-fields > .usage-detail dd, .tp-fields > .usage-detail dd { white-space: normal; overflow-wrap: anywhere; }
+}
+
+/* ---- 卡片上的测试浮窗 ----
+   摘要只有一行放不下细节，悬停/聚焦时弹出完整结果。
+   纯 CSS 实现（:hover + :focus-within），不引 JS —— 键盘 Tab 也能打开。 */
+.task-hover { position: relative; }
+.task-hover .task-line { cursor: help; }
+.task-hover .task-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.task-pop {
+  display: none;
+  position: absolute; left: 0; bottom: calc(100% + 6px);
+  z-index: 30;
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, .24), 0 2px 8px rgba(0, 0, 0, .12);
+  padding: 0;
+  max-height: min(22rem, calc(100vh - 24px));
+  overflow-x: hidden; overflow-y: auto;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 58%, transparent) transparent;
+  opacity: 0; visibility: hidden; transform: translateY(4px);
+  transition: opacity .14s ease, transform .14s ease, visibility .14s;
+  /* 浮窗要比卡片宽，字段才排得开。
+     用 min() 防止窄屏上溢出视口。 */
+  width: min(30rem, 88vw);
+  min-width: 0;
+}
+.task-pop[popover] {
+  position: fixed; inset: auto; margin: 0;
+  z-index: calc(var(--kokoro-z-dropdown, 1000) + 20);
+  max-height: min(28rem, calc(100vh - 24px));
+}
+.task-hover .task-pop[popover]:not(:popover-open):not(.is-open) { display: none; }
+.task-pop[popover]:popover-open, .task-pop.is-open {
+  display: block; opacity: 1; visibility: visible; transform: none;
+}
+.task-pop::backdrop { background: transparent; pointer-events: none; }
+.task-pop.is-open { position:fixed; inset:auto; margin:0; z-index:1020; max-height:calc(100vh - 24px); }
+.task-hover:hover .task-pop,
+.task-hover:focus-within .task-pop {
+  display: block; opacity: 1; visibility: visible; transform: translateY(0);
+}
+/* 触屏没有 hover，长按也不行 —— 用 :active 兜一下，至少能点开 */
+.task-hover .task-line:active + .task-pop { display: block; opacity: 1; visibility: visible; }
+
+.tp-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s3); padding: 12px var(--s4) 9px; margin: 0;
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 5px 10px color-mix(in srgb, var(--panel) 88%, transparent);
+}
+.tp-head b { font-size: 13px; color: var(--fg-strong); }
+.tp-head span { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+.tp-item { padding: 10px var(--s4) 0; }
+.tp-item + .tp-item { margin-top: 10px; padding-top: 11px; border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+.tp-item:last-child { padding-bottom: var(--s4); }
+.tp-item h5 {
+  margin: 0 0 var(--s1); font-size: 12px; color: var(--muted);
+  font-weight: 600; letter-spacing: .02em;
+}
+.tp-item h5 .bad { color: var(--bad); font-weight: 400; }
+.tp-fields { margin: 0; display: grid; gap: 3px; }
+.tp-fields > div { display: flex; gap: var(--s3); font-size: 12px; }
+.tp-fields dt { color: var(--muted); flex: none; min-width: 6rem; }
+.tp-fields dd { margin: 0; color: var(--fg); overflow-wrap: anywhere; }
+.task-pop:has(.usage-detail) { width: min(58rem, 94vw); }
+.tp-fields > .usage-detail dd {
+  flex: 1 1 auto; min-width: 0; white-space: nowrap;
+  overflow-wrap: normal;
+}
+.tp-err { margin: 0 0 var(--s1); font-size: 12px; color: var(--bad); }
+.task-pop::-webkit-scrollbar { width: 8px; }
+.task-pop::-webkit-scrollbar-track { background: transparent; }
+.task-pop::-webkit-scrollbar-thumb {
+  border: 2px solid transparent; border-radius: 8px;
+  background: color-mix(in srgb, var(--muted) 52%, transparent);
+  background-clip: padding-box;
+}
+.task-pop::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--fg) 56%, transparent); }
+
+/* ---- 状态时间轴（一天一格）----
+   探针圈最经典的"可信度背书"：30 个格子摆出来，稳不稳一眼就知道。 */
+.uptime { margin-top: var(--s3); }
+.uptime-head {
+  display: flex; align-items: baseline; gap: var(--s2);
+  margin-bottom: var(--s2); flex-wrap: wrap;
+}
+.uptime-head h4 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+.uptime-pct { font-size: 15px; font-family: var(--mono); }
+.uptime-pct.lv-ok   { color: var(--ok); }
+.uptime-pct.lv-warn { color: var(--warn, #bf8700); }
+.uptime-pct.lv-bad  { color: var(--danger); }
+.uptime-pct.lv-none { color: var(--muted); }
+.uptime-sub { font-size: 11px; color: var(--faint); }
+
+.uptime-bar { display: flex; gap: 2px; align-items: stretch; height: 26px; }
+.uptime-bar .cell {
+  flex: 1 1 0; min-width: 3px; border-radius: var(--kokoro-uptime-bar-radius, 2px);
+  background: var(--line);
+  transition: transform .12s ease;
+}
+.uptime-bar .cell:hover { transform: scaleY(1.18); }
+/* 半天的格子（装机当天/今天）淡一点，提示"这天数据不全" */
+.uptime-bar .cell.partial { opacity: .55; }
+
+.cell.lv-ok   { background: var(--ok); }
+.cell.lv-warn { background: var(--warn, #bf8700); }
+/* 掉了线 == danger（红）。曾经这里写的是 --bad，而 --bad 语义映射的是
+   status-offline（灰）—— 于是"掉线格"和"离线灰"一个色，看不出区别。 */
+.cell.lv-bad  { background: var(--danger); }
+.cell.lv-none { background: color-mix(in srgb, var(--fg) 12%, transparent); }
+body[data-k-theme^="kokoro."] .uptime-bar {
+  height: var(--kokoro-uptime-bar-height, 26px);
+  gap: var(--kokoro-uptime-bar-gap, 2px);
+}
+
+.uptime-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s2); margin-top: 4px;
+  font-size: 10.5px; color: var(--faint); font-family: var(--mono);
+}
+.uptime-legend { display: flex; align-items: center; gap: 4px; font-family: var(--sans, inherit); }
+.uptime-legend .cell {
+  display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+  margin-left: 6px;
+}
+.uptime-legend .cell:first-child { margin-left: 0; }
+
+/* ---- 卡片上的静态规格 ----
+   排版思路：把"这台机器是什么"和"它现在忙不忙"分开 ——
+   规格在上、指标条在下，访客先认机器再看状态。
+
+   规格内部再分两层：
+     1) CPU 型号独占一行（它最长，塞半栏就会被裁）
+     2) 其余字段两列对齐
+   ⚠️ 不要给值加 line-clamp / text-overflow —— Swap 和 CPU 型号
+   必须**完整显示**，宁可换行。 */
+.card .specs {
+  margin: var(--s3) 0 0; padding: 0;
+  display: grid; gap: 4px var(--s4);
+  /* 固定两列：四列窄卡（去 padding 后 ~290px）也能两行并排，
+     卡片短一截。原来是 auto-fit minmax(150px) —— 窄卡会退化成
+     一列一项、卡片被拉得很长（boss 2026-10-11 反馈）。
+     CPU 型号那条 .full 独占整行（见下）。 */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* 每一项：标签贴着自己内容走，值拿满剩下的空间。
+   ⚠️ 标签**不要**给 min-width：以前 3.6rem 是为了两列的值对齐成一列，
+   代价是三字标签（虚拟化/核心数）后面拖一条死空白，值反而被挤到
+   显示不全（2026-10-11 boss：系统和 Debian 之间空白太多、系统名被截）。
+   对齐是锦上添花，让值完整显示是底线。 */
+.card .specs > div {
+  display: flex; gap: 6px; align-items: baseline; min-width: 0;
+}
+.card .specs dt {
+  color: var(--muted); flex: none;
+  font-size: 11.5px; line-height: 1.5;
+}
+.card .specs dd {
+  margin: 0; color: var(--fg); min-width: 0;
+  font-size: 12.5px; line-height: 1.5;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+
+/* CPU 型号独占整行：加一层浅底 + 下分隔线，让它像"小标题"。
+   访客第一眼看的就是 CPU 型号。 */
+.card .specs > div.full {
+  grid-column: 1 / -1;
+  flex-direction: column; gap: 1px;
+  padding: var(--s2) var(--s3);
+  margin-bottom: var(--s1);
+  background: var(--sunken);
+  border-radius: var(--r-sm);
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+}
+
+/* bare（无标签，CPU 型号用）：只剩一行值，留白收紧一点 ——
+   不收紧的话会比别的项高一截，规格表看着断层。 */
+.card .specs > div.full.bare { padding-top: var(--s1); padding-bottom: var(--s1); gap: 0; }
+.card .specs > div.full dt { min-width: 0; font-size: 10px; letter-spacing: .06em; }
+.card .specs > div.full dd {
+  font-size: 13px; font-weight: 600; color: var(--fg-strong);
+  line-height: 1.4;
+}
+
+/* 可好可坏的项上色：bbr=绿、cubic=黄、NAT=黄、负载高=红 */
+.card .specs .lv-ok dd   { color: var(--ok); }
+.card .specs .lv-warn dd { color: var(--warn, #bf8700); }
+.card .specs .lv-bad dd  { color: var(--bad); }
+
+/* ---- 详情页：文章列表 + 弹窗 ----
+   列表只显示标题和摘要，全文在 <dialog> 里。
+   最多显示 5 条的高度，再多就出滚动条。 */
+.articles h3 { display: flex; align-items: baseline; gap: var(--s2); }
+.art-count { font-size: 11px; color: var(--faint); font-weight: 400; }
+
+.art-list {
+  list-style: none; margin: 0; padding: 0;
+  /* 5 条的高度：每条约 68px（标题+一行摘要+时间） */
+  max-height: 21.5rem;
+  overflow-y: auto;
+  /* 滚动条别贴着文字 */
+  padding-right: 2px;
+}
+.art-list > li + li { border-top: var(--kokoro-border-width, 1px) solid var(--line); }
+
+.art-item {
+  display: block; width: 100%; text-align: left;
+  background: none; border: 0; cursor: pointer;
+  padding: var(--s3) var(--s2);
+  font: inherit; color: inherit;
+  border-radius: var(--r-sm);
+  transition: background var(--t-fast) var(--ease);
+}
+.art-item:hover { background: var(--sunken); }
+.art-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.art-title { display: block; font-size: 13.5px; color: var(--fg-strong); }
+.art-sum {
+  display: block; margin-top: 2px;
+  font-size: 12px; color: var(--muted);
+  /* 摘要最多两行，超了省略 */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.art-when { display: block; margin-top: 3px; font-size: 10.5px; color: var(--faint); font-family: var(--mono); }
+
+/* ---- 弹窗 ---- */
+.art-dlg {
+  width: min(46rem, 92vw); max-height: 84vh;
+  padding: 0; border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r); background: var(--panel); color: var(--fg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .3);
+  overflow: hidden;
+}
+.art-dlg::backdrop { background: rgba(0, 0, 0, .45); }
+.art-body { display: flex; flex-direction: column; max-height: 84vh; }
+.art-head {
+  display: flex; align-items: baseline; gap: var(--s3);
+  padding: var(--s4) var(--s4) var(--s3);
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.art-head h3 { margin: 0; font-size: 15px; flex: 1; }
+.art-head time { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+.art-close {
+  flex: none; background: none; border: 0; cursor: pointer;
+  font-size: 15px; line-height: 1; color: var(--muted); padding: 2px 4px;
+  border-radius: var(--r-sm);
+}
+.art-close:hover { background: var(--sunken); color: var(--fg); }
+/* 正文自己滚，标题栏固定 */
+.art-body > .md { overflow-y: auto; padding: var(--s4); }
+
+/* ---- 首页改版排版 ----
+   目标：把 /dashboard 的内容并进来，同时别让首页变成一堵墙。
+   三条规则：
+     1) 时钟贴 Hero 右侧，不占独立行
+     2) 「站长名片 + 总览」一行 —— 人是谁、有多少机器，本来就该一起看
+     3) 「全网速率 + 地球」一行 —— 都是实时状态，放一起才像监控大屏 */
+
+/* Hero 改成左右两栏：标题在左、时钟在右 */
+.hero {
+  display: flex; align-items: center; gap: var(--s5);
+  flex-wrap: wrap;
+  text-align: left;   /* 原来居中，加了右侧时钟后居中会打架 */
+}
+/* 只有标题没有时钟时，还是居中好看 */
+.hero { justify-content: flex-start; }
+
+/* 站长名片 + 总览 */
+.home-top {
+  display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: stretch;
+  margin-top: var(--gap);
+}
+/* 管理员引导卡的 margin-top 由容器统一给，自己不要再加，否则会错位 */
+.home-top > .owner-empty { margin-top: 0; }
+.home-top > .owner-empty { grid-column: auto; }
+
+/* 总览：四个数字一格，下面一行容量合计 */
+.overview { display: flex; flex-direction: column; }
+.overview h3 { margin: 0 0 var(--s3); font-size: 13px; color: var(--muted); font-weight: 600; }
+.ov-grid {
+  display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  flex: 1;
+}
+.ov { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ov span { font-size: 11px; color: var(--muted); }
+.ov b { font-size: 20px; font-family: var(--mono); line-height: 1.1; color: var(--fg-strong); }
+.ov small { font-size: 10px; color: var(--faint); }
+.ov.ok b  { color: var(--ok); }
+.ov.bad b { color: var(--bad); }
+.ov-cap {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s3); flex-wrap: wrap;
+  margin-top: var(--s3); padding-top: var(--s3);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  font-size: 11.5px; color: var(--faint);
+}
+
+/* 全网速率（取代了原来的实时动态卡） */
+#speed { display: flex; flex-direction: column; }
+.rate-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3);
+  margin-top: var(--s3);
+}
+.rate-row.traf { margin-top: var(--s2); padding-top: var(--s3);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line); }
+.rate { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rate .rl { font-size: 11px; color: var(--muted); }
+.rate .rv { font-size: 20px; font-family: var(--mono); color: var(--fg-strong); line-height: 1.15; }
+.rate .rv.sm { font-size: 15px; color: var(--fg); }
+
+/* 独占整行但不高亮 —— Swap 用它（值天生很长，塞半栏会被截断）。 */
+.card .specs > div.wide { grid-column: 1 / -1; }
+
+/* 速率卡和地球**必须等高**（boss 要求上下边界齐平）。
+   .home-side-new 上本来就有 height: var(--band-h)，直接让它生效即可；
+   多出来的高度给曲线吃掉 —— 见下面的 .rate-chart-wrap { flex: 1 }，
+   否则底下会留一片空白。 */
+.home-band > #speed { height: var(--band-h); }
+/* 图表容器用独立高度承载 SVG，避免 SVG 的内在宽高比撑破 flex 布局，
+   把后面的图例压到曲线上。 */
+.home-band > #speed .rate-chart-wrap,
+.home-band > #speed .res-chart-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  display: block;
+  height: clamp(76px, calc((var(--band-h) - 250px) / 2), 112px);
+  min-height: 0;
+  margin-top: var(--s2);
+}
+.home-band > #speed .rate-chart {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ---- 首页「全网速率」卡里的波动图 ----
+   和仪表盘那张用同一套 class（.dash-line-up 等），只是尺寸不同。 */
+.rate-chart {
+  display: block; width: 100%; height: 110px;
+  /* 折线用 non-scaling-stroke 之外的办法不行（SVG 会被拉伸），
+     所以给整张图一点描边补偿在下面的 path 规则里。 */
+}
+/* 曲线 + 刻度数值覆盖层。数值不能进 SVG（会被拉伸变形），
+   所以绝对定位在上面，右对齐贴着曲线右边。
+   ⚠️ 上边距加在 wrap 上而不是 svg 上：覆盖层是 top:0 相对 wrap 定位的，
+   margin 留在 svg 上会让曲线比刻度文字低一截，三个标签全都对不齐。 */
+.rate-chart-wrap,
+.res-chart-wrap { position: relative; margin-top: var(--s3); }
+.rate-axis {
+  position: absolute; top: 0; right: 2px; bottom: 0;
+  display: flex; flex-direction: column; justify-content: space-between;
+  pointer-events: none;
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
+  /* 与 SVG 的 pad(8/180) 对齐，首尾标签不越出曲线范围 */
+  padding: 6px 0 4px;
+  text-align: right;
+}
+.rate-range { color: var(--muted); font-family: var(--mono); }
+/* 第二张图（CPU / 内存 平均使用率）的小标题。
+   第一张不需要 —— 卡片标题「全网速率」就是它。 */
+.rate-sub { margin-top: var(--s3); font-size: 11px; color: var(--muted); }
+.rate-legend {
+  display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4);
+  margin-top: var(--s2);
+  font-size: 11px; color: var(--muted);
+  flex: 0 0 auto;
+}
+.rate-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.rate-legend i { width: 9px; height: 3px; border-radius: 2px; display: inline-block; }
+.rate-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.rate-legend i { width: 9px; height: 3px; border-radius: 2px; display: inline-block; }
+
+/* ---- 后台测试页：三次测试铺成三块 ----
+   （这三块之前没有任何样式，是裸 div 堆在一起） */
+.all-bar {
+  display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap;
+  padding: var(--s4) var(--s5);
+  background: var(--bg-soft);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r);
+  margin: var(--s4) 0 0;
+}
+.all-bar .btn { flex: none; }
+
+.script-grid {
+  display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin-top: var(--s4);
+  align-items: stretch;
+}
+.script-card {
+  display: flex; flex-direction: column;
+  padding: var(--s4) var(--s5);
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r);
+}
+.script-card h3 { margin: 0 0 var(--s2); font-size: 14px; }
+.script-card .note { margin: 0 0 var(--s3); font-size: 12px; color: var(--muted); flex: 1; }
+.script-card code {
+  display: block; overflow-x: auto;
+  padding: var(--s2) var(--s3); margin-bottom: var(--s3);
+  background: var(--sunken); border-radius: var(--r-sm);
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  white-space: nowrap;
+}
+.script-card .go { margin: 0; }
+.script-card .go .btn { width: 100%; }
+
+/* ---- 全网速率折线（仪表盘 + 首页共用）----
+   ⚠️ 这些 class 以前只写在 dashboard.html 的内联 <style> 里，
+   首页引不到 —— 折线没有 stroke 会回退成纯黑，整张图糊成一团黑块。
+   所以搬到这里。 */
+.dash-grid-line { stroke: var(--kokoro-chart-grid, var(--line)); stroke-width: 1; }
+.dash-area-up   { fill: var(--cpu); fill-opacity: var(--kokoro-chart-area-opacity, .18); stroke: none; }
+.dash-line-up   { fill: none; stroke: var(--cpu); stroke-width: 2; stroke-linejoin: round; }
+/* 柱状图和点图由 layout.charts.type 控制；半径、透明度和序列颜色由主题变量控制。 */
+.dash-bar-up,
+.dash-bar-down,
+.res-bar-cpu,
+.res-bar-mem,
+.spark-bar { opacity: var(--kokoro-chart-bar-opacity, .9); rx: var(--kokoro-chart-bar-radius, 3); }
+.dash-bar-up { fill: var(--cpu); }
+.dash-bar-down { fill: var(--mem); }
+.res-bar-cpu { fill: var(--cpu); }
+.spark-bar { fill: var(--accent); }
+.res-bar-mem { fill: var(--mem); }
+.spark-dot { fill: var(--accent); }
+.res-dot-cpu { fill: var(--cpu); }
+.dash-point-down, .res-dot-mem { fill: var(--mem); stroke: none; }
+/* 数据点（radius 由主题 --kokoro-chart-point-radius 决定，0 = 不画）。 */
+.dash-point { fill: var(--cpu); stroke: none; }
+.dash-line-down { fill: none; stroke: var(--mem); stroke-width: var(--kokoro-chart-line-width, 1.75); stroke-linejoin: round; }
+.dash-line-up { stroke-width: var(--kokoro-chart-line-width, 1.75); }
+/* ---- CPU / 内存平均使用率（「全网速率」卡第二张图）----
+   线条色和卡片上的 CPU / 内存条同源（--cpu / --mem）——
+   同一屏里同一个指标必须是同一个颜色，没人会去记"这张图里蓝的是内存"。
+   面积用 18% 透明混色，和上行面积（--accent-soft）同一个做法。 */
+.res-area-cpu { fill: var(--cpu); fill-opacity: var(--kokoro-chart-area-opacity, .18); stroke: none; }
+.res-area-mem { fill: var(--mem); fill-opacity: var(--kokoro-chart-area-opacity, .18); stroke: none; }
+.res-line-cpu { fill: none; stroke: var(--cpu); stroke-width: var(--kokoro-chart-line-width, 1.75); stroke-linejoin: round; }
+.res-line-mem { fill: none; stroke: var(--mem); stroke-width: var(--kokoro-chart-line-width, 1.75); stroke-linejoin: round; }
+.dash-legend {
+  display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px;
+  font-size: 12px; color: var(--muted);
+}
+.dash-legend i {
+  display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  margin-right: 6px; vertical-align: -1px;
+}
+
+/* ---- 首页再排一次：时钟进顶栏、名片进顶栏、数字进总览、流量进速率 ----
+   boss 的意图是"别再让同一屏出现两遍同样的数字"，
+   所以整排统计卡拆掉了，数字分给两块。 */
+
+/* 总览的数字：在原来基础上多给一行小字说明 */
+.ov small { display: block; margin-top: 1px; }
+/* 五个数字时自动折成两行，不要挤成一条 */
+.ov-grid { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
+
+/* 速率卡里的流量小字（↑ x · ↓ y） */
+.rate .rs { font-size: 10.5px; color: var(--faint); font-family: var(--mono); }
+
+/* ---- 卡片压缩（boss 要求）----
+   原来 padding 给得太宽松，一块卡片上下能省出小半屏。 */
+.home-top > .owner-empty { padding: var(--s3) var(--s4); }
+
+/* 总览：标题和数字都收紧 */
+.overview h3 { margin-bottom: var(--s2); }
+.ov-grid { gap: var(--s2) var(--s3); }
+.ov b { font-size: 18px; }
+.ov span { font-size: 10.5px; }
+.ov small { font-size: 10px; }
+
+/* ---- 总览：进一步压缩 + 数字水平居中 ----
+   每个数字下面的小字删了，格子自然矮一截；数字本身居中，
+   四格排开才像"仪表盘"而不是左对齐的一堆文本。 */
+.ov { align-items: center; text-align: center; }
+.overview h3 { margin-bottom: var(--s2); }
+
+/* ---- 卡片间距统一（boss 要求）----
+   原来 .owner 自带 margin-top: var(--gap)，又被容器补了一次，
+   结果"名片→总览"和"总览→速率卡"的间距不一样。 */
+.home-top { margin-top: var(--gap); margin-bottom: 0; }
+.home-top > .owner,
+.home-top > .owner-empty,
+.home-top > .overview { margin-top: 0; margin-bottom: 0; }
+/* 卡片之间的行距统一走 --gap，别再各自加 */
+.home-band { margin-top: var(--gap); }
+.grid { margin-top: var(--gap); }
+
+/* ---- 卡片检测摘要：保留脚本提供的换行 ---- */
+.card .task-line { white-space: pre-line; }
+
+/* ---- 卡片互动条：赞 / 踩 / 文章数 / 评论数 ----
+   放在「查看详情」上面一行。赞踩是按钮，文章/评论是纯展示。 */
+.card .actbar {
+  display: flex; align-items: center; gap: var(--s2);
+  margin-top: var(--s3); padding-top: var(--s3);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.card .act {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: var(--r-sm);
+  font-size: 12px; font-family: var(--mono); color: var(--muted);
+  background: none; border: 0;
+}
+.card button.act { cursor: pointer; }
+.card button.act:hover { background: var(--sunken); color: var(--fg); }
+.card .act .i { font-size: 10px; line-height: 1; }
+.card .act .n { font-variant-numeric: tabular-nums; }
+/* 投过的票高亮。绿=赞、红=踩（跟涨跌色一致）。 */
+.card .vote.up.on   { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.card .vote.down.on { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+/* 评论数紧跟在文章数右边（不推开），把最右让给按钮 */
+/* 「查看详情」推到最右，和计数同一行 */
+.card .actbar .more { margin-left: auto; flex: none; }
+
+/* ---- 卡片底部再压缩 ----
+   「查看详情」并进互动条之后，原来单独那一行（含左侧绿灯）没了，
+   卡片自然矮一行。顺手把互动条的上下留白收紧一点。 */
+.card .actbar { margin-top: var(--s2); padding-top: var(--s2); gap: 6px; }
+.card .foot { display: none; }   /* 老的那一行彻底不用了 */
+
+/* ---- 后台「面板主机自身」----
+   从 /dashboard 的 .dash-kv 搬过来、改了名。
+   那个页面已经删掉，这块并进后台了。 */
+.kv-grid {
+  display: grid; gap: var(--s4);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.kv-grid > div {
+  border-left: 2px solid var(--line);
+  padding-left: var(--s3);
+  min-width: 0;
+}
+.kv-grid span { display: block; font-size: 12px; color: var(--muted); }
+.kv-grid b {
+  font-size: 17px; font-family: var(--mono); color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.kv-grid b small { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+/* ---- 检测摘要 ----
+   保持最低阅读高度；跑分行数增加时自然扩展，不裁掉结果。 */
+.card .ipcard {
+	/* 保持最低高度，具体高度由摘要行数决定。 */
+  min-height: 3.9rem;
+  display: flex; flex-direction: column; justify-content: center;
+  position: relative;
+}
+.card .ip-empty {
+  margin: 0; padding: var(--s2) var(--s3);
+  background: var(--sunken); border-radius: var(--r-sm);
+  font-size: 12.5px; line-height: 1.5; color: var(--faint);
+  text-align: center;
+}
+
+/* ---- 居中弹窗（文章 / 评论）----
+   原来是贴右边滑出的侧边栏，改成居中 ——
+   侧边栏会把正文挤到很窄，而且贴着边缘读起来累。 */
+.dlg-scrim {
+  position: fixed; inset: 0;
+  /* ⚠️ 必须高于顶栏。顶栏是 sticky + z-index: 1000，这里原来是 60，
+     于是弹窗顶部会被顶栏压住一截（遮罩是 fixed 的，看起来像
+     "弹窗从顶栏下面钻出来"）。跟着 dropdown 层级走，主题调高也不会漏。 */
+  z-index: calc(var(--kokoro-z-dropdown, 1000) + 100);
+  background: rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center;
+  padding: clamp(12px, 2vw, var(--s4));
+  animation: dfade .16s var(--ease);
+}
+#skinget-scrim:not([hidden]) {
+  display: grid; place-items: center; box-sizing: border-box;
+  min-height: 100vh; min-height: 100dvh;
+}
+#skinget-scrim > .dlg { margin: 0; max-height: min(80vh, 46rem); }
+@keyframes dfade { from { opacity: 0 } to { opacity: 1 } }
+
+.dlg {
+  display: flex; flex-direction: column;
+  width: min(44rem, 96vw);
+  max-height: min(calc(100vh - 32px), 46rem);
+  max-height: min(calc(100dvh - 32px), 46rem);
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .3);
+  animation: dpop .18s var(--ease);
+}
+@keyframes dpop {
+  from { opacity: 0; transform: translateY(10px) scale(.985) }
+  to   { opacity: 1; transform: none }
+}
+/* ⚠️ **必须显式写 [hidden]**。
+   HTML 的 hidden 属性靠浏览器默认样式表的 `[hidden]{display:none}` 生效，
+   而上面 .dlg 里的 `display:flex` 是作者样式，**优先级更高** ——
+   会把 hidden 盖掉，表现成"弹窗一直显示、关不掉"，且**不报错**。
+   （这个坑踩过一次，样式表里留了静态断言的测试。） */
+.dlg[hidden], .dlg-scrim[hidden] { display: none; }
+
+/* 关的时候反向播一下，别"啪"地消失 */
+.dlg.closing { animation: dpop .14s var(--ease) reverse forwards; }
+.dlg-scrim.closing { animation: dfade .14s var(--ease) reverse forwards; }
+
+.dlg-head {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  flex: none;
+}
+/* 弹窗标题。之前没有这条规则，标题只靠 <b> 的默认加粗，和正文一样大，
+   层级出不来。 */
+.dlg-title { font-size: var(--kokoro-font-size-lg, 16px); color: var(--fg-strong); }
+/* 弹窗表单里的 label：文字在上、控件在下。
+   `.login label` 有这条规则，弹窗里的没有 —— 于是「联系方式」和输入框
+   挤在同一行、两个输入框宽度还各不相同，看着很毛糙。
+   ⚠️ 用 block 而不是 flex column：label 里的「文字 + 必填星号」是两个
+   节点，flex column 会把星号也挤到单独一行去。block 下文字和星号照常
+   行内排列，控件自己 block 换行。 */
+.dlg label { display: block; font-size: 13px; color: var(--muted); }
+.dlg label input, .dlg label textarea { display: block; width: 100%; margin-top: 4px; }
+.dlg label .req { color: var(--bad); }
+/* ⚠️ 这个类负责把后面的关闭按钮推到右边（margin-left:auto）。
+   弹窗头里如果**没有** .dlg-admin，✕ 就会紧贴着标题 —— 新加弹窗时记得
+   补一个空的 <div class="dlg-admin"></div> 占位，别直接靠 .dlg-x 自己。 */
+.dlg-admin { margin-left: auto; display: flex; gap: 6px; }
+.dlg-x {
+  flex: none; background: none; border: 0; cursor: pointer;
+  font-size: 15px; line-height: 1; color: var(--muted);
+  padding: 4px 6px; border-radius: var(--r-sm);
+}
+.dlg-x:hover { background: var(--sunken); color: var(--fg); }
+
+.dlg-body {
+  flex: 1; min-height: 0; overflow-y: auto; padding: var(--s4);
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  scrollbar-gutter: stable;
+}
+.dlg-foot {
+  flex: none; padding: var(--s3) var(--s4);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+  display: flex; align-items: center; gap: var(--s3);
+}
+.dlg-foot:empty { display: none; }
+.dlg-foot .hint { margin: 0; }
+
+/* 评论弹窗里的留言表单：详情页的留言区已下线，这里是唯一入口。
+   放在 .dlg-body 与 .dlg-foot 之间，本身不滚动（body 滚），
+   所以给它一条上边线把它和列表分开。 */
+.dcmt-form {
+  flex: none; display: grid; gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-top: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.dcmt-form[hidden] { display: none; }
+.dcmt-form .row { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.dcmt-form input[name="author"] { flex: 0 0 11rem; }
+.dcmt-form input[name="contact"] { flex: 1 1 14rem; min-width: 0; }
+.dcmt-form textarea { width: 100%; resize: vertical; line-height: 1.6; font-family: inherit; min-height: 3.6rem; }
+
+/* 弹窗里的评论：默认只显示第一条，其余折叠 */
+.dcmt + .dcmt { border-top: var(--kokoro-border-width, 1px) solid var(--line); }
+.dcmt { padding: var(--s3) 0; }
+.dcmt-head { display: flex; align-items: baseline; gap: var(--s2); font-size: 12px; color: var(--muted); }
+.dcmt-head b { color: var(--fg-strong); font-size: 13px; }
+.dcmt-body { margin-top: 4px; font-size: 13px; line-height: 1.6; }
+.d-expand {
+  display: block; width: 100%; margin-top: var(--s3);
+  background: var(--sunken); border: 0; border-radius: var(--r-sm);
+  padding: var(--s3); cursor: pointer; font: inherit;
+  font-size: 12.5px; color: var(--accent);
+}
+.d-expand:hover { background: var(--line); }
+.d-empty { margin: 0; font-size: 13px; color: var(--muted); text-align: center; padding: var(--s7) 0; }
+
+@media (max-width: 640px) {
+  .dlg-scrim { padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+  .dlg { width: 100%; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); }
+  .dlg-body { padding: var(--s3); }
+}
+
+/* 抽屉页签的计数角标 */
+.dtab .cnt { opacity: .7; font-size: 11px; }
+
+/* ---- 后台选项卡 ----
+   10 个板块一路往下堆，找设置要滚半天。 */
+.atabs {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin: 0 0 var(--s4);
+  padding: 4px;
+  background: var(--sunken);
+  border-radius: var(--r);
+}
+.atab {
+  position: relative;
+  background: none; border: 0; cursor: pointer;
+  padding: 7px 14px; border-radius: var(--r-sm);
+  font: inherit; font-size: 13.5px; color: var(--muted);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  /* 页签有两种：<button data-goto>（切面板）和 <a href>（跳到独立页面，
+     比如「主题」）。下面两条是给 <a> 用的，让两者外观完全一致。 */
+  text-decoration: none; display: inline-block;
+}
+.atab:hover { color: var(--fg); }
+.atab.on {
+  background: var(--panel); color: var(--fg-strong); font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+}
+.atab .abadge {
+  display: inline-block; margin-left: 5px; padding: 0 5px;
+  border-radius: 999px; background: var(--bad); color: #fff;
+  font-size: 10.5px; font-weight: 600; line-height: 16px; vertical-align: 1px;
+}
+/* 非当前选项卡的区块整块藏掉。用 display:none 而不是 visibility ——
+   藏起来的表单不该能被 Tab 键聚焦。 */
+.admin > .panel[data-atab] { display: none; }
+.admin > .panel[data-atab].on { display: block; }
+
+/* 卡片上的「文章 / 评论」入口：做成**看得出来能点**的小按钮。
+   裸数字（📄 0）看不出能点，试过，反馈是不明显。 */
+.card .act.btnlike {
+  cursor: pointer;
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  background: var(--panel);
+  font-size: 11.5px; padding: 3px 9px;
+  /* 与右侧的「查看详情」拉开，不要挤在一起 */
+  color: var(--muted);
+}
+.card .act.btnlike:hover {
+  border-color: var(--accent); color: var(--accent);
+}
+/* 没有文章时弱化一档，但**仍然可点** —— 点开能看到"无文章"，
+   顺便给管理员一个"写文章"的入口。 */
+.card .act.btnlike:has(+ .act.btnlike) { margin-right: 2px; }
+
+/* ---- 系统图标 ----
+   fill 走 currentColor：跟着主题变色，深色主题下自动变亮，
+   不用为明暗各维护一套图标。 */
+.card .specs dd .osi {
+  width: 13px; height: 13px; flex: none;
+  fill: currentColor;
+  vertical-align: -2px;
+  margin-right: 4px;
+  opacity: .85;
+}
+
+/* 有文章 = 实心亮，没文章 = 淡一档（但仍然可点，点开是"无文章"）。
+   两者长得一样的话，访客要逐个点才知道哪台有内容。 */
+.card .act.btnlike.dim {
+  background: transparent;
+  color: var(--faint);
+  border-style: dashed;
+}
+.card .act.btnlike.has-articles {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--line));
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  font-weight: 750;
+}
+.card .act.btnlike.has-articles:hover,
+.card .act.btnlike.has-articles:focus-visible {
+  color: var(--fg-strong);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 28%, var(--panel));
+}
+
+/* 续费费用弹窗已删（boss 要求），相关样式一并清掉 ——
+   留着死 CSS 会让人以为这个功能还在。 */
+/* ---- 到期倒计时标签 ----
+
+   分三档：>30 天正常（跟普通标签一样）、≤30 天提醒、≤7 天或已过期告警。 */
+.tag.exp-ok   { color: var(--muted); }
+.tag.exp-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.tag.exp-bad  { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, transparent); font-weight: 600; }
+
+/* NAT 是卡片上的**固定 tag**（boss 2026-10-11）：原来在规格表的「网络」项里，
+   那片位置让给硬指标了。保留警示色 —— "能不能被外网直连"买家很关心，
+   不能淹没在一堆普通标签里。悬停有完整解释（模板里 title）。 */
+.tag.nat { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+
+/* 后台节点表里带文字标签的小字段（到期日）。
+   光一个空日期框看不出是干吗的。 */
+.fld { display: inline-flex; flex-direction: column; gap: 2px; }
+.fld > span { font-size: 10.5px; color: var(--muted); line-height: 1.2; }
+.fld input { font: inherit; font-size: 12.5px; padding: 3px 6px;
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm); background: var(--panel); color: var(--fg); }
+
+/* 「永久」用中性的成功色 —— 它是个"没问题"的状态，
+   但不该跟"剩 300 天"长得一模一样，否则一眼扫过去分不出。 */
+.tag.exp-perm { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+
+/* 到期日：日期框和「永久」并排 */
+.fld-row { display: inline-flex; align-items: center; gap: 6px; }
+.fld .chk { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.fld input[type="date"]:disabled { opacity: .4; }
+.date-entry { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.date-entry > input[data-exp-date] { width: 126px; min-width: 0; }
+.date-entry-picker { position: absolute; inset-inline-end: 34px; width: 1px; height: 1px;
+  opacity: 0; pointer-events: none; }
+.date-entry-button { display: inline-grid; place-items: center; width: 30px; height: 28px;
+  padding: 0; color: var(--muted); background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r-sm); cursor: pointer; }
+.date-entry-button:hover { color: var(--fg); border-color: var(--accent); }
+.date-entry-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.date-entry-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor;
+  stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.swap-dialog {
+  width: min(28rem, calc(100vw - 2rem)); padding: 0;
+  color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: 0 24px 64px rgba(0,0,0,.3);
+}
+.swap-dialog::backdrop { background: rgba(0,0,0,.48); }
+.swap-dialog-body { padding: var(--s4); }
+.swap-dialog h3 { margin: 0 0 var(--s2); font-size: 16px; }
+.swap-dialog h3 span { color: var(--muted); font-weight: 500; }
+.swap-dialog p { margin: 0 0 var(--s3); line-height: 1.55; }
+.swap-dialog form > label { font-size: 12px; color: var(--muted); }
+.swap-dialog input[type="number"] { width: 100%; box-sizing: border-box; }
+.swap-dialog-actions { justify-content: flex-end; margin-top: var(--s2); }
+
+/* ---- 评论审核：按小鸡分组 ---- */
+.cmt-group { margin-top: var(--s4); }
+.cmt-group .sub { margin-bottom: var(--s2); }
+/* 置顶那一行加个左侧色条，扫一眼就知道哪条被顶上去了 */
+.pinned-row > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.pin-badge { margin-right: 4px; }
+
+/* ---- 三网延迟 + 流量（卡片上的紧凑两行）---- */
+.card .netcard {
+  display: flex; flex-direction: column; gap: 3px;
+  margin: var(--s2) 0 0;
+  padding: var(--s2) var(--s3);
+  background: var(--sunken); border-radius: var(--r-sm);
+  font-size: 12px; line-height: 1.5;
+}
+.card .netrow { margin: 0; display: flex; flex-wrap: wrap; gap: 3px 10px; align-items: baseline; }
+/* 每行左侧的标签（延迟 / 本日 / 本月）固定宽度，值列才能对齐 */
+.card .netrow .nl { flex: none; width: 4.2em; color: var(--muted); }
+/* 值不能 nowrap：四列窄卡里「↑195 MB ↓1009 MB」这样的长值会直接
+   溢出卡片（boss 2026-10-11 截图里"本月"值是空的 —— 被挤出框外了）。
+   允许换行 + 任意处折断，短值（电信 105ms）本来也不会换。 */
+.card .netrow .nv { color: var(--fg); font-family: var(--mono); overflow-wrap: anywhere; }
+/* 延迟越低越好 —— 这里 green=快、red=慢，跟占用率条的方向相反 */
+.card .netrow .nv.lv-ok   { color: var(--ok); }
+.card .netrow .nv.lv-warn { color: var(--warn); }
+.card .netrow .nv.lv-bad  { color: var(--bad); }
+
+/* ---- 三网延迟波动（每个运营商一行）----
+   和上面的 netcard 一个样式（下沉底色），但它装的是"质量"不是"流量"，
+   所以单独一块 —— 混在一起的话「丢包 0.0%」和「本月 ↑x」会读错行。 */
+.card .netqrows {
+  display: flex; flex-direction: column; gap: 4px;
+  margin: 6px 0 0; padding: var(--s2) var(--s3);
+  width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
+  background: var(--sunken); border-radius: var(--r-sm);
+}
+/* 一行：圆点 | 运营商 | 毫秒 | 波动(吃掉剩余宽度) | 丢包。
+   波动列给 minmax 而不是固定宽：窄卡上名字和丢包率先保证，
+   波最短也有 36px，再窄就换行（flex-wrap 由 grid 自动处理不了，
+   所以窄卡上靠 -wave 的 flex-basis 收缩）。 */
+.card .nqr {
+  display: grid; align-items: center; gap: 4px;
+  grid-template-columns: 6px auto max-content minmax(18px, 1fr) max-content;
+  grid-template-areas: "dot name ms wave loss";
+  min-width: 0; max-width: 100%;
+  font-size: 10px; line-height: 1.25;
+}
+.card .nqr .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted);
+  grid-area: dot;
+}
+.card .nqr .nm { grid-area: name; min-width: 0; color: var(--muted); white-space: nowrap; }
+.card .nqr .ms {
+  grid-area: ms;
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  color: var(--fg); white-space: nowrap;
+}
+.card .nqr .ms em { font-style: normal; font-size: 9px; color: var(--muted); margin-left: 1px; }
+.card .nqr .wave { grid-area: wave; display: block; width: 100%; min-width: 18px; height: 12px; }
+.card .nqr .wa { stroke: none; }
+.card .nqr .wl {
+  fill: none; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round;
+  /* 波被 preserveAspectRatio="none" 拉过，不记得话斜线会变成一头粗一头细 */
+  vector-effect: non-scaling-stroke;
+}
+.card .nqr .ls { grid-area: loss; color: var(--muted); font-size: 9px; white-space: nowrap; }
+/* 延迟分档：圆点 + 曲线 + 面积同色，扫一眼颜色就知道快不快 */
+.card .nqr.lv-ok   .dot { background: var(--ok); }
+.card .nqr.lv-warn .dot { background: var(--warn); }
+.card .nqr.lv-bad  .dot { background: var(--bad); }
+.card .nqr.lv-ok   .wl { stroke: var(--ok); }
+.card .nqr.lv-warn .wl { stroke: var(--warn); }
+.card .nqr.lv-bad  .wl { stroke: var(--bad); }
+.card .nqr.lv-ok   .wa { fill: color-mix(in srgb, var(--ok) 14%, transparent); }
+.card .nqr.lv-warn .wa { fill: color-mix(in srgb, var(--warn) 14%, transparent); }
+.card .nqr.lv-bad  .wa { fill: color-mix(in srgb, var(--bad) 14%, transparent); }
+/* 离线卡片上曲线退成灰色，跟 sp-line 一个待遇 */
+.card.off .nqr .wl { stroke: var(--faint); }
+.card.off .nqr .dot { background: var(--faint); }
+.card.off .nqr .wa { fill: color-mix(in srgb, var(--faint) 14%, transparent); }
+
+/* ---- Tech · 科技控制台 ----
+   运维控制台的视觉语言：墨绿黑底、细描边、低饱和松石与铜色数据强调。
+   主题 token 定义颜色与排版；以下只负责该主题的页面构图和交互细节。 */
+body[data-k-theme="kokoro.tech"] {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(167, 201, 174, .025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(167, 201, 174, .025) 1px, transparent 1px),
+    radial-gradient(ellipse at 50% -24%, rgba(103, 143, 117, .13), transparent 58%),
+    var(--kokoro-bg-image, none);
+  background-size: 48px 48px, 48px 48px, auto, var(--kokoro-bg-size, auto);
+  background-repeat: repeat, repeat, no-repeat, var(--kokoro-bg-repeat, repeat);
+  background-attachment: fixed, fixed, scroll, var(--kokoro-bg-attachment, fixed);
+}
+body[data-k-theme="kokoro.tech"] .wrap {
+  max-width: var(--maxw);
+  padding-left: clamp(18px, 2.2vw, 38px);
+  padding-right: clamp(18px, 2.2vw, 38px);
+}
+body[data-k-theme="kokoro.tech"] .top {
+  background: rgba(13, 19, 18, .92);
+  backdrop-filter: blur(14px);
+  border-bottom-color: rgba(105, 131, 115, .24);
+}
+body[data-k-theme="kokoro.tech"] .top .wrap { min-height: 68px; }
+body[data-k-theme="kokoro.tech"] .brand { letter-spacing: .04em; }
+body[data-k-theme="kokoro.tech"] .btn,
+body[data-k-theme="kokoro.tech"] .mode-btn,
+body[data-k-theme="kokoro.tech"] input,
+body[data-k-theme="kokoro.tech"] select,
+body[data-k-theme="kokoro.tech"] textarea { transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+body[data-k-theme="kokoro.tech"] :is(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+body[data-k-theme="kokoro.tech"] .panel,
+body[data-k-theme="kokoro.tech"] .map-card,
+body[data-k-theme="kokoro.tech"] .card {
+  border-color: rgba(105, 131, 115, .27);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .13);
+}
+body[data-k-theme="kokoro.tech"] .panel,
+body[data-k-theme="kokoro.tech"] .map-card { border-radius: 12px; }
+body[data-k-theme="kokoro.tech"] .card { border-radius: 10px; }
+body[data-k-theme="kokoro.tech"] .card:hover {
+  border-color: rgba(167, 201, 174, .56);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .2);
+}
+body[data-k-theme="kokoro.tech"] .console-intro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 46px 0 34px;
+  border-bottom: 1px solid rgba(105, 131, 115, .22);
+}
+body[data-k-theme="kokoro.tech"] .console-intro-copy { min-width: 0; }
+body[data-k-theme="kokoro.tech"] .console-kicker {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 12px;
+  color: var(--accent-2);
+  font: 600 10px/1.4 var(--mono);
+  letter-spacing: .16em;
+}
+body[data-k-theme="kokoro.tech"] .console-kicker > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--ok) 45%, transparent);
+}
+body[data-k-theme="kokoro.tech"] .console-intro h1,
+body[data-k-theme="kokoro.tech"] .admin-heading h1 {
+  margin: 0;
+  color: var(--fg-strong);
+  font-size: clamp(26px, 3vw, 38px);
+  font-weight: 550;
+  letter-spacing: -.035em;
+}
+body[data-k-theme="kokoro.tech"] .console-intro-copy > p:last-child,
+body[data-k-theme="kokoro.tech"] .admin-heading > div:first-child > p:last-child {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+body[data-k-theme="kokoro.tech"] .console-summary {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  border: 1px solid rgba(105, 131, 115, .25);
+  border-radius: 9px;
+  background: rgba(23, 33, 30, .76);
+}
+body[data-k-theme="kokoro.tech"] .console-summary > div {
+  display: grid;
+  min-width: 120px;
+  padding: 13px 20px;
+  gap: 3px;
+}
+body[data-k-theme="kokoro.tech"] .console-summary > div + div { border-left: 1px solid rgba(105, 131, 115, .24); }
+body[data-k-theme="kokoro.tech"] .console-summary b {
+  color: var(--fg-strong);
+  font: 500 24px/1.1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+body[data-k-theme="kokoro.tech"] .console-summary span { color: var(--muted); font-size: 11px; }
+body[data-k-theme="kokoro.tech"] .console-summary .is-online b { color: var(--ok); }
+body[data-k-theme="kokoro.tech"] .home-band {
+  --band-h: clamp(390px, 39vw, 510px);
+  grid-template-columns: minmax(0, 1.18fr) minmax(360px, .82fr);
+  gap: 18px;
+  margin-top: 24px;
+}
+body[data-k-theme="kokoro.tech"] .home-band > #speed,
+body[data-k-theme="kokoro.tech"] .home-band .map-card { height: var(--band-h); }
+body[data-k-theme="kokoro.tech"] #speed,
+body[data-k-theme="kokoro.tech"] .map-card { padding: 22px; }
+body[data-k-theme="kokoro.tech"] #speed h3,
+body[data-k-theme="kokoro.tech"] .map-head h2 { color: var(--fg-strong); font-size: 15px; letter-spacing: .01em; }
+body[data-k-theme="kokoro.tech"] .rate-row:not(.traf) { margin-top: 12px; }
+body[data-k-theme="kokoro.tech"] .rate .rv { font-size: clamp(19px, 2vw, 25px); }
+body[data-k-theme="kokoro.tech"] .rate .rv.sm { font-size: 15px; }
+body[data-k-theme="kokoro.tech"] .rate-chart-wrap,
+body[data-k-theme="kokoro.tech"] .res-chart-wrap { min-height: 62px; }
+body[data-k-theme="kokoro.tech"] .home-band .globe { min-height: 220px; }
+body[data-k-theme="kokoro.tech"] .map-foot { color: var(--faint); }
+body[data-k-theme="kokoro.tech"] .group-head {
+  min-height: 60px;
+  margin: 32px 0 0;
+  padding: 8px 12px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid rgba(105, 131, 115, .23);
+  border-radius: 0;
+}
+body[data-k-theme="kokoro.tech"] .group-title { font-size: 14px; }
+body[data-k-theme="kokoro.tech"] .group-count { margin-right: auto; }
+body[data-k-theme="kokoro.tech"] .list-search input { min-height: 40px; width: min(350px, 44vw); }
+body[data-k-theme="kokoro.tech"] .grid { padding-top: 14px; }
+body[data-k-theme="kokoro.tech"] .card { padding: 19px; }
+body[data-k-theme="kokoro.tech"] .card-head h2 { font-size: 16px; }
+body[data-k-theme="kokoro.tech"] .card .specs,
+body[data-k-theme="kokoro.tech"] .card .netcard,
+body[data-k-theme="kokoro.tech"] .card .netqrows { border-radius: 7px; }
+body[data-k-theme="kokoro.tech"] .card .bar { background: color-mix(in srgb, var(--fg) 13%, transparent); }
+body[data-k-theme="kokoro.tech"] .foot-page { border-top: 1px solid rgba(105, 131, 115, .2); color: var(--faint); }
+
+/* 控制室：将原横向页签改成固定侧栏，内容区只呈现当前任务。 */
+body[data-k-theme="kokoro.tech"][data-admin] .top .stat { display: none; }
+body[data-k-theme="kokoro.tech"] .admin {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 34px;
+  row-gap: 24px;
+  padding-top: 30px;
+  padding-bottom: 54px;
+}
+body[data-k-theme="kokoro.tech"] .admin-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 0 22px;
+  border-bottom: 1px solid rgba(105, 131, 115, .22);
+}
+body[data-k-theme="kokoro.tech"] .admin > .atabs {
+  position: sticky;
+  top: 88px;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0;
+  padding: 7px;
+  background: rgba(17, 26, 24, .8);
+  border: 1px solid rgba(105, 131, 115, .22);
+  border-radius: 10px;
+}
+body[data-k-theme="kokoro.tech"] .admin .atab {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  text-align: left;
+}
+body[data-k-theme="kokoro.tech"] .admin .atab::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .48;
+}
+body[data-k-theme="kokoro.tech"] .admin .atab:hover { background: rgba(167, 201, 174, .06); color: var(--fg); }
+body[data-k-theme="kokoro.tech"] .admin .atab.on {
+  background: rgba(167, 201, 174, .1);
+  border-color: rgba(167, 201, 174, .17);
+  color: #c2dcc8;
+  box-shadow: none;
+}
+body[data-k-theme="kokoro.tech"] .admin .atab.on::before { opacity: 1; }
+body[data-k-theme="kokoro.tech"] .admin > .panel[data-atab] {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: clamp(20px, 3vw, 32px);
+  background: rgba(23, 33, 30, .94);
+  border-color: rgba(105, 131, 115, .27);
+  border-radius: 12px;
+}
+body[data-k-theme="kokoro.tech"] .admin > .panel[data-atab].on { display: block; }
+body[data-k-theme="kokoro.tech"] .admin .panel > h3 {
+  margin: 0 0 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(105, 131, 115, .2);
+  color: var(--fg-strong);
+  font-size: 18px;
+}
+body[data-k-theme="kokoro.tech"] .tbl { border-color: rgba(105, 131, 115, .22); }
+body[data-k-theme="kokoro.tech"] .tbl th { color: var(--muted); background: rgba(16, 23, 21, .72); }
+body[data-k-theme="kokoro.tech"] .tbl td,
+body[data-k-theme="kokoro.tech"] .tbl th { border-color: rgba(105, 131, 115, .2); }
+body[data-k-theme="kokoro.tech"] :is(input, select, textarea) {
+  background-color: #111a17;
+  border-color: rgba(105, 131, 115, .38);
+  color: var(--fg);
+}
+body[data-k-theme="kokoro.tech"] :is(input, select, textarea)::placeholder { color: #84958a; }
+body[data-k-theme="kokoro.tech"] .admin .btn:not(.ghost):not(.danger) {
+  color: var(--accent-fg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+body[data-k-theme="kokoro.tech"] .admin .btn:not(.ghost):not(.danger):hover { background: #bad8bf; }
+body[data-k-theme="kokoro.tech"] .atab .abadge { margin-left: auto; }
+
+@media (max-width: 900px) {
+  body[data-k-theme="kokoro.tech"] .home-band { grid-template-columns: minmax(0, 1fr); --band-h: auto; }
+  body[data-k-theme="kokoro.tech"] .home-band > #speed { height: auto; min-height: 390px; }
+  body[data-k-theme="kokoro.tech"] .home-band .map-card { height: auto; min-height: 380px; }
+  body[data-k-theme="kokoro.tech"] .home-band .globe { height: 300px; flex: none; }
+}
+@media (max-width: 720px) {
+  body[data-k-theme="kokoro.tech"] .console-intro { align-items: start; flex-direction: column; padding: 34px 0 24px; }
+  body[data-k-theme="kokoro.tech"] .console-summary { width: 100%; }
+  body[data-k-theme="kokoro.tech"] .console-summary > div { flex: 1; }
+  body[data-k-theme="kokoro.tech"] .admin { grid-template-columns: minmax(0, 1fr); row-gap: 14px; padding-top: 20px; }
+  body[data-k-theme="kokoro.tech"] .admin-heading { grid-column: 1; }
+  body[data-k-theme="kokoro.tech"] .admin > .atabs {
+    top: 67px;
+    z-index: 20;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  body[data-k-theme="kokoro.tech"] .admin .atab { width: auto; min-width: max-content; min-height: 40px; }
+  body[data-k-theme="kokoro.tech"] .admin .atab::before { display: none; }
+  body[data-k-theme="kokoro.tech"] .admin > .panel[data-atab] { grid-column: 1; padding: 18px; overflow-x: auto; }
+  body[data-k-theme="kokoro.tech"] .admin .tbl { min-width: 720px; }
+  body[data-k-theme="kokoro.tech"] .group-head { align-items: stretch; flex-wrap: wrap; }
+  body[data-k-theme="kokoro.tech"] .group-head .list-search { order: 2; width: 100%; margin: 0; }
+  body[data-k-theme="kokoro.tech"] .list-search input { width: 100%; }
+  body[data-k-theme="kokoro.tech"] .grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  body[data-k-theme="kokoro.tech"] .console-summary > div { min-width: 0; padding: 12px 14px; }
+  body[data-k-theme="kokoro.tech"] .console-intro h1 { font-size: 27px; }
+  body[data-k-theme="kokoro.tech"] .home-band > #speed { padding: 17px; }
+}
+
+/* ---- Markdown 工具栏 ---- */
+.mdbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
+  padding: 4px 6px; margin-bottom: 6px;
+  background: var(--sunken); border-radius: var(--r-sm);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+}
+.mdbtn {
+  min-width: 28px; height: 26px; padding: 0 6px;
+  background: none; border: 0; border-radius: var(--r-sm);
+  cursor: pointer; font: inherit; font-size: 13px; line-height: 1;
+  color: var(--fg); display: inline-flex; align-items: center; justify-content: center;
+}
+.mdbtn:hover { background: var(--line); }
+.mdbtn:active { transform: translateY(1px); }
+.mdsep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; }
+/* 提示（比如"图片传好了"/"上传中"）跟在按钮后面，不额外占一行 */
+.mdtip { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+.mdtip.err { color: var(--bad); }
+.mdtip.ok { color: var(--ok); }
+
+/* 「高级」折叠块：默认收起，不占视线。
+   给那些"普通站长永远不用碰、但必须留着"的设置用。 */
+details.adv { border: var(--kokoro-border-width, 1px) solid var(--line); border-radius: var(--r-sm); padding: var(--s3); }
+details.adv > summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+details.adv > summary:hover { color: var(--fg); }
+details.adv[open] > summary { color: var(--fg-strong); margin-bottom: var(--s3); }
+details.adv .hint { line-height: 1.7; }
+
+/* ---- Markdown 预览 ---- */
+.mdwrap { display: grid; }
+/* 预览和编辑用同一个网格格，切换时只换显示哪一个 ——
+   这样两个面板高度一致，切换时不会跳。 */
+.mdpreview {
+  min-height: 18rem;
+  padding: var(--s4);
+  overflow-y: auto;
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  font-size: 14.5px; line-height: 1.75;
+}
+.mdpreview.hidden { display: none; }
+/* 预览里的正文排版（跟前台 .md 一致） */
+.mdpreview h1, .mdpreview h2, .mdpreview h3 { margin: 1em 0 .5em; line-height: 1.3; }
+.mdpreview h1 { font-size: 1.5em; } .mdpreview h2 { font-size: 1.28em; }
+.mdpreview h3 { font-size: 1.12em; }
+.mdpreview p { margin: 0 0 .85em; }
+.mdpreview ul, .mdpreview ol { margin: 0 0 .85em; padding-left: 1.4em; }
+.mdpreview code { font-family: var(--mono); font-size: .92em;
+  background: var(--sunken); padding: 1px 5px; border-radius: 3px; }
+.mdpreview pre { background: var(--sunken); padding: var(--s3);
+  border-radius: var(--r-sm); overflow-x: auto; margin: 0 0 .9em; }
+.mdpreview pre code { background: none; padding: 0; }
+.mdpreview blockquote { margin: 0 0 .9em; padding-left: var(--s3);
+  border-left: 3px solid var(--line); color: var(--muted); }
+.mdpreview img { max-width: 100%; height: auto; border-radius: var(--r-sm); }
+.mdpreview table { border-collapse: collapse; margin: 0 0 .9em; }
+.mdpreview th, .mdpreview td { border: var(--kokoro-border-width, 1px) solid var(--line);
+  padding: 5px 9px; }
+.mdpreview hr { border: 0; border-top: var(--kokoro-border-width, 1px) solid var(--line); }
+.mdpreview .empty { color: var(--muted); }
+
+/* ---- 正文里的字体 / 字号（编辑器「字体」按钮产出的）---- */
+.md-lg { font-size: 1.18em; }
+.md-sm { font-size: .88em; opacity: .92; }
+.md-serif { font-family: Georgia, "Songti SC", "SimSun", serif; }
+.md-mono { font-family: var(--mono, ui-monospace, Menlo, Consolas, monospace); }
+
+/* ---- 工具条里的图标与下拉菜单 ---- */
+.mdbtn svg { display: block; }
+.mdmenu {
+  position: absolute; z-index: 20; margin-top: 2px;
+  min-width: 9rem; padding: 4px;
+  background: var(--panel);
+  border: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+}
+.mdmenu-i {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 5px 8px; background: none; border: 0; border-radius: var(--r-sm);
+  cursor: pointer; font: inherit; font-size: 13px; color: var(--fg); text-align: left;
+}
+.mdmenu-i:hover { background: var(--sunken); }
+.mdmenu-i > span { width: 1.4em; text-align: center; flex: none; }
+
+/* ---- 卡片第二行：我想买它 / 查看详情 ---- */
+.buyrow { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+.buyrow .more { margin-left: auto; }
+/* 「买它」用主色描边，跟右边的次要按钮拉开 —— 它是这张卡最值钱的动作 */
+.buyrow .buy { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.buyrow .buy:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.req { color: var(--bad); margin-left: 2px; }
+
+/* ---- Simple · 简洁 ----
+   以留白、细分隔线和石墨文字建立安静的长时运维阅读体验。 */
+body[data-k-theme="kokoro.simple"] { background-image: radial-gradient(ellipse at 50% -30%, rgba(53,107,97,.075), transparent 54%), var(--kokoro-bg-image, none); }
+body[data-k-theme="kokoro.simple"] .top { border-bottom-color: #e2e7e2; box-shadow: 0 1px 0 rgba(36,48,44,.025); }
+body[data-k-theme="kokoro.simple"] .wrap { max-width: var(--maxw); }
+body[data-k-theme="kokoro.simple"] .panel, body[data-k-theme="kokoro.simple"] .map-card, body[data-k-theme="kokoro.simple"] .card { box-shadow: 0 3px 14px rgba(31,45,39,.035); }
+body[data-k-theme="kokoro.simple"] .card:hover { border-color: #a9c0b8; box-shadow: 0 8px 22px rgba(31,45,39,.075); }
+body[data-k-theme="kokoro.simple"] .console-intro { display:flex; align-items:flex-end; justify-content:space-between; gap:28px; padding:38px 0 26px; border-bottom:1px solid #dce1dc; }
+body[data-k-theme="kokoro.simple"] .console-intro h1, body[data-k-theme="kokoro.simple"] .admin-heading h1 { letter-spacing: -.035em; font-weight: 620; }
+body[data-k-theme="kokoro.simple"] .console-kicker { color: #63716b; letter-spacing: .12em; }
+body[data-k-theme="kokoro.simple"] .console-summary { border: 1px solid #dce1dc; border-radius: 10px; background: #fff; }
+body[data-k-theme="kokoro.simple"] .console-summary { display:flex; align-items:stretch; flex:none; }
+body[data-k-theme="kokoro.simple"] .console-summary > div { display:grid; min-width:120px; padding:13px 20px; gap:3px; }
+body[data-k-theme="kokoro.simple"] .console-summary > div + div { border-color: #e7ebe7; }
+body[data-k-theme="kokoro.simple"] .console-summary b { color:var(--fg-strong); font:500 24px/1.1 var(--mono); font-variant-numeric:tabular-nums; }
+body[data-k-theme="kokoro.simple"] .console-summary span { color:var(--muted); font-size:11px; }
+body[data-k-theme="kokoro.simple"] .console-summary .is-online b { color:var(--ok); }
+body[data-k-theme="kokoro.simple"] .home-band { grid-template-columns: minmax(0,1.12fr) minmax(330px,.88fr); gap: 16px; margin-top: 20px; --band-h: clamp(360px,36vw,460px); }
+body[data-k-theme="kokoro.simple"] .home-band > #speed, body[data-k-theme="kokoro.simple"] .home-band .map-card { height: var(--band-h); }
+body[data-k-theme="kokoro.simple"] #speed, body[data-k-theme="kokoro.simple"] .map-card { padding: 20px; }
+body[data-k-theme="kokoro.simple"] .group-head { margin-top: 28px; padding: 12px 0; background: transparent; border: 0; border-top: 1px solid #dce1dc; border-radius: 0; }
+body[data-k-theme="kokoro.simple"] .card { border-color: #e1e6e1; }
+body[data-k-theme="kokoro.simple"] .admin { grid-template-columns: 190px minmax(0,1fr); gap: 22px 28px; }
+body[data-k-theme="kokoro.simple"] .admin > .atabs { border: 1px solid #e0e5e0; background: rgba(255,255,255,.82); border-radius: 10px; }
+body[data-k-theme="kokoro.simple"] .admin .atab { border-radius: 7px; }
+body[data-k-theme="kokoro.simple"] .admin .atab.on { color: #28584f; background: #eaf2ee; border-color: #dce9e2; box-shadow: none; }
+body[data-k-theme="kokoro.simple"] .admin > .panel[data-atab] { border-color: #e0e5e0; box-shadow: 0 4px 18px rgba(31,45,39,.04); }
+@media(max-width:900px) { body[data-k-theme="kokoro.simple"] .home-band { grid-template-columns: minmax(0,1fr); --band-h:auto; } body[data-k-theme="kokoro.simple"] .home-band > #speed { height:auto; min-height:370px; } body[data-k-theme="kokoro.simple"] .home-band .map-card { height:auto; min-height:360px; } }
+@media(max-width:720px) { body[data-k-theme="kokoro.simple"] .console-intro { align-items:start; flex-direction:column; padding:30px 0 22px; } body[data-k-theme="kokoro.simple"] .console-summary { width:100%; } body[data-k-theme="kokoro.simple"] .console-summary > div { flex:1; min-width:0; } body[data-k-theme="kokoro.simple"] .admin { grid-template-columns:minmax(0,1fr); row-gap:14px; padding-top:20px; } body[data-k-theme="kokoro.simple"] .admin-heading { grid-column:1; } body[data-k-theme="kokoro.simple"] .admin > .atabs { top:67px; z-index:20; flex-direction:row; flex-wrap:nowrap; overflow-x:auto; } body[data-k-theme="kokoro.simple"] .admin .atab { width:auto; min-width:max-content; } body[data-k-theme="kokoro.simple"] .admin > .panel[data-atab] { grid-column:1; padding:18px; overflow-x:auto; } body[data-k-theme="kokoro.simple"] .admin .tbl { min-width:720px; } body[data-k-theme="kokoro.simple"] .grid { grid-template-columns:minmax(0,1fr); } }
+
+/* ---- Cute · 可爱 ----
+   奶油底与柔和莓果色只装点关键交互；状态、数据仍遵循清晰的对比层级。 */
+body[data-k-theme="kokoro.cute"] { background-image: radial-gradient(ellipse at 4% 0%, rgba(227,155,112,.12), transparent 32%), radial-gradient(ellipse at 96% 12%, rgba(108,158,139,.11), transparent 29%), var(--kokoro-bg-image, none); }
+body[data-k-theme="kokoro.cute"] .wrap { max-width: var(--maxw); }
+body[data-k-theme="kokoro.cute"] .top { border-bottom-color: #f0ddd5; }
+body[data-k-theme="kokoro.cute"] .brand { color: #8e4d69; }
+body[data-k-theme="kokoro.cute"] .panel, body[data-k-theme="kokoro.cute"] .map-card, body[data-k-theme="kokoro.cute"] .card { border-color: #f0ddd5; box-shadow: 0 5px 18px rgba(133,82,83,.055); }
+body[data-k-theme="kokoro.cute"] .card:hover { border-color: #d8a9b8; box-shadow: 0 10px 24px rgba(133,82,83,.11); }
+body[data-k-theme="kokoro.cute"] .console-intro { display:flex; align-items:flex-end; justify-content:space-between; gap:28px; padding:38px 0 28px; border-bottom:1px dashed #e8cfc4; }
+body[data-k-theme="kokoro.cute"] .console-kicker { color: #a85d7b; letter-spacing: .1em; }
+body[data-k-theme="kokoro.cute"] .console-kicker > span { box-shadow: 0 0 0 4px rgba(90,152,120,.13); }
+body[data-k-theme="kokoro.cute"] .console-intro h1 { letter-spacing: -.025em; }
+body[data-k-theme="kokoro.cute"] .console-summary { border: 1px solid #f0ddd5; border-radius: 16px; background: rgba(255,255,255,.83); }
+body[data-k-theme="kokoro.cute"] .console-summary { display:flex; align-items:stretch; flex:none; }
+body[data-k-theme="kokoro.cute"] .console-summary > div { display:grid; min-width:120px; padding:13px 20px; gap:3px; }
+body[data-k-theme="kokoro.cute"] .console-summary > div + div { border-color: #f2e4de; }
+body[data-k-theme="kokoro.cute"] .console-summary b { color:var(--fg-strong); font:500 24px/1.1 var(--mono); font-variant-numeric:tabular-nums; }
+body[data-k-theme="kokoro.cute"] .console-summary span { color:var(--muted); font-size:11px; }
+body[data-k-theme="kokoro.cute"] .console-summary .is-online b { color:var(--ok); }
+body[data-k-theme="kokoro.cute"] .home-band { grid-template-columns:minmax(0,1.12fr) minmax(320px,.88fr); gap:18px; margin-top:22px; --band-h:clamp(370px,37vw,470px); }
+body[data-k-theme="kokoro.cute"] .home-band > #speed, body[data-k-theme="kokoro.cute"] .home-band .map-card { height:var(--band-h); }
+body[data-k-theme="kokoro.cute"] #speed, body[data-k-theme="kokoro.cute"] .map-card { padding:22px; }
+body[data-k-theme="kokoro.cute"] .group-head { margin-top:28px; background:rgba(255,255,255,.64); border:1px solid #f0ddd5; border-radius:14px; }
+body[data-k-theme="kokoro.cute"] .card .specs, body[data-k-theme="kokoro.cute"] .card .netcard, body[data-k-theme="kokoro.cute"] .card .netqrows { border-radius:12px; }
+body[data-k-theme="kokoro.cute"] .admin { grid-template-columns:200px minmax(0,1fr); gap:22px 26px; }
+body[data-k-theme="kokoro.cute"] .admin > .atabs { border:1px solid #f0ddd5; border-radius:16px; background:rgba(255,255,255,.76); }
+body[data-k-theme="kokoro.cute"] .admin .atab { border-radius:11px; }
+body[data-k-theme="kokoro.cute"] .admin .atab.on { color:#8e4d69; background:#faeaf0; border-color:#f2dce5; box-shadow:none; }
+body[data-k-theme="kokoro.cute"] .admin > .panel[data-atab] { border-color:#f0ddd5; border-radius:18px; }
+@media(max-width:900px) { body[data-k-theme="kokoro.cute"] .home-band { grid-template-columns:minmax(0,1fr); --band-h:auto; } body[data-k-theme="kokoro.cute"] .home-band > #speed { height:auto; min-height:380px; } body[data-k-theme="kokoro.cute"] .home-band .map-card { height:auto; min-height:370px; } }
+@media(max-width:720px) { body[data-k-theme="kokoro.cute"] .console-intro { align-items:start; flex-direction:column; padding:30px 0 22px; } body[data-k-theme="kokoro.cute"] .console-summary { width:100%; } body[data-k-theme="kokoro.cute"] .console-summary > div { flex:1; min-width:0; padding:12px 14px; } body[data-k-theme="kokoro.cute"] .admin { grid-template-columns:minmax(0,1fr); row-gap:14px; padding-top:20px; } body[data-k-theme="kokoro.cute"] .admin-heading { grid-column:1; } body[data-k-theme="kokoro.cute"] .admin > .atabs { top:67px; z-index:20; flex-direction:row; flex-wrap:nowrap; overflow-x:auto; } body[data-k-theme="kokoro.cute"] .admin .atab { width:auto; min-width:max-content; } body[data-k-theme="kokoro.cute"] .admin > .panel[data-atab] { grid-column:1; padding:18px; overflow-x:auto; } body[data-k-theme="kokoro.cute"] .admin .tbl { min-width:720px; } body[data-k-theme="kokoro.cute"] .grid { grid-template-columns:minmax(0,1fr); } }
+
+/* ---- 三套 Kokoro 主题：统一卡片骨架与数据层级 ---- */
+body[data-k-theme^="kokoro."] .grid { grid-auto-rows: 1fr; align-items: stretch; }
+body[data-k-theme^="kokoro."] .card { display: flex; flex-direction: column; height: 100%; }
+body[data-k-theme^="kokoro."] .card-head { min-height: 28px; }
+body[data-k-theme^="kokoro."] .card-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body[data-k-theme^="kokoro."] .tags {
+  display: flex; align-items: center; gap: 8px; height: 30px; min-height: 30px;
+  margin: 8px 0 2px; overflow: hidden; white-space: nowrap;
+}
+body[data-k-theme^="kokoro."] .tag-list { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+body[data-k-theme^="kokoro."] .tag-list .tag { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+body[data-k-theme^="kokoro."] .tag.expire-slot { flex: none; margin-left: auto; min-width: 76px; text-align: center; font-variant-numeric: tabular-nums; }
+body[data-k-theme^="kokoro."] .tag.exp-empty { color: var(--faint); background: transparent; border: 1px dashed var(--line); }
+body[data-k-theme^="kokoro."] .card .specs { gap: 7px 14px; }
+body[data-k-theme^="kokoro."] .card .specs > div:not(.full) { min-height: 22px; align-items: center; }
+body[data-k-theme^="kokoro."] .card .specs dt { font-size: 11px; letter-spacing: .015em; }
+body[data-k-theme^="kokoro."] .card .specs dd { font-size: 12px; line-height: 1.45; }
+body[data-k-theme^="kokoro."] .card .specs dd .osi {
+  width: 16px; height: 16px; margin-right: 5px; vertical-align: -3px;
+  fill: var(--os-brand, currentColor); opacity: 1;
+}
+body[data-k-theme^="kokoro."] .card .gauges { gap: 8px; margin-top: 12px; }
+body[data-k-theme^="kokoro."] .card .gauges .g { gap: 10px; min-height: 18px; }
+body[data-k-theme^="kokoro."] .card .gauges .g .gl { font-size: 11px; letter-spacing: .02em; }
+body[data-k-theme^="kokoro."] .card .gauges .g em { font-size: 11px; font-weight: 600; }
+body[data-k-theme^="kokoro."] .card .net { margin-top: 12px; padding-top: 10px; }
+body[data-k-theme^="kokoro."] .card .spark { height: 38px; }
+body[data-k-theme^="kokoro."] .card .net-num { min-height: 20px; }
+body[data-k-theme^="kokoro."] .card .uptime,
+body[data-k-theme^="kokoro."] .card .uptime-empty { min-height: 76px; margin-top: 12px; }
+body[data-k-theme^="kokoro."] .card .uptime-foot { display: none; }
+body[data-k-theme^="kokoro."] .card .uptime-empty {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 10px; border: 1px dashed var(--line); border-radius: var(--r-sm);
+  color: var(--faint); font-size: 11px;
+}
+body[data-k-theme^="kokoro."] .card .uptime-empty b { font: 12px var(--mono); }
+body[data-k-theme^="kokoro."] .card .ipcard { height: 62px; min-height: 62px; margin-top: 12px; }
+body[data-k-theme^="kokoro."] .card .task-hover,
+body[data-k-theme^="kokoro."] .card .ipcard > .task-line,
+body[data-k-theme^="kokoro."] .card .ip-empty { height: 100%; min-height: 0; box-sizing: border-box; }
+body[data-k-theme^="kokoro."] .card .task-line {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; margin: 0; padding: 7px 11px; line-height: 1.4;
+}
+body[data-k-theme^="kokoro."] .card .task-line.running { display: flex; -webkit-line-clamp: unset; }
+body[data-k-theme^="kokoro."] .card .ip-empty {
+  display: grid; grid-template-rows: 1fr 1fr; place-content: center; gap: 0;
+  margin: 0; padding: 6px 11px; line-height: 1.35;
+}
+body[data-k-theme^="kokoro."] .card .ip-empty span:first-child { align-self: end; }
+body[data-k-theme^="kokoro."] .card .ip-empty span:last-child { align-self: start; opacity: .65; }
+body[data-k-theme^="kokoro."] .card .netcard { min-height: 62px; box-sizing: border-box; justify-content: center; gap: 4px; margin-top: 10px; }
+body[data-k-theme^="kokoro."] .card .netqrows { min-height: 78px; box-sizing: border-box; justify-content: center; }
+body[data-k-theme^="kokoro."] .card .netq-empty { display: flex; align-items: center; justify-content: space-between; color: var(--faint); font-size: 11px; }
+body[data-k-theme^="kokoro."] .card .netq-empty b { font-weight: 500; }
+body[data-k-theme^="kokoro."] .card .actbar { margin-top: 12px; padding-top: 10px; }
+body[data-k-theme^="kokoro."] .card .buyrow { margin-top: auto; padding-top: 12px; }
+body[data-k-theme^="kokoro."] .card .buyrow .btn { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; }
+body[data-k-theme^="kokoro."] .card .buyrow .buy { font-weight: 650; }
+body[data-k-theme^="kokoro."] .card .buyrow .more { min-width: 92px; margin-left: 0; }
+
+body[data-k-theme="kokoro.simple"] .card .bar {
+  height: 7px; background: #edf1ee; border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(49,79,68,.08);
+}
+body[data-k-theme="kokoro.simple"] .card .bar i { border-radius: 4px; box-shadow: inset 0 1px rgba(255,255,255,.28); }
+body[data-k-theme="kokoro.simple"] .card .tag-list .tag { background: #eff3ef; color: #5d7168; }
+body[data-k-theme="kokoro.simple"] .card .tag-list .tag.nat { background: #f8eee5; color: #a76535; }
+body[data-k-theme="kokoro.simple"] .card .tag.expire-slot:not(.exp-empty) { background: #eaf3ed; color: #39745a; }
+
+body[data-k-theme="kokoro.cute"] .card .bar {
+  height: 9px; background: #f6ebe9; border-radius: 999px;
+  box-shadow: inset 0 1px 2px rgba(126,73,91,.09);
+}
+body[data-k-theme="kokoro.cute"] .card .bar i { border-radius: 999px; box-shadow: inset 0 1px rgba(255,255,255,.48); }
+body[data-k-theme="kokoro.cute"] .card .tag-list .tag { background: #f9edf1; color: #995c73; }
+body[data-k-theme="kokoro.cute"] .card .tag-list .tag.nat { background: #fff0df; color: #a76e38; }
+body[data-k-theme="kokoro.cute"] .card .tag.expire-slot:not(.exp-empty) { background: #edf5ee; color: #4b8264; }
+
+body[data-k-theme="kokoro.tech"] .card .bar {
+  height: 8px; border: 1px solid color-mix(in srgb, var(--accent-2) 30%, var(--line));
+  background: rgba(7,18,19,.78); border-radius: 3px;
+  box-shadow: inset 0 0 7px rgba(44,209,178,.08);
+}
+body[data-k-theme="kokoro.tech"] .card .bar i {
+  border-radius: 2px; background-image: linear-gradient(90deg, transparent, rgba(255,255,255,.22)),
+    repeating-linear-gradient(135deg, rgba(255,255,255,.18) 0 2px, transparent 2px 6px);
+  box-shadow: 0 0 9px color-mix(in srgb, currentColor 22%, transparent);
+}
+body[data-k-theme="kokoro.tech"] .card .tag-list .tag { background: rgba(15,35,34,.78); color: #9db8ac; border: 1px solid rgba(119,156,139,.2); }
+body[data-k-theme="kokoro.tech"] .card .tag-list .tag.nat { color: #e8ae68; border-color: rgba(232,174,104,.28); }
+body[data-k-theme="kokoro.tech"] .card .tag.expire-slot:not(.exp-empty) { background: rgba(19,53,43,.82); color: #8bd2aa; border: 1px solid rgba(94,180,133,.3); }
+
+/* 在线时间轴形态通过 layout.misc.uptimeBarStyle 声明，可随主题复制。 */
+body[data-k-uptime-bar="solid"] .uptime-bar .cell { box-shadow: inset 0 -3px rgba(0,0,0,.10); }
+body[data-k-uptime-bar="pill"] .uptime-bar { align-items:center; }
+body[data-k-uptime-bar="pill"] .uptime-bar .cell { height:66%; align-self:center; border-radius:999px; box-shadow:0 1px 2px rgba(0,0,0,.12); }
+body[data-k-uptime-bar="hatch"] .uptime-bar .cell { box-sizing:border-box; border:1px solid color-mix(in srgb,var(--fg) 24%,transparent); background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.2) 0 1px,transparent 1px 4px); }
+body[data-k-uptime-bar="ruled"] .uptime-bar { gap:1px; border-bottom:1px solid var(--line); }
+body[data-k-uptime-bar="ruled"] .uptime-bar .cell { border-radius:0; border-top:2px solid rgba(0,0,0,.12); background-image:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.3) 3px 4px); }
+body[data-k-uptime-bar="tiles"] .uptime-bar .cell { box-sizing:border-box; border:1px solid color-mix(in srgb,var(--fg) 35%,transparent); border-radius:3px; box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--panel) 30%,transparent); }
+body[data-k-uptime-bar="dots"] .uptime-bar { align-items:center; }
+body[data-k-uptime-bar="dots"] .uptime-bar .cell { height:auto; aspect-ratio:1; max-height:10px; max-width:10px; border-radius:50%; align-self:center; }
+body[data-k-uptime-bar="dots"] .uptime-bar { justify-content:space-between; }
+body[data-k-bar="striped"] .bar { height:8px; border-radius:1px; }
+body[data-k-bar="striped"] .bar i { border-radius:1px; background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.32) 0 2px,transparent 2px 6px); }
+body[data-k-bar="dotted"] .bar { height:8px; border-radius:0; -webkit-mask-image:radial-gradient(circle at 4px 50%,#000 3px,transparent 3.2px); mask-image:radial-gradient(circle at 4px 50%,#000 3px,transparent 3.2px); -webkit-mask-size:10px 100%; mask-size:10px 100%; }
+
+/* 壁纸本身属于主题：柔和蒙层保证标题与图表在亮暗区域都清晰。 */
+body[data-k-theme="kokoro.simple"] {
+  background-image: linear-gradient(rgba(244,245,242,.54), rgba(244,245,242,.54)),
+    radial-gradient(ellipse at 50% -30%, rgba(53,107,97,.06), transparent 54%), var(--kokoro-bg-image, none);
+  background-size: auto, auto, cover; background-position: center, center, center;
+  background-repeat: no-repeat, no-repeat, no-repeat; background-attachment: scroll, scroll, fixed;
+}
+body[data-k-theme="kokoro.cute"] {
+  background-image: linear-gradient(rgba(255,249,246,.74), rgba(255,249,246,.74)),
+    radial-gradient(ellipse at 4% 0%, rgba(227,155,112,.09), transparent 32%),
+    radial-gradient(ellipse at 96% 12%, rgba(108,158,139,.08), transparent 29%), var(--kokoro-bg-image, none);
+  background-size: auto, auto, auto, cover; background-position: center, center, center, center;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat; background-attachment: scroll, scroll, scroll, fixed;
+}
+body[data-k-theme="kokoro.tech"] {
+  background-size: 48px 48px, 48px 48px, auto, cover;
+  background-repeat: repeat, repeat, no-repeat, no-repeat;
+  background-attachment: fixed, fixed, scroll, fixed;
+}
+/* Paper / 纸间：像打开一本运维手账，纸纹作底、砖红作为编辑标记。 */
+body[data-k-theme="kokoro.paper"] {
+  background-color: var(--bg);
+  background-image: linear-gradient(rgba(246, 239, 224, .38), rgba(246, 239, 224, .46)), var(--kokoro-bg-image, none);
+  background-size: auto, cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-attachment: scroll, fixed;
+  font-family: var(--sans);
+}
+body[data-k-theme="kokoro.paper"] .top {
+  background: rgba(248, 242, 230, .94);
+  border-bottom: 2px solid #9d3f2c;
+  box-shadow: none;
+}
+body[data-k-theme="kokoro.paper"] .panel,
+body[data-k-theme="kokoro.paper"] .map-card,
+body[data-k-theme="kokoro.paper"] .card {
+  background: rgba(251, 246, 235, .92);
+  border-color: #d1c1a8;
+  border-radius: 2px;
+  box-shadow: 0 2px 5px rgba(62, 44, 27, .05);
+}
+body[data-k-theme="kokoro.paper"] .group-head {
+  border: 0;
+  border-top: 2px solid #9d3f2c;
+  border-radius: 0;
+  background: rgba(248, 242, 230, .82);
+  color: #675646;
+}
+body[data-k-theme="kokoro.paper"] .uptime-bar .cell { min-width: 2px; }
+
+/* 极夜：极光夜空、银蓝边界和冰青数据，保留安静的深色层次。 */
+body[data-k-theme="kokoro.midnight"] {
+  background-color:#070e1c;
+  background-image:linear-gradient(rgba(5,12,25,.20),rgba(5,12,25,.48)),var(--kokoro-bg-image,none);
+  background-size:auto,cover; background-position:center; background-repeat:no-repeat; background-attachment:scroll,fixed;
+}
+body[data-k-theme="kokoro.midnight"] .top { background:rgba(7,15,29,.94); border-bottom-color:#2d415d; }
+body[data-k-theme="kokoro.midnight"] .panel,
+body[data-k-theme="kokoro.midnight"] .map-card,
+body[data-k-theme="kokoro.midnight"] .card { background:rgba(11,24,43,.94); border-color:rgba(126,170,204,.25); border-radius:12px; box-shadow:0 8px 24px rgba(0,5,16,.16); }
+body[data-k-theme="kokoro.midnight"] .group-head { background:rgba(11,24,43,.72); border-color:#2d415d; border-radius:8px; }
+body[data-k-theme="kokoro.midnight"] .card .bar { height:7px; background:#0a172b; border-radius:4px; }
+body[data-k-theme="kokoro.midnight"] .card .bar i { border-radius:4px; }
+body[data-k-theme="kokoro.mist"] { background-image:linear-gradient(rgba(222,236,241,.20),rgba(233,243,245,.35)),var(--kokoro-bg-image,none); background-size:auto,cover; background-position:center; background-repeat:no-repeat; background-attachment:scroll,fixed; }
+
+body[data-k-theme^="kokoro."] .top,
+body[data-k-theme^="kokoro."][data-k-header="bordered"] .top {
+  border-bottom: 1px solid var(--line); box-shadow: none;
+}
+body[data-k-theme^="kokoro."] .top-clock {
+  display: grid; grid-template-columns: auto auto; align-items: center; gap: 0 12px;
+  min-width: 0; text-align: left;
+}
+body[data-k-theme^="kokoro."] .top-clock .tz { grid-column: 1; white-space: nowrap; }
+body[data-k-theme^="kokoro."] .top-clock .t { grid-column: 2; grid-row: 1 / span 2; font-size: 16px; line-height: 1.2; }
+body[data-k-theme^="kokoro."] .top-clock .d { grid-column: 1; grid-row: 2; }
+@media(max-width:640px) {
+  body[data-k-theme^="kokoro."] .top .wrap { flex-wrap: wrap; }
+  body[data-k-theme^="kokoro."] .top-tools { width: auto; margin-left: auto; }
+}
+body[data-k-theme^="kokoro."] .card .spark-empty {
+  height: 40px; border-radius: 5px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent);
+  border-bottom: 1px dashed color-mix(in srgb, var(--line) 75%, transparent);
+}
+body[data-k-theme^="kokoro."] .card .gauges-empty .bar i { width: 0; }
+body[data-k-theme^="kokoro."] .card .gauges-empty em { color: var(--faint); }
+body[data-k-theme^="kokoro."] .card .net-empty-data .net-num { color: var(--faint); }
+body[data-k-theme="kokoro.tech"] .card .spark-empty {
+  background: repeating-linear-gradient(90deg, rgba(103,143,117,.08) 0 1px, transparent 1px 13px),
+    linear-gradient(180deg, rgba(44,209,178,.045), transparent);
+  border-bottom-color: rgba(103,143,117,.22);
+}
+
+/* ---- Kokoro header system: brand, owner, clock and actions have distinct roles ---- */
+body[data-k-theme^="kokoro."] .top {
+  background: color-mix(in srgb, var(--panel) 94%, var(--bg));
+  border-bottom-color: color-mix(in srgb, var(--line) 82%, transparent);
+}
+body[data-k-theme^="kokoro."] .top .wrap {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: 22px; min-height: 86px; flex-wrap: nowrap;
+}
+body[data-k-theme^="kokoro."][data-node] .top .wrap { grid-template-columns: minmax(0, 1fr) auto; }
+body[data-k-theme^="kokoro."] .top-identity { display: flex; align-items: center; min-width: 0; gap: 17px; }
+body[data-k-theme^="kokoro."] .brand { display: inline-flex; align-items: center; gap: 11px; flex: none; font-size: 19px; letter-spacing: -.025em; }
+body[data-k-theme^="kokoro."] .top-mark {
+  display: grid; place-items: center; width: 38px; height: 38px; flex: none;
+  border-radius: 10px; color: #fff; background: var(--accent);
+  box-shadow: 0 2px 7px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+body[data-k-theme^="kokoro."] .top-mark svg { display: block; width: 21px; height: 21px; color: #fff; }
+body[data-k-theme^="kokoro."] .top-identity-rule { width: 1px; height: 28px; flex: none; background: var(--line); }
+body[data-k-theme^="kokoro."] .top-owner { gap: 10px; min-width: 0; flex: none; }
+body[data-k-theme^="kokoro."] .top-owner .avatar { width: 38px; height: 38px; margin: 0; border-color: color-mix(in srgb, var(--accent) 26%, var(--line)); }
+body[data-k-theme^="kokoro."] .top-owner-txt { display: flex; align-items: center; gap: 12px; min-width: 0; line-height: 1.25; white-space: nowrap; }
+body[data-k-theme^="kokoro."] .top-owner-txt b { color: var(--fg-strong); font-size: 16px; font-weight: 680; }
+body[data-k-theme^="kokoro."] .top-owner-txt i {
+  display: inline-flex; align-items: center; max-width: 250px; min-height: 30px;
+  overflow: hidden; padding: 4px 11px; border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+  border-radius: 6px; background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap;
+}
+body[data-k-theme^="kokoro."] .top-clock {
+  display: flex; align-items: baseline; gap: 9px;
+  min-width: 0; margin: 0; padding: 2px 0 2px 18px; border: 0;
+  border-left: 1px solid var(--line); border-radius: 0; background: transparent; text-align: left;
+}
+body[data-k-theme^="kokoro."] .top-clock .tz { color: var(--muted); font-size: 12px; white-space: nowrap; }
+body[data-k-theme^="kokoro."] .top-clock .t { color: var(--fg-strong); font-size: 16px; font-variant-numeric: tabular-nums; }
+body[data-k-theme^="kokoro."] .top-clock .d { display: none; }
+body[data-k-theme^="kokoro."] .top-tools { display: flex; align-items: center; justify-self: end; gap: 8px; margin: 0; }
+body[data-k-theme^="kokoro."] .top-tools > .btn { min-height: 40px; padding-inline: 14px; border-radius: 8px; font-size: 14px; }
+body[data-k-theme^="kokoro."] .skin-btn { min-height: 40px; border-radius: 7px; font-size: 14px; }
+body[data-k-theme^="kokoro."] .card .tag-list .tag { border-radius: 5px; }
+body[data-k-theme="kokoro.cute"] .top-mark { border-radius: 12px; }
+body[data-k-theme="kokoro.tech"] .top-mark { border-radius: 7px; box-shadow: inset 0 0 0 1px rgba(194,220,197,.28), 0 0 16px color-mix(in srgb, var(--accent) 20%, transparent); }
+
+/* 后台顶栏：后台身份收在品牌锁定区，用户和退出收在操作区。 */
+body[data-k-theme^="kokoro."] .admin-topbar .wrap { grid-template-columns: minmax(0, 1fr) auto; }
+body[data-k-theme^="kokoro."] .admin-brand { gap: 11px; }
+body[data-k-theme^="kokoro."] .admin-top-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+body[data-k-theme^="kokoro."] .admin-top-tools .admin-logout-form { display: flex; margin: 0; }
+body[data-k-theme^="kokoro."] .admin-top-tools .btn { min-height: 36px; padding-inline: 13px; border-radius: 9px; }
+body[data-k-theme^="kokoro."] .admin-user-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; margin: 0 2px; padding: 0 12px; border-left: 1px solid var(--line); color: var(--fg-strong); font-size: 12px; font-weight: 620; }
+body[data-k-theme^="kokoro."] .admin-user-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+body[data-k-theme^="kokoro."] .admin-top-tools .admin-exit { color: var(--muted); }
+body[data-k-theme^="kokoro."] .admin-top-tools .admin-exit:hover { color: var(--bad); }
+@media (max-width: 900px) {
+  body[data-k-theme^="kokoro."] .top .wrap { gap: 12px; }
+  body[data-k-theme^="kokoro."] .top-owner-txt { gap: 7px; }
+  body[data-k-theme^="kokoro."] .top-owner-txt i { max-width: 130px; }
+}
+@media (max-width: 640px) {
+  body[data-k-theme^="kokoro."] .top .wrap { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding-block: 8px; }
+  body[data-k-theme^="kokoro."] .top-identity { grid-column: 1 / -1; gap: 12px; }
+  body[data-k-theme^="kokoro."] .top-identity-rule { height: 24px; }
+  body[data-k-theme^="kokoro."] .top-owner .avatar { width: 30px; height: 30px; }
+  body[data-k-theme^="kokoro."] .top-owner-txt i { max-width: 112px; min-height: 26px; padding: 3px 8px; font-size: 11px; }
+  body[data-k-theme^="kokoro."] .top-clock { grid-column: 1; grid-row: 2; padding-left: 0; border-left: 0; }
+  body[data-k-theme^="kokoro."] .top-tools { grid-column: 2; grid-row: 2; gap: 6px; }
+  body[data-k-theme^="kokoro."] .top-tools > .btn { min-height: 32px; padding-inline: 9px; }
+  body[data-k-theme^="kokoro."] .skin-cur { max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body[data-k-theme^="kokoro."] .admin-topbar .wrap { grid-template-columns: 1fr; }
+  body[data-k-theme^="kokoro."] .admin-top-tools { justify-content: flex-end; flex-wrap: wrap; }
+  body[data-k-theme^="kokoro."] .admin-user-chip { margin-left: auto; }
+}
+@media (max-width: 400px) {
+  body[data-k-theme^="kokoro."] .top-identity { gap: 8px; }
+  body[data-k-theme^="kokoro."] .brand { gap: 7px; font-size: 17px; }
+  body[data-k-theme^="kokoro."] .top-mark { width: 34px; height: 34px; }
+  body[data-k-theme^="kokoro."] .top-owner-txt { gap: 6px; }
+  body[data-k-theme^="kokoro."] .top-owner-txt b { font-size: 14px; }
+  body[data-k-theme^="kokoro."] .top-owner-txt i { max-width: 86px; }
+}
+
+/* 三套 Kokoro 主题的卡片列数交由下方分组栏选择器控制。 */
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1199px) { body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 899px) { body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 580px) { body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Tech 的页面背景保留给整页；控制台表单保持完整的工作区宽度与选项卡隔离。 */
+body[data-k-theme^="kokoro."][data-admin] .admin > .panel[data-atab]:not(.on) { display: none; }
+body[data-k-theme^="kokoro."][data-admin] .admin > .panel[data-atab].on { display: block; }
+
+/* 主题页的两张导入卡片共用一个页签容器。容器也必须占主工作区，
+   否则它作为额外 grid 子项会自动掉到左侧栏下方，造成后台散架。 */
+body[data-k-theme^="kokoro."][data-admin] .admin > .th-two.panel[data-atab] {
+  grid-column: 2; min-width: 0; width: 100%; margin: 0; padding: 0;
+  border: 0; background: transparent; box-shadow: none;
+}
+body[data-k-theme^="kokoro."][data-admin] .admin > .th-two.panel[data-atab].on {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4);
+}
+body[data-k-theme^="kokoro."][data-admin] .th-two > .panel { min-width: 0; margin: 0; }
+body[data-k-theme^="kokoro."][data-admin] .admin-node-group th {
+  padding: 11px 12px; border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  color: var(--fg-strong); text-align: left; font-size: 12px; font-weight: 650;
+}
+body[data-k-theme^="kokoro."][data-admin] .admin-node-group:first-child th { border-top: 0; }
+body[data-k-theme^="kokoro."][data-admin] .admin-node-group th small { margin-left: 9px; color: var(--muted); font-size: 11px; font-weight: 450; }
+body[data-k-theme^="kokoro."][data-admin] .admin-node-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+body[data-k-theme^="kokoro."][data-admin] .admin-node-group-head .btn { min-height: 32px; }
+body[data-k-theme^="kokoro."][data-admin] .node-group-badge { display: inline-block; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); color: var(--fg-strong); font-size: 12px; }
+body[data-k-theme^="kokoro."][data-admin] .node-group-empty { color: var(--faint); font-size: 12px; }
+body[data-k-theme^="kokoro."][data-admin] .node-bulk-test {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 0 0 18px; padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 23%, var(--line));
+  border-radius: 8px; background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+}
+body[data-k-theme^="kokoro."][data-admin] .node-bulk-test > button.btn { min-height: 38px; padding-inline: 14px; border-radius: 7px; font-weight: 650; }
+body[data-k-theme^="kokoro."][data-admin] .node-bulk-test > span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.node-bulk-test .task-list-link { display:inline-flex; align-items:center; justify-content:center; min-height:38px; text-decoration:none; white-space:nowrap; }
+.node-selection-tools { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.node-selection-count { color:var(--muted); font-size:12px; white-space:nowrap; }
+.node-select-cell { width:36px; text-align:center; vertical-align:middle; padding-inline:8px; }
+.node-select-cell input { width:17px; height:17px; margin:0; accent-color:var(--accent); cursor:pointer; }
+.node-select-control { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; cursor:pointer; }
+.node-select-cell:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:-3px; }
+.admin-node-table tr:has([data-node-select-item]:checked) { background:color-mix(in srgb,var(--accent) 6%,var(--panel)); }
+@media (max-width:720px) {
+  .node-selection-tools { width:100%; }
+  .node-bulk-test [data-test-selected] { width:100%; }
+}
+body[data-k-theme^="kokoro."][data-admin] .admin-task-feedback {
+  margin: 0 0 12px; padding: 10px 12px; border-left: 3px solid var(--ok);
+  background: color-mix(in srgb, var(--ok) 9%, var(--panel)); color: var(--fg); font-size: 13px;
+}
+body[data-k-theme^="kokoro."][data-admin] .admin-task-feedback.is-error {
+  border-left-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 9%, var(--panel));
+}
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live {
+  position: fixed; z-index: 1000; top: 76px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; width: min(620px, calc(100vw - 28px));
+  padding: 11px 12px; border: 1px solid var(--line);
+  border-radius: var(--r-sm); background: var(--panel); color: var(--fg);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 14%, transparent);
+  font-size: 13px; line-height: 1.5; opacity: 1;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live[hidden] { display: none; }
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live.is-fading { opacity: 0; transform: translate(-50%, -5px); }
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live-mark {
+  flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+}
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live[data-status="done"] .admin-task-live-mark { background: var(--ok); }
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live[data-status="failed"] .admin-task-live-mark { background: var(--bad); }
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live [data-admin-task-live-text] { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live-close {
+  display: inline-flex; flex: 0 0 32px; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--muted); font: inherit; font-size: 20px; line-height: 1; cursor: pointer;
+}
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live-close:hover { background: var(--sunken); color: var(--fg); }
+body[data-k-theme^="kokoro."][data-admin] .admin-task-live-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  body[data-k-theme^="kokoro."][data-admin] .admin-task-live { transition: none; }
+}
+body[data-k-theme^="kokoro."][data-admin] .group-manager {
+  margin: 0 0 20px; padding: 16px; border: 1px solid var(--line); border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 2.5%, var(--panel));
+}
+body[data-k-theme^="kokoro."][data-admin] .group-manager-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+body[data-k-theme^="kokoro."][data-admin] .group-manager-heading { margin-bottom: 14px; }
+body[data-k-theme^="kokoro."][data-admin] .group-manager-heading h4 { margin: 0; color: var(--fg-strong); }
+body[data-k-theme^="kokoro."][data-admin] .group-manager-heading .hint { margin: 4px 0 0; }
+body[data-k-theme^="kokoro."][data-admin] .group-manager-tags { display: flex; gap: 7px; flex-wrap: wrap; margin: 0 0 12px; }
+body[data-k-theme^="kokoro."][data-admin] .group-manager-tag {
+  min-height: 32px; padding: 4px 11px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  color: var(--muted); background: var(--panel); cursor: pointer; font: inherit; font-size: 12px;
+}
+body[data-k-theme^="kokoro."][data-admin] .group-manager-tag[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  color: var(--fg-strong); background: color-mix(in srgb, var(--accent) 11%, var(--panel));
+}
+body[data-k-theme^="kokoro."][data-admin] .group-manager-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+body[data-k-theme^="kokoro."][data-admin] .group-create-form { display: flex; gap: 8px; }
+body[data-k-theme^="kokoro."][data-admin] .group-create-form input { min-width: 190px; }
+body[data-k-theme^="kokoro."][data-admin] .group-manager-empty { margin: 0; padding: 8px 0 2px; }
+body[data-k-theme^="kokoro."][data-admin] .group-actions {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel);
+}
+body[data-k-theme^="kokoro."][data-admin] .group-actions[hidden] { display: none; }
+body[data-k-theme^="kokoro."][data-admin] .group-rename-form,
+body[data-k-theme^="kokoro."][data-admin] .group-delete-form { display: flex; align-items: flex-end; gap: 9px; flex-wrap: wrap; }
+body[data-k-theme^="kokoro."][data-admin] .group-rename-form label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+body[data-k-theme^="kokoro."][data-admin] .group-rename-form input { min-width: 180px; min-height: 34px; }
+body[data-k-theme^="kokoro."][data-admin] .group-delete-form .hint { align-self: center; }
+body[data-k-theme^="kokoro."][data-admin] .group-actions .btn { min-height: 34px; }
+body[data-k-theme^="kokoro."][data-admin] .group-assign-dialog select { width: 100%; min-height: 40px; }
+@media (max-width: 700px) {
+  body[data-k-theme^="kokoro."][data-admin] .group-manager { padding: 12px; }
+  body[data-k-theme^="kokoro."][data-admin] .group-manager-heading { align-items: stretch; }
+  body[data-k-theme^="kokoro."][data-admin] .group-create-form { width: 100%; }
+  body[data-k-theme^="kokoro."][data-admin] .group-create-form input { min-width: 0; flex: 1; width: 100%; }
+  body[data-k-theme^="kokoro."][data-admin] .group-actions { align-items: stretch; }
+  body[data-k-theme^="kokoro."][data-admin] .group-rename-form,
+  body[data-k-theme^="kokoro."][data-admin] .group-delete-form { width: 100%; }
+  body[data-k-theme^="kokoro."][data-admin] .group-rename-form label { flex: 1; min-width: 0; }
+  body[data-k-theme^="kokoro."][data-admin] .group-rename-form input { width: 100%; min-width: 0; }
+  body[data-k-theme^="kokoro."][data-admin] .admin-node-group-head { align-items: flex-start; }
+}
+@media (max-width: 720px) {
+  body[data-k-theme^="kokoro."][data-admin] .admin > .th-two.panel[data-atab] { grid-column: 1; }
+  body[data-k-theme^="kokoro."][data-admin] .admin > .th-two.panel[data-atab].on { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 科技后台改回横向页签：短侧栏占据一整列空间，不如把导航放在工作区上沿。 */
+body[data-k-theme="kokoro.tech"][data-admin] .admin {
+  grid-template-columns: minmax(0, 1fr); column-gap: 0; row-gap: 18px;
+}
+body[data-k-theme="kokoro.tech"][data-admin] .admin-heading,
+body[data-k-theme="kokoro.tech"][data-admin] .admin > .atabs,
+body[data-k-theme="kokoro.tech"][data-admin] .admin > .panel[data-atab] { grid-column: 1; }
+body[data-k-theme="kokoro.tech"][data-admin] .admin > .atabs {
+  position: static; top: auto; width: 100%; margin: 0;
+  flex-direction: row; flex-wrap: wrap; justify-content: flex-start;
+}
+body[data-k-theme="kokoro.tech"][data-admin] .admin .atab {
+  width: auto; min-width: 82px; min-height: 40px; justify-content: center;
+}
+body[data-k-theme="kokoro.tech"][data-admin] .admin > .th-two.panel[data-atab] { grid-column: 1; }
+
+/* 宽卡片的左右信息区：左侧识别机器与资源，右侧放在线历史和检测结果。 */
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid {
+  grid-template-columns: repeat(var(--k-card-columns, 3), minmax(0, 1fr));
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.16fr) minmax(0, .84fr);
+  align-items: stretch;
+  gap: clamp(8px, .8vw, 12px);
+  flex: 1 0 auto;
+  min-width: 0;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card { container-type: inline-size; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column { min-width: 0; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary { display: flex; flex-direction: column; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary { display: flex; flex-direction: column; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-identification { min-width:0; flex:0 0 auto; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .card-head { margin-bottom: 0; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .gauges { margin-top: 14px; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .net { margin-top: 14px; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime,
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime-empty,
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .ipcard { margin-top: 0; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime,
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime-empty { margin-bottom: 8px; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .ipcard { height: auto; min-height: 62px; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .task-line {
+  display: block;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: normal;
+  -webkit-line-clamp: unset;
+  line-height: 1.45;
+  padding: 7px 10px;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .task-line.running {
+  display: flex;
+  align-items: center;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .task-result-row {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 8px;
+  padding: 5px 0;
+  min-width: 0;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .task-result-row + .task-result-row {
+  border-top: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .task-result-label {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .task-result-value {
+  min-width: 0;
+  color: var(--fg);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .netcard,
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .netqrows { margin-top: 8px; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .netqrows {
+  min-height: 96px;
+  padding: 8px 11px;
+  gap: 4px;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .nqr {
+  gap: 6px;
+  min-height: 24px;
+  font-size: 10.5px;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions .act { min-width: 42px; justify-content: center; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card .spark,
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card .spark-empty { height: 78px; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .actbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .actbar .btnlike {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 36px;
+  padding: 5px 9px;
+  box-sizing: border-box;
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .buyrow { margin-top: 10px; padding: 0; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .buyrow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .buyrow .btn {
+  width: 100%; min-width: 0; margin: 0; box-sizing: border-box;
+  white-space: nowrap;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-control,
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid-control {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--muted); font-size: 11px; white-space: nowrap;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid-control select {
+  min-height: 34px; width: 92px; padding: 5px 8px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--panel); color: var(--fg); font-size: 12px;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid-control select:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-head .grid-control { margin-left: auto; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-head .list-search { margin-left: 0; }
+@media (max-width: 899px) {
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-columns { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime,
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime-empty { margin-top: 0; }
+}
+@media (max-width: 620px) {
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: minmax(0, 1fr); }
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid-control { margin-left: auto; }
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-head .list-search { width: 100%; }
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-head .list-search input { width: 100%; }
+}
+
+/* ---- 总览：标题与实时节点指标组成同一条编辑式信息带 ---- */
+body[data-k-theme^="kokoro."] .console-intro {
+  display: grid;
+  grid-template-columns: minmax(220px, .78fr) minmax(0, 1.6fr) minmax(210px, .55fr);
+  align-items: center;
+  gap: clamp(22px, 3vw, 52px);
+  min-height: 218px;
+  padding: 30px 0 26px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
+}
+body[data-k-theme^="kokoro."] .console-intro-copy { min-width: 0; }
+body[data-k-theme^="kokoro."] .console-clock-slot {
+  display: flex; align-items: center; justify-content: stretch; min-width: 0;
+}
+body[data-k-theme^="kokoro."] .overview-clock {
+  --overview-clock-size: clamp(36px, 3vw, 48px);
+  display: grid; grid-template-columns: repeat(3, max-content); justify-content: space-between;
+  grid-template-rows: minmax(0, 1fr); align-items: center; gap: 4px clamp(18px, 1.5vw, 32px); width: 100%; min-width: 0;
+  padding: 14px 20px;
+  border: 0; border-left: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  border-radius: 0; background: transparent; text-align: left;
+}
+body[data-k-theme^="kokoro."] .overview-clock .tz {
+  grid-column: 1; grid-row: 1;
+  color: var(--fg); font-size: var(--overview-clock-size); font-weight: 650;
+  letter-spacing: -.025em; line-height: 1.05; text-transform: uppercase; white-space: nowrap;
+}
+body[data-k-theme^="kokoro."] .overview-clock .d {
+  grid-column: 2; grid-row: 1; justify-self: center;
+  display: block; color: var(--muted); font: 650 var(--overview-clock-size)/1.05 var(--mono);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+body[data-k-theme^="kokoro."] .overview-clock .t {
+  grid-column: 3; grid-row: 1;
+  justify-self: end; color: var(--fg-strong); font: 700 var(--overview-clock-size)/1 var(--mono);
+  letter-spacing: -.045em; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+body[data-k-theme^="kokoro."] .console-kicker {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 20px;
+  color: var(--muted); font-size: 11px; font-weight: 650;
+  letter-spacing: .16em; line-height: 1.2;
+}
+body[data-k-theme^="kokoro."] .console-kicker > span {
+  width: 7px; height: 7px; flex: none;
+  border-radius: 50%; background: var(--ok);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 13%, transparent);
+}
+body[data-k-theme^="kokoro."] .console-intro h1 {
+  margin: 0; color: var(--fg-strong);
+  font-size: clamp(30px, 3vw, 42px); font-weight: 650;
+  letter-spacing: -.045em; line-height: 1.15;
+}
+body[data-k-theme^="kokoro."] .console-intro-copy > p:last-child {
+  margin: 12px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65;
+}
+body[data-k-theme^="kokoro."] .console-summary {
+  display: grid; grid-template-columns: 1fr 1fr;
+  align-items: stretch; min-width: 0;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+body[data-k-theme^="kokoro."] .console-summary > div {
+  position: relative; display: grid; align-content: center; gap: 7px;
+  min-width: 0; min-height: 96px; padding: 5px 22px 5px 26px;
+}
+body[data-k-theme^="kokoro."] .console-summary > div + div {
+  border-left: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+}
+body[data-k-theme^="kokoro."] .console-summary > div::before {
+  content: "01 / NODES"; color: var(--muted); opacity: .78;
+  font: 600 9px/1.2 var(--mono); letter-spacing: .13em;
+}
+body[data-k-theme^="kokoro."] .console-summary > div + div::before { content: "02 / ONLINE"; }
+body[data-k-theme^="kokoro."] .console-summary b {
+  color: var(--fg-strong); font: 560 clamp(38px, 4.1vw, 54px)/.94 var(--mono);
+  letter-spacing: -.075em; font-variant-numeric: tabular-nums;
+}
+body[data-k-theme^="kokoro."] .console-summary span { color: var(--muted); font-size: 11px; }
+body[data-k-theme^="kokoro."] .console-summary .is-online b { color: var(--ok); }
+body[data-k-theme^="kokoro."] .console-summary .is-online span::after {
+  content: ""; display: inline-block; width: 5px; height: 5px;
+  margin: 0 0 1px 5px; border-radius: 50%; background: var(--ok);
+}
+body[data-k-theme^="kokoro."] .card .netq-empty {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  color: var(--faint); font-size: 12px; text-align: center;
+}
+body[data-k-theme^="kokoro."] .card .netq-empty b { color: var(--muted); font-weight: 500; }
+body[data-k-theme="kokoro.cute"] .console-intro { border-bottom-style: dashed; }
+body[data-k-theme="kokoro.cute"] .console-summary > div { padding-left: 22px; }
+body[data-k-theme="kokoro.cute"] .console-summary b { letter-spacing: -.06em; }
+body[data-k-theme="kokoro.tech"] .console-kicker { font-family: var(--mono); }
+body[data-k-theme="kokoro.tech"] .console-summary > div::before { color: var(--accent-2); }
+body[data-k-theme="kokoro.tech"] .console-summary b { text-shadow: 0 0 22px color-mix(in srgb, var(--ok) 15%, transparent); }
+
+/* 资源色始终表示 CPU / 内存 / 磁盘；占用档位用纹理和数值颜色表示，
+   避免主题系列色恰好与警告色相同，让同一根 BAR 同时传达两类信息。 */
+body[data-k-theme^="kokoro."] .card .gauges .bar i.lv-warn {
+  background-image: repeating-linear-gradient(
+    135deg, color-mix(in srgb, var(--fg) 48%, transparent) 0 2px, transparent 2px 6px
+  );
+}
+body[data-k-theme^="kokoro."] .card .gauges .bar i.lv-bad {
+  background-image: repeating-linear-gradient(
+    135deg, color-mix(in srgb, var(--fg) 72%, transparent) 0 3px, transparent 3px 5px
+  );
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+body[data-k-theme^="kokoro."] .card .gauges .g em.lv-ok { color: var(--ok); }
+body[data-k-theme^="kokoro."] .card .gauges .g em.lv-warn { color: var(--warn); }
+body[data-k-theme^="kokoro."] .card .gauges .g em.lv-bad { color: var(--bad); }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary .net {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 12px;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary .spark,
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary .spark-empty {
+  flex: 0 0 72px;
+  height: 72px;
+  min-height: 72px;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions { margin-top: auto; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions .act {
+  min-width: 52px;
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 12px;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* 品牌署名只占一行，靠细线和小字收尾，不再做成一块大色带。 */
+body[data-k-theme^="kokoro."] .site-credit {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: min(1440px, calc(100% - 48px)); min-height: 62px;
+  margin: 30px auto 0; border-top: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  color: var(--muted); font-size: 11px; letter-spacing: .035em;
+}
+body[data-k-theme^="kokoro."] .site-credit a { color: var(--fg); text-decoration: none; font-weight: 650; }
+body[data-k-theme^="kokoro."] .site-credit a:hover { color: var(--accent); }
+body[data-k-theme^="kokoro."] .site-credit-mark {
+  display: grid; place-items: center; width: 19px; height: 19px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 6px; color: var(--accent); font: 650 10px/1 var(--mono);
+}
+@media (max-width: 720px) {
+  body[data-k-theme^="kokoro."] .console-intro { grid-template-columns: minmax(0, 1fr); gap: 16px; min-height: 0; padding: 28px 0 20px; }
+  body[data-k-theme^="kokoro."] .console-kicker { margin-bottom: 13px; }
+  body[data-k-theme^="kokoro."] .console-clock-slot { justify-content: flex-start; }
+  body[data-k-theme^="kokoro."] .overview-clock { --overview-clock-size: 28px; grid-template-columns: minmax(0, 1fr) max-content; grid-template-rows: auto auto; gap: 4px 12px; padding: 8px 0 8px 12px; }
+  body[data-k-theme^="kokoro."] .overview-clock .tz { grid-column: 1; grid-row: 1; justify-self: start; }
+  body[data-k-theme^="kokoro."] .overview-clock .d { grid-column: 1; grid-row: 2; justify-self: start; }
+  body[data-k-theme^="kokoro."] .overview-clock .t { grid-column: 2; grid-row: 1 / span 2; }
+  body[data-k-theme^="kokoro."] .console-summary { width: 100%; }
+  body[data-k-theme^="kokoro."] .console-summary > div { min-height: 78px; padding: 5px 16px; }
+  body[data-k-theme^="kokoro."] .console-summary > div:first-child { padding-left: 0; }
+  body[data-k-theme^="kokoro."] .console-summary > div + div { padding-left: 20px; }
+  body[data-k-theme^="kokoro."] .site-credit { width: calc(100% - 36px); min-height: 54px; margin-top: 22px; }
+}
+
+/* 主题可控的首页重点组件：时钟、全网速率与节点卡片。
+   布局继续由上面的响应式规则负责，tokens 只调整皮肤和节奏。 */
+body[data-k-theme^="kokoro."] .overview-clock {
+  gap: var(--kokoro-clock-gap, 7px);
+  padding: var(--kokoro-clock-padding, 14px 20px);
+  border-left-color: var(--kokoro-clock-divider, var(--line));
+  background: var(--kokoro-clock-bg, transparent);
+}
+body[data-k-theme^="kokoro."] .overview-clock .tz,
+body[data-k-theme^="kokoro."] .overview-clock .d,
+body[data-k-theme^="kokoro."] .overview-clock .t {
+  font-size: var(--kokoro-clock-size, clamp(28px, 3vw, 42px));
+}
+body[data-k-theme^="kokoro."] .overview-clock .tz,
+body[data-k-theme^="kokoro."] .overview-clock .d { color: var(--kokoro-clock-muted, var(--muted)); }
+body[data-k-theme^="kokoro."] .overview-clock .t { color: var(--kokoro-clock-color, var(--fg-strong)); }
+body[data-k-theme^="kokoro."] .top-clock {
+  border-left-color: var(--kokoro-clock-divider, var(--line));
+  background: var(--kokoro-clock-bg, transparent);
+}
+body[data-k-theme^="kokoro."] .top-clock .tz { color: var(--kokoro-clock-muted, var(--muted)); }
+body[data-k-theme^="kokoro."] .top-clock .t { color: var(--kokoro-clock-color, var(--fg-strong)); }
+body[data-k-theme^="kokoro."] #speed {
+  --cpu: var(--kokoro-rate-up, var(--cpu));
+  --mem: var(--kokoro-rate-down, var(--mem));
+  background: var(--kokoro-rate-bg, var(--panel));
+  border-color: var(--kokoro-rate-border, var(--line));
+  border-radius: var(--kokoro-rate-radius, var(--r));
+  padding: var(--kokoro-rate-padding, var(--pad));
+}
+body[data-k-theme^="kokoro."] #speed .live-head { gap: var(--kokoro-rate-gap, var(--s2)); }
+body[data-k-theme^="kokoro."] #speed .rate-row { gap: var(--kokoro-rate-gap, var(--s3)); }
+body[data-k-theme^="kokoro."] #speed .rate .rl,
+body[data-k-theme^="kokoro."] #speed .rate-legend,
+body[data-k-theme^="kokoro."] #speed .rate-sub { color: var(--kokoro-rate-label, var(--muted)); }
+body[data-k-theme^="kokoro."] #speed .rate .rl,
+body[data-k-theme^="kokoro."] #speed .rate-legend { font-size: var(--kokoro-rate-label-size, 11px); }
+body[data-k-theme^="kokoro."] #speed .rate .rv {
+  color: var(--kokoro-rate-value, var(--fg-strong));
+  font-size: var(--kokoro-rate-value-size, 20px);
+}
+body[data-k-theme^="kokoro."] #speed .rate .rv.sm { font-size: var(--kokoro-font-size-md, 14px); }
+body[data-k-theme^="kokoro."] #speed .rate-chart { position: relative; width: 100%; height: 100%; min-height: 0; }
+body[data-k-theme^="kokoro."] #speed .rate-chart-wrap,
+body[data-k-theme^="kokoro."] #speed .res-chart-wrap { flex: 0 0 auto; min-height: 0; }
+body[data-k-theme^="kokoro."] .card {
+  background: var(--kokoro-node-card-bg, var(--kokoro-card-bg, var(--panel)));
+  border-color: var(--kokoro-node-card-border, var(--kokoro-card-border, var(--line)));
+  border-radius: var(--kokoro-node-card-radius, var(--r));
+  padding: var(--kokoro-node-card-padding, var(--pad));
+}
+body[data-k-theme^="kokoro."] .card-head h2 {
+  color: var(--kokoro-node-card-title, var(--fg-strong));
+  font-size: var(--kokoro-node-card-title-size, var(--kokoro-font-size-lg, 16px));
+}
+body[data-k-theme^="kokoro."] .card .specs,
+body[data-k-theme^="kokoro."] .card .gauges,
+body[data-k-theme^="kokoro."] .card .net { margin-top: var(--kokoro-node-card-section-gap, var(--s3)); }
+body[data-k-theme^="kokoro."] .card .specs dt,
+body[data-k-theme^="kokoro."] .card .gauges .g .gl { color: var(--kokoro-node-card-label, var(--muted)); }
+body[data-k-theme^="kokoro."] .card .specs dt,
+body[data-k-theme^="kokoro."] .card .gauges .g .gl { font-size: var(--kokoro-node-card-label-size, 11px); }
+body[data-k-theme^="kokoro."] .card .specs dd,
+body[data-k-theme^="kokoro."] .card .gauges .g em { color: var(--kokoro-node-card-value, var(--fg)); }
+body[data-k-theme^="kokoro."] .card .specs dd { font-size: var(--kokoro-node-card-value-size, 12.5px); }
+body[data-k-theme^="kokoro."] #speed .rate-chart-wrap,
+body[data-k-theme^="kokoro."] #speed .res-chart-wrap {
+  height: clamp(76px, calc((var(--band-h) - 250px) / 2), 112px);
+  box-sizing: border-box;
+  padding-right: 58px;
+}
+@media (max-width: 1024px) {
+  body[data-k-theme^="kokoro."] #speed .rate-chart-wrap,
+  body[data-k-theme^="kokoro."] #speed .res-chart-wrap { height: 96px; }
+}
+@media (max-width: 720px) {
+  body[data-k-theme^="kokoro."] .overview-clock { gap: var(--kokoro-clock-gap, 7px); padding: var(--kokoro-clock-padding, 14px 20px); }
+}
+
+/* 图表尺寸进入文档流；卡片随内容增长，横排时由网格自动保持等高。 */
+body[data-k-theme^="kokoro."] .home-band > #speed,
+body[data-k-theme^="kokoro."] .home-band .map-card { height:auto; min-height:var(--band-h); max-height:none; }
+body[data-k-theme^="kokoro."] .home-band > #speed > :not(.rate-chart-wrap):not(.res-chart-wrap) { flex-shrink:0; }
+.panel, .map-card, .card, .dlg { backdrop-filter:blur(var(--kokoro-backdrop-blur,0px)); -webkit-backdrop-filter:blur(var(--kokoro-backdrop-blur,0px)); }
+.spark-dot, .dash-point, .dash-point-down, .res-dot-cpu, .res-dot-mem { r:var(--kokoro-chart-point-radius,2.5); }
+.nqwave .spark-bar, .nqwave .spark-dot { fill:var(--accent); }
+.nqwave .sp-line { stroke:var(--accent); stroke-width:1.25; fill:none; }
+.nqwave .sp-area { fill:var(--accent); opacity:var(--kokoro-chart-area-opacity,.18); }
+/* 双栏卡片的硬件规格两项一行，CPU 与 Swap 独占整行。 */
+body[data-k-list-mode="card"] .card-primary .specs { grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px 10px; }
+body[data-k-list-mode="card"] .card-primary .specs dd { display:flex; align-items:center; flex:1; white-space:nowrap; overflow:visible; overflow-wrap:normal; }
+body[data-k-list-mode="card"] .card-primary .specs dd .spec-value { flex:1 1 auto; min-width:0; white-space:nowrap; }
+body[data-k-list-mode="card"] .card-primary .specs > div.full { max-width:100%; box-sizing:border-box; }
+body[data-k-list-mode="card"] .card-primary .specs > div.full dd { width:100%; }
+body[data-k-list-mode="card"] .card-primary .specs > div.wide dd { flex:1; white-space:nowrap; overflow-wrap:normal; }
+.spark .dot-guide { fill:none; stroke:var(--accent); stroke-width:1; opacity:.55; vector-effect:non-scaling-stroke; }
+body[data-k-list-mode="card"] .card-primary .net-num {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr);
+  gap:6px; flex-wrap:nowrap;
+}
+body[data-k-list-mode="card"] .card-primary .net-num .lat {
+  margin-left:0; width:100%; justify-content:flex-end; gap:3px;
+}
+body[data-k-list-mode="card"] .card-primary .net-num .lat .bar.mini { width:24px; min-width:8px; flex:0 1 24px; }
+.uptime-bar .cell { min-width:0; }
+/* Traffic periods each occupy one row, including their label and both totals. */
+.card .netcard { padding-inline:8px; }
+.card .netcard .netrow { display:flex; flex-wrap:nowrap; gap:8px; min-width:0; }
+.card .netcard .netrow .nl { width:2.2em; white-space:nowrap; }
+.card .netcard .netrow .nv { flex:1; min-width:0; white-space:nowrap; overflow-wrap:normal; }
+/* Keep the upper divider; a second divider aligns with the voting footer. */
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .buyrow {
+  margin-top:12px; padding-top:12px;
+  border-top:1px solid color-mix(in srgb,var(--line) 82%,transparent);
+}
+/* Give the clock its own full row on tablet widths instead of squeezing it. */
+@media (min-width:721px) and (max-width:1100px) {
+  body[data-k-theme^="kokoro."] .console-intro { grid-template-columns:minmax(0,1fr) 250px; gap:22px 28px; }
+  body[data-k-theme^="kokoro."] .console-summary { grid-column:2; grid-row:1; }
+  body[data-k-theme^="kokoro."] .console-clock-slot { grid-column:1/-1; grid-row:2; }
+  body[data-k-theme^="kokoro."] .overview-clock { --overview-clock-size:42px; }
+}
+/* Density and page width share the same geometry, including the upper panels. */
+body[data-k-list-mode="card"]:not([data-node]):not([data-admin]) .wrap {
+  max-width:calc(var(--maxw) * var(--k-card-columns,3) / 3);
+  width:94%;
+}
+/* Assign latency columns independent space before fitting their text. */
+.card .nqr { grid-template-columns:6px minmax(0,.7fr) minmax(0,1.2fr) minmax(12px,.8fr) minmax(0,1.5fr); }
+.card .nqr .nm, .card .nqr .ms, .card .nqr .ls { display:block; min-width:0; white-space:nowrap; }
+.card .nqr .ms em { font-size:.65em; }
+.card .task-result-label, .card .task-result-value { min-width:0; white-space:nowrap; }
+.card .uptime-sub { display:block; min-width:0; white-space:nowrap; }
+.card .card-head h2, .card .tag { text-overflow:clip; }
+.card .spark-cap > span, .card .net-num > span { min-width:0; }
+/* Dense layouts keep one readable internal column when cards become narrow. */
+@container (max-width:320px) {
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"][data-k-card-columns="4"] .card-columns,
+  body[data-k-theme^="kokoro."][data-k-list-mode="card"][data-k-card-columns="5"] .card-columns { grid-template-columns:minmax(0,1fr); }
+}
+/* The page and speed panel follow card density; the globe remains a square. */
+body[data-k-theme^="kokoro."] .home-band:has(>.map-card) {
+  --globe-card-size:clamp(320px,32vw,520px);
+  grid-template-columns:minmax(0,1fr) var(--globe-card-size);
+  align-items:start;
+}
+body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > #speed {
+  width:auto; min-width:0; min-height:var(--globe-card-size); height:auto;
+}
+body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > .map-card {
+  box-sizing:border-box; width:100%; height:auto; min-height:0;
+  aspect-ratio:1; align-self:start; overflow:hidden;
+}
+body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > .map-card > .globe {
+  flex:1 1 auto; min-height:0; height:auto;
+}
+@media (max-width:1024px) {
+  body[data-k-theme^="kokoro."] .home-band:has(>.map-card) {
+    grid-template-columns:minmax(0,1fr);
+  }
+  body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > #speed {
+    min-height:0;
+  }
+  body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > .map-card {
+    width:min(100%,520px); justify-self:center;
+  }
+}
+/* Cute charts use the same visual language from the network panel to each node:
+   a soft tinted plot, smooth connected traces, light fills and sparse sample dots. */
+body[data-k-theme="kokoro.cute"] .rate-chart-wrap,
+body[data-k-theme="kokoro.cute"] .res-chart-wrap {
+  border:1px solid color-mix(in srgb,var(--line) 72%,transparent);
+  border-radius:12px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 3%,var(--panel)),var(--panel));
+}
+body[data-k-theme="kokoro.cute"] .dash-grid-line {
+  stroke-dasharray:3 5; stroke-opacity:.8;
+}
+body[data-k-theme="kokoro.cute"] .dash-area-down {
+  fill:var(--mem); fill-opacity:.09; stroke:none;
+}
+body[data-k-theme="kokoro.cute"] .dash-line-up,
+body[data-k-theme="kokoro.cute"] .dash-line-down,
+body[data-k-theme="kokoro.cute"] .res-line-cpu,
+body[data-k-theme="kokoro.cute"] .res-line-mem,
+body[data-k-theme="kokoro.cute"] .card .sp-line {
+  stroke-linecap:round; stroke-linejoin:round;
+}
+body[data-k-theme="kokoro.cute"] .dash-point,
+body[data-k-theme="kokoro.cute"] .dash-point-down,
+body[data-k-theme="kokoro.cute"] .res-dot-cpu,
+body[data-k-theme="kokoro.cute"] .res-dot-mem {
+  stroke:var(--panel); stroke-width:1.6;
+}
+body[data-k-theme="kokoro.cute"] .card .spark {
+  box-sizing:border-box; padding:2px 0;
+  border-radius:9px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 4%,var(--panel)),transparent);
+}
+body[data-k-theme="kokoro.cute"] .card .spark-marker {
+  fill:var(--accent); stroke:var(--panel); stroke-width:1.6;
+}
+
+/* The status and uptime headline share the first track; tags and the bar share
+   the second. Scale the complete headline together when a card gets narrower. */
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime {
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:28px max(30px,var(--kokoro-uptime-bar-height,26px));
+  align-items:center;
+  gap:8px;
+  min-height:0;
+  margin-top:0;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-head {
+  display:flex; align-items:center; flex-wrap:nowrap; gap:4px;
+  min-width:0; height:28px; margin:0; font-size:15px;
+}
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-head h4 { flex:none; font-size:.866667em; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-pct { flex:none; font-size:1em; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-sub { flex:none; font-size:.733333em; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-bar { align-self:center; }
+/* Keep the footer lines together and spread the remaining room between sections. */
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary,
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary { justify-content:space-between; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions { margin-top:0; }
+body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions { margin-top:12px; }

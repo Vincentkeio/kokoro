@@ -1,0 +1,104 @@
+{{define "kglobe.html"}}
+{{/* 点阵地球的加载与初始化。
+     只有存在可定位的节点时 home.html 才会 include 这个模板。
+
+     脚本顺序有讲究：globe.js 必须**先**执行完，下面的初始化才能拿到
+     window.KokoroGlobe。所以不能用 defer —— 内联脚本在解析时就跑，
+     而 defer 的脚本要等解析完，反而会晚一步。 */}}
+<script src="/static/globe.js?v=76"></script>
+<script>
+(function () {
+  'use strict';
+
+  var host = document.getElementById('globe');
+  var dataEl = document.getElementById('globe-data');
+  if (!host || !dataEl || !window.KokoroGlobe) return;
+
+  var data;
+  try {
+    data = JSON.parse(dataEl.textContent);
+  } catch (e) {
+    return;
+  }
+  if (!data || !data.places || !data.places.length) return;
+
+  function cssVar(el, name, fb) {
+    var v = getComputedStyle(el).getPropertyValue(name).trim();
+    return v || fb;
+  }
+
+  function colorVar(el, name, fb) {
+    var probe = document.createElement('span');
+    probe.style.color = cssVar(el, name, fb);
+    probe.style.display = 'none';
+    el.appendChild(probe);
+    var value = getComputedStyle(probe).color || fb;
+    probe.parentNode.removeChild(probe);
+    return value;
+  }
+
+  function numberVar(el, name, fb, min, max) {
+    var value = parseFloat(cssVar(el, name, String(fb)));
+    if (!isFinite(value)) value = fb;
+    return Math.max(min, Math.min(max, value));
+  }
+
+  var root = document.documentElement;
+  var effects = {
+    showRoutes: document.body.getAttribute('data-k-globe-routes') !== '0',
+    showFlow: document.body.getAttribute('data-k-globe-flow') !== '0',
+    autoRotate: document.body.getAttribute('data-k-globe-rotate') !== '0',
+    routeOpacity: numberVar(root, '--kokoro-globe-route-opacity', .38, 0, 1),
+    routeMutedOpacity: numberVar(root, '--kokoro-globe-route-muted-opacity', .17, 0, 1),
+    routeWidth: numberVar(root, '--kokoro-globe-route-width', .85, .2, 6),
+    routeUnderlayOpacity: numberVar(root, '--kokoro-globe-route-underlay-opacity', .10, 0, 1),
+    routeUnderlayWidth: numberVar(root, '--kokoro-globe-route-underlay-width', 2.8, .2, 12),
+    flowPeriod: numberVar(root, '--kokoro-globe-flow-period', 6100, 1000, 30000),
+    flowLength: numberVar(root, '--kokoro-globe-flow-length', .23, .03, .5),
+    flowOpacity: numberVar(root, '--kokoro-globe-flow-opacity', 1, 0, 1),
+    flowGlow: numberVar(root, '--kokoro-globe-flow-glow', 7, 0, 20),
+    flowGlowWidth: numberVar(root, '--kokoro-globe-flow-glow-width', 4.2, .2, 16),
+    flowCoreWidth: numberVar(root, '--kokoro-globe-flow-core-width', 1.9, .2, 8),
+    flowHeadSize: numberVar(root, '--kokoro-globe-flow-head-size', 2.25, .5, 12),
+    flowGlintSize: numberVar(root, '--kokoro-globe-flow-glint-size', 1.25, .2, 8),
+    flowPulseWindow: numberVar(root, '--kokoro-globe-flow-pulse-window', 1800, 100, 10000),
+    nodeSize: numberVar(root, '--kokoro-globe-node-size', 2.1, .5, 8),
+    nodeMutedSize: numberVar(root, '--kokoro-globe-node-muted-size', 1.7, .5, 8),
+    nodeRingSize: numberVar(root, '--kokoro-globe-node-ring-size', 3.4, .5, 10),
+    nodeMutedRingSize: numberVar(root, '--kokoro-globe-node-muted-ring-size', 2.8, .5, 10),
+    nodeHaloSize: numberVar(root, '--kokoro-globe-node-halo-size', 6.2, 1, 20),
+    hubSize: numberVar(root, '--kokoro-globe-hub-size', 2.1, .5, 8),
+    hubRingSize: numberVar(root, '--kokoro-globe-hub-ring-size', 5, .5, 12),
+    hubRingWidth: numberVar(root, '--kokoro-globe-hub-ring-width', 1.5, .2, 6),
+    rotationSpeed: numberVar(root, '--kokoro-globe-rotation-speed', 1, 0, 5)
+  };
+
+  var g = new KokoroGlobe(host, {
+    landUrl: host.getAttribute('data-land') || '/static/land.bin',
+    hub: data.hasHub ? data.hub : null,
+    places: data.places,
+    effects: effects,
+    colors: function () {
+      var el = document.documentElement;
+      return {
+        day:   colorVar(el, '--globe-day', '#93a4bd'),
+        night: colorVar(el, '--globe-night', '#3b465c'),
+        oceanDay:   colorVar(el, '--globe-ocean-day', '#e8f0fa'),
+        oceanNight: colorVar(el, '--globe-ocean-night', '#c6d3e6'),
+        arc:   colorVar(el, '--kokoro-globe-route', '#2f6feb'),
+        flow:  colorVar(el, '--kokoro-globe-flow', '#2f6feb'),
+        flowCore: colorVar(el, '--kokoro-globe-flow-core', '#f5fff9'),
+        hub:   colorVar(el, '--kokoro-globe-route', '#2f6feb'),
+        ok:    colorVar(el, '--kokoro-globe-node-online', '#1a7f37'),
+        off:   colorVar(el, '--kokoro-globe-node-offline', '#8b949e'),
+        rim:   colorVar(el, '--globe-rim', 'rgba(47,111,235,.20)')
+      };
+    }
+  });
+
+  // 暴露给 app.js 的 SSE 处理器：agent 每上报一次，对应航线上跑一个脉冲。
+  // 这比"自己定时假脉冲"诚实——看到的光点就是真的数据到达。
+  window.kokoroGlobe = g;
+})();
+</script>
+{{end}}
