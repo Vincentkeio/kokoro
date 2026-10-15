@@ -359,11 +359,7 @@ func (h *Hub) startBroadcastLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			snap, err := h.store.LatestSnapshot()
-			if err != nil {
-				log.Printf("[hub] 取快照失败: %v", err)
-				continue
-			}
+			snap := h.latestSnapshot()
 			if len(snap) == 0 {
 				continue
 			}

@@ -61,6 +61,13 @@ type Hub struct {
 	// themeAssets 缓存各主题包里的资源字节，供 /_theme-assets/ 路由直接吐出。
 	themeAssets *themeAssetCache
 
+	// snapMu/snapAt/snapData 缓存"每节点最新一条指标"。
+	// SSE 每秒取一次、首页与仪表盘每次请求也要，而原始表按秒在长；
+	// 缓存后这些高频读每个 TTL 窗口最多落一次库（见 latestSnapshot）。
+	snapMu   sync.Mutex
+	snapAt   time.Time
+	snapData map[string]*model.Metrics
+
 	// done 在开始关闭时被 close，用来通知 SSE 之类的长连接主动退出。
 	//
 	// 为什么需要它：http.Server.Shutdown **不会取消请求的 context**，

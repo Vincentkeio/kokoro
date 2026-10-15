@@ -48,6 +48,9 @@ type homeData struct {
 	GroupFilters []homeGroupFilter
 	Online       int
 	Total        int
+	// Offline 是"总数 - 在线"，供总览卡的离线数据块直接使用；
+	// 放在后端算，模板里就不必引入减法函数。
+	Offline      int
 	Year         int
 	Query        string // 搜索关键词，非空表示当前是搜索结果页
 	Owner        ownerCard
@@ -1159,7 +1162,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 			log.Printf("[hub] 搜索节点失败: %v", err)
 		}
 	}
-	snap, _ := h.store.LatestSnapshot()
+	snap := h.latestSnapshot()
 
 	// 网络曲线：一次查询拿全部节点最近 1 小时的 5 分钟点，
 	// 而不是每台节点查一次 History——首页会同时渲染所有节点。
@@ -1289,6 +1292,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		GroupFilters:   makeHomeGroupFilters(cards, groups),
 		Online:         online,
 		Total:          len(nodes),
+		Offline:        len(nodes) - online,
 		Year:           time.Now().Year(),
 		Query:          query,
 		Owner:          h.owner(),

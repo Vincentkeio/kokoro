@@ -232,20 +232,26 @@ func netqTargetCount(provinces []string) int {
 
 // netqIntervalKey 是探测间隔的设置键（分钟）。
 //
-//	 0 = 连续探测（2026-10-12 新默认：一轮打完歇几秒就打下一轮）
+//	 0 = 连续探测（一轮打完歇几秒就打下一轮）
 //	-1 = 关闭探测
-//	>0 = 固定间隔分钟（勾了几十个省、一轮要几分钟时才用）
+//	>0 = 固定间隔分钟
 const settingNetQInterval = "netq_interval_min"
 
-// netqInterval 读取探测间隔设置（分钟）。没设过 = 连续模式。
+// netqDefaultIntervalMin 是没配置时的默认探测间隔（分钟）。
+//
+// 2026-10-16 由"连续模式(0)"改为 5 分钟：连续探测把 net_quality 写爆了
+// （实测约 1 轮/分钟 × 省×网 行，30 天保留在单核小机上撑不住，库光这一项就 167 MiB）。
+const netqDefaultIntervalMin = 5
+
+// netqInterval 读取探测间隔设置（分钟）。没设过 = 默认 5 分钟。
 func (h *Hub) netqInterval() int {
 	raw, err := h.store.GetSetting(settingNetQInterval)
 	if err != nil {
-		return 0
+		return netqDefaultIntervalMin
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || n < -1 {
-		return 0
+		return netqDefaultIntervalMin
 	}
 	return n
 }

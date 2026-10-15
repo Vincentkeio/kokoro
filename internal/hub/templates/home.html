@@ -12,6 +12,10 @@
 <main class="wrap">
 
   {{if not .Hero.Enabled}}
+  {{/* 总览卡（2026-10-16 重设）：从"一条只有下边框的信息带"改成一张
+       有金色描边的总览卡 —— 左侧标题/说明，右上时钟，下方四格金色数据块。
+       消除"总览和卡片不是一套东西"的割裂感；金色框线由主题 token
+       （--kokoro-card-border）驱动，其他主题自动退回中性描边。 */}}
   <section class="console-intro" aria-labelledby="console-title">
     <div class="console-intro-copy">
       <p class="console-kicker"><span></span> INFRASTRUCTURE / LIVE</p>
@@ -22,8 +26,10 @@
       {{template "clockchip.html" .}}
     </div>
     <div class="console-summary" aria-label="节点状态">
-      <div><b>{{.Total}}</b><span>节点总数</span></div>
-      <div class="is-online"><b data-field="online">{{.Online}}</b><span>当前在线</span></div>
+      <div class="sum-tile"><b>{{.Total}}</b><span>台服务器</span></div>
+      <div class="sum-tile is-online"><b data-field="online">{{.Online}}</b><span>在线</span></div>
+      <div class="sum-tile is-offline"><b>{{.Offline}}</b><span>离线</span></div>
+      <div class="sum-tile is-regions"><b>{{len .Regions}}</b><span>点亮地区</span></div>
     </div>
   </section>
   {{end}}

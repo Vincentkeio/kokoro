@@ -213,42 +213,56 @@ const netqHistorySince = 48 * time.Hour
 func (s *Store) NetQByNode() (map[string][]ISPLatency, error) {
 	// cur = 窗口聚合（当前值）；hist = 最近 N 轮延迟（画波）。两个查询
 	// 拼成 UNION，一次往返拿完。
-	q := `WITH win AS (
-    SELECT node_id, ts,
-           ROW_NUMBER() OVER (PARTITION BY node_id ORDER BY ts DESC) AS rn
-    FROM (
-        SELECT DISTINCT node_id, ts FROM net_quality
-        WHERE ts >= ? AND isp IN (?, ?, ?)
-    )
+	// 从现存节点出发，沿 (node_id, ts) 索引读取时间窗口。CROSS JOIN
+	// 固定这一驱动顺序，避免规划器反过来扫描全部历史探测记录。
+	q := `WITH params AS (SELECT ? AS agg_since, ? AS hist_since),
+isps(isp) AS (VALUES (?), (?), (?)),
+current_windows AS MATERIALIZED (
+    SELECT n.id AS node_id, COALESCE((
+        SELECT ts FROM net_quality INDEXED BY idx_netq_node_time
+        WHERE node_id = n.id AND ts >= params.agg_since
+          AND isp IN (SELECT isp FROM isps)
+        GROUP BY ts ORDER BY ts DESC LIMIT 1 OFFSET ?
+    ), params.agg_since) AS cutoff
+    FROM nodes n CROSS JOIN params
 ),
 cur AS (
     SELECT q.node_id, q.isp,
            AVG(CASE WHEN q.ok = 1 THEN q.latency END) AS lat,
            AVG(q.loss) AS loss,
            SUM(q.ok) AS okn
-    FROM net_quality q
-    JOIN win ON win.node_id = q.node_id AND win.ts = q.ts
-    WHERE win.rn <= ? AND q.isp IN (?, ?, ?)
+    FROM current_windows win
+    CROSS JOIN net_quality q INDEXED BY idx_netq_node_time
+    WHERE q.node_id = win.node_id AND q.ts >= win.cutoff
+      AND q.isp IN (SELECT isp FROM isps)
     GROUP BY q.node_id, q.isp
 ),
+history_windows AS MATERIALIZED (
+    SELECT n.id AS node_id, isps.isp, COALESCE((
+        SELECT ts FROM net_quality INDEXED BY idx_netq_node_time
+        WHERE node_id = n.id AND isp = isps.isp AND ts >= params.hist_since
+        GROUP BY ts ORDER BY ts DESC LIMIT 1 OFFSET ?
+    ), params.hist_since) AS cutoff
+    FROM nodes n CROSS JOIN isps CROSS JOIN params
+),
 hist AS (
-    SELECT node_id, isp, ts,
-           AVG(CASE WHEN ok = 1 THEN latency END) AS lat,
+    SELECT q.node_id, q.isp, q.ts,
+           AVG(CASE WHEN q.ok = 1 THEN q.latency END) AS lat,
            ROW_NUMBER() OVER (
-               PARTITION BY node_id, isp ORDER BY ts DESC) AS rn
-    FROM net_quality
-    WHERE ts >= ? AND isp IN (?, ?, ?)
-    GROUP BY node_id, isp, ts
+               PARTITION BY q.node_id, q.isp ORDER BY q.ts DESC) AS rn
+    FROM history_windows win
+    CROSS JOIN net_quality q INDEXED BY idx_netq_node_time
+    WHERE q.node_id = win.node_id AND q.isp = win.isp AND q.ts >= win.cutoff
+    GROUP BY q.node_id, q.isp, q.ts
 )
 SELECT node_id, isp, lat, loss, okn, 0 FROM cur
 UNION ALL
 SELECT node_id, isp, lat, 0, 0, rn FROM hist WHERE lat IS NOT NULL AND rn <= ?`
 
 	rows, err := s.db.Query(q,
-		nowMS()-netqAggWindowMS, ispTelecom, ispUnicom, ispMobile, // win
-		netqAggRounds, ispTelecom, ispUnicom, ispMobile, // cur
-		nowMS()-netqHistorySince.Milliseconds(), ispTelecom, ispUnicom, ispMobile,
-		netqHistoryRounds) // hist
+		nowMS()-netqAggWindowMS, nowMS()-netqHistorySince.Milliseconds(),
+		ispTelecom, ispUnicom, ispMobile, netqAggRounds-1, netqHistoryRounds-1,
+		netqHistoryRounds)
 	if err != nil {
 		return nil, err
 	}

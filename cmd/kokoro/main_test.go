@@ -71,3 +71,44 @@ func TestRefreshInstallerRejectsBadChecksumWithoutReplacing(t *testing.T) {
 		t.Fatalf("failed refresh changed installer: %q", got)
 	}
 }
+
+// TestFstabWithoutSwapPathsRemovesOnlyKokoroSwap 卸载面板时清 fstab：
+// 只删 Kokoro 自己的 swap 行，别的 swap 与普通挂载一行都不能动。
+func TestFstabWithoutSwapPathsRemovesOnlyKokoroSwap(t *testing.T) {
+	paths := map[string]bool{
+		"/var/lib/kokoro/swapfile":      true,
+		"/var/lib/kokoro-swap/swapfile": true,
+	}
+	src := strings.Join([]string{
+		"# /etc/fstab",
+		"/var/lib/kokoro/swapfile none swap sw 0 0 # kokoro-managed-swap",
+		"/swap.img none swap sw 0 0",
+		"/dev/vda1 / ext4 defaults 0 1",
+		"/var/lib/kokoro-swap/swapfile none swap sw 0 0 # kokoro-managed-swap",
+		"",
+	}, "\n")
+
+	got := fstabWithoutSwapPaths(src, paths)
+	if strings.Contains(got, "/var/lib/kokoro/swapfile") || strings.Contains(got, "/var/lib/kokoro-swap/swapfile") {
+		t.Fatalf("Kokoro 的 swap 行应被删除：\n%s", got)
+	}
+	for _, keep := range []string{"# /etc/fstab", "/swap.img none swap sw 0 0", "/dev/vda1 / ext4 defaults 0 1"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("不该动这一行：%q\n%s", keep, got)
+		}
+	}
+}
+
+// TestSafePurgeDir 卸载删数据前的路径闸门：只有 Kokoro 自己的目录能删。
+func TestSafePurgeDir(t *testing.T) {
+	for _, ok := range []string{"/var/lib/kokoro", "/www/wwwroot/kokoro/data", "/var/lib/kokoro-swap"} {
+		if !safePurgeDir(ok) {
+			t.Errorf("%s 应允许删除", ok)
+		}
+	}
+	for _, bad := range []string{"", "/", "/var/lib", "/etc", "relative/kokoro", "/var/lib/other", "/var/lib/kokoro/../.."} {
+		if safePurgeDir(bad) {
+			t.Errorf("%s 不该允许删除", bad)
+		}
+	}
+}

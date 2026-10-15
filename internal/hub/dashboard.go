@@ -482,10 +482,7 @@ func (h *Hub) buildDashboard() dashboardData {
 	if err != nil {
 		log.Printf("[hub] 仪表盘读取节点失败: %v", err)
 	}
-	snap, err := h.store.LatestSnapshot()
-	if err != nil {
-		log.Printf("[hub] 仪表盘读取最新指标失败: %v", err)
-	}
+	snap := h.latestSnapshot()
 
 	ids := make([]string, 0, len(nodes))
 	data.Total = len(nodes)

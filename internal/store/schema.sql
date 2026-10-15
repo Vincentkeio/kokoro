@@ -90,11 +90,36 @@ CREATE TABLE IF NOT EXISTS metrics_raw (
 
 CREATE INDEX IF NOT EXISTS idx_metrics_raw_node_ts ON metrics_raw (node_id, ts);
 
--- ---------- 5 分钟聚合（保留 90 天）----------
+-- ---------- 分层降采样（rollup ladder）----------
+--
+-- 磁盘占用与采集频率**解耦**：原始表只有很短的保留期（默认 6 小时），
+-- 长期历史靠 rollup 层（1m/5m/1h/1d）承载。级联方向：
+--   metrics_raw → metrics_1m → metrics_5m → metrics_1h → metrics_1d
+-- 每层各自有独立游标（settings.agg_cursor_<层>）与独立保留期。
+-- 做法参照 Komari：分钟桶聚合 + 分层保留，写入量只跟"桶数×层数"有关。
+
+CREATE TABLE IF NOT EXISTS metrics_1m (
+    node_id       TEXT    NOT NULL,
+    bucket        INTEGER NOT NULL,   -- ts 向下取整到 1 分钟
+    cpu_avg       REAL    NOT NULL DEFAULT 0,
+    cpu_max       REAL    NOT NULL DEFAULT 0,
+    mem_used_avg  INTEGER NOT NULL DEFAULT 0,
+    net_up_avg    INTEGER NOT NULL DEFAULT 0,
+    net_down_avg  INTEGER NOT NULL DEFAULT 0,
+    load1_avg     REAL    NOT NULL DEFAULT 0,
+    net_up_max    INTEGER NOT NULL DEFAULT 0,
+    net_down_max  INTEGER NOT NULL DEFAULT 0,
+    total_up_max  INTEGER NOT NULL DEFAULT 0,
+    total_down_max INTEGER NOT NULL DEFAULT 0,
+    samples       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_id, bucket)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_metrics_1m_node_bucket ON metrics_1m (node_id, bucket);
 
 CREATE TABLE IF NOT EXISTS metrics_5m (
     node_id       TEXT    NOT NULL,
-    bucket        INTEGER NOT NULL,   -- 窗口起始时间戳（ts 向下取整到 5 分钟）
+    bucket        INTEGER NOT NULL,   -- ts 向下取整到 5 分钟
     cpu_avg       REAL    NOT NULL DEFAULT 0,
     cpu_max       REAL    NOT NULL DEFAULT 0,
     mem_used_avg  INTEGER NOT NULL DEFAULT 0,
@@ -110,6 +135,44 @@ CREATE TABLE IF NOT EXISTS metrics_5m (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS idx_metrics_5m_node_bucket ON metrics_5m (node_id, bucket);
+
+CREATE TABLE IF NOT EXISTS metrics_1h (
+    node_id       TEXT    NOT NULL,
+    bucket        INTEGER NOT NULL,   -- ts 向下取整到 1 小时
+    cpu_avg       REAL    NOT NULL DEFAULT 0,
+    cpu_max       REAL    NOT NULL DEFAULT 0,
+    mem_used_avg  INTEGER NOT NULL DEFAULT 0,
+    net_up_avg    INTEGER NOT NULL DEFAULT 0,
+    net_down_avg  INTEGER NOT NULL DEFAULT 0,
+    load1_avg     REAL    NOT NULL DEFAULT 0,
+    net_up_max    INTEGER NOT NULL DEFAULT 0,
+    net_down_max  INTEGER NOT NULL DEFAULT 0,
+    total_up_max  INTEGER NOT NULL DEFAULT 0,
+    total_down_max INTEGER NOT NULL DEFAULT 0,
+    samples       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_id, bucket)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_metrics_1h_node_bucket ON metrics_1h (node_id, bucket);
+
+CREATE TABLE IF NOT EXISTS metrics_1d (
+    node_id       TEXT    NOT NULL,
+    bucket        INTEGER NOT NULL,   -- ts 向下取整到 1 天（UTC 零点）
+    cpu_avg       REAL    NOT NULL DEFAULT 0,
+    cpu_max       REAL    NOT NULL DEFAULT 0,
+    mem_used_avg  INTEGER NOT NULL DEFAULT 0,
+    net_up_avg    INTEGER NOT NULL DEFAULT 0,
+    net_down_avg  INTEGER NOT NULL DEFAULT 0,
+    load1_avg     REAL    NOT NULL DEFAULT 0,
+    net_up_max    INTEGER NOT NULL DEFAULT 0,
+    net_down_max  INTEGER NOT NULL DEFAULT 0,
+    total_up_max  INTEGER NOT NULL DEFAULT 0,
+    total_down_max INTEGER NOT NULL DEFAULT 0,
+    samples       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_id, bucket)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_metrics_1d_node_bucket ON metrics_1d (node_id, bucket);
 
 -- ---------- 节点内容页 ----------
 

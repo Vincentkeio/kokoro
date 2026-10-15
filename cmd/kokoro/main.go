@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -143,7 +144,7 @@ func runMenu() int {
 			fmt.Println("5) 重置唯一管理员账户")
 		}
 		fmt.Println("6) 查看最近日志")
-		fmt.Println("7) 卸载面板")
+		fmt.Println("7) 卸载面板（可选连数据库一起删除）")
 		fmt.Println("8) 卸载 Agent")
 		fmt.Println("9) 卸载快捷命令与管理脚本")
 		fmt.Println("0) 退出")
@@ -390,10 +391,18 @@ func uninstallHub(reader *bufio.Reader) int {
 		return 0
 	}
 	hubBinary, hubData := installedHubPaths()
-	if promptLine(reader, fmt.Sprintf("确定卸载面板？面板数据目录 %s 会保留。（输入 yes 确认）：", hubData)) != "yes" {
+	if promptLine(reader, "确定卸载面板？（输入 yes 确认）：") != "yes" {
 		fmt.Println("已取消。")
 		return 0
 	}
+	// 第二步问"要不要连库一起删"，且默认保留：
+	// 第一步的 yes 只表示"卸面板"，不该顺手把数据库清了。
+	purge := false
+	fmt.Printf("\n面板数据（数据库、上传文件、SWAP）在：%s\n", hubData)
+	if promptLine(reader, "是否连数据一起彻底删除？（不可恢复）输入 purge 彻底删除，直接回车只卸载面板：") == "purge" {
+		purge = true
+	}
+
 	runSystemctl("disable", "--now", "kokoro-hub")
 	if err := os.Remove("/etc/systemd/system/kokoro-hub.service"); err != nil && !os.IsNotExist(err) {
 		fmt.Printf("移除面板服务文件失败：%v\n", err)
@@ -409,6 +418,17 @@ func uninstallHub(reader *bufio.Reader) int {
 			return 1
 		}
 	}
+
+	if purge {
+		if err := purgeHubData(hubData, hubBinary); err != nil {
+			fmt.Printf("面板已卸载，但删除数据失败：%v\n", err)
+			return 1
+		}
+		fmt.Printf("Kokoro 面板与数据目录 %s 已彻底删除。\n", hubData)
+	} else {
+		fmt.Printf("Kokoro 面板已卸载；%s 数据目录已保留（重装可复用）。\n", hubData)
+	}
+
 	if unitInstalled("kokoro-agent") {
 		if err := replaceMenuCommand("/usr/local/bin/kokoro-agent"); err != nil {
 			fmt.Printf("面板已卸载，但恢复 Agent 菜单命令失败：%v\n", err)
@@ -418,8 +438,133 @@ func uninstallHub(reader *bufio.Reader) int {
 		fmt.Printf("移除菜单命令失败：%v\n", err)
 		return 1
 	}
-	fmt.Printf("Kokoro 面板已卸载；%s 数据目录已保留。\n", hubData)
 	return 0
+}
+
+// ---- 面板数据清理（连库一起删） ----
+
+// managedSwapDir 是 Agent 新版 SWAP 用的 root 独占目录（见 internal/agent/swap.go）。
+const managedSwapDir = "/var/lib/kokoro-swap"
+
+// hubSwapFiles 列出 Kokoro 可能托管的 swap 文件：
+// 数据目录下的旧版 swapfile 系列，以及 root 独占目录里的新版 swapfile。
+func hubSwapFiles(dataDir string) []string {
+	return []string{
+		filepath.Join(dataDir, "swapfile"),
+		filepath.Join(dataDir, "swapfile.new"),
+		filepath.Join(dataDir, "swapfile.old"),
+		filepath.Join(managedSwapDir, "swapfile"),
+	}
+}
+
+// safePurgeDir 只允许删「绝对路径、不是根、且路径里含 kokoro 段」的目录。
+//
+// 卸载是破坏性操作：宁可删不掉，也不能因为一个变量为空/被改就 rm -rf 掉系统目录。
+// 用 path（而不是 filepath）是因为这些都是 Linux 路径，卸载只在 Linux 上跑；
+// filepath 在 Windows 上按 "\\" 切分，会让同一份判断在测试机上得出不同结论。
+func safePurgeDir(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	clean := path.Clean(dir)
+	if !strings.HasPrefix(clean, "/") || clean == "/" {
+		return false
+	}
+	for _, part := range strings.Split(clean, "/") {
+		if part == "kokoro" || strings.HasPrefix(part, "kokoro-") {
+			return true
+		}
+	}
+	return false
+}
+
+// fstabWithoutSwapPaths 去掉 fstab 里指向这些文件的 swap 挂载行。
+//
+// fstab 格式：<设备> <挂载点> <类型> <选项> ... ，swap 行的类型列是第 3 列。
+// 只删「第 1 列命中给定路径、第 3 列是 swap」的行；注释、别的挂载一律原样保留。
+func fstabWithoutSwapPaths(src string, paths map[string]bool) string {
+	lines := strings.Split(src, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && paths[fields[0]] && fields[2] == "swap" {
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+// stripFstabSwapEntries 从 /etc/fstab 移除指向这些 swap 文件的挂载行（写回前先备份）。
+func stripFstabSwapEntries(paths []string) error {
+	const fstab = "/etc/fstab"
+	raw, err := os.ReadFile(fstab)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // 容器/精简系统里没有 fstab，跳过
+		}
+		return fmt.Errorf("读取 fstab 失败: %w", err)
+	}
+	want := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		want[p] = true
+	}
+	updated := fstabWithoutSwapPaths(string(raw), want)
+	if updated == string(raw) {
+		return nil
+	}
+	backup := fstab + ".kokoro-bak"
+	if err := os.WriteFile(backup, raw, 0o644); err != nil {
+		return fmt.Errorf("备份 fstab 失败: %w", err)
+	}
+	if err := os.WriteFile(fstab, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("写回 fstab 失败: %w", err)
+	}
+	return nil
+}
+
+// cancelSwap 尽力关掉这些 swap 文件；没启用或已不存在就跳过。
+//
+// 必须先 swapoff 再删文件：启用中的 swapfile 被删掉会留下"已删除但仍在使用"的
+// 交换区，白占内存且 fstab 里还挂着一条指向空气的记录。
+func cancelSwap(files []string) {
+	for _, f := range files {
+		if _, err := os.Stat(f); err != nil {
+			continue
+		}
+		if out, err := exec.Command("swapoff", f).CombinedOutput(); err != nil {
+			fmt.Printf("提示：swapoff %s 未成功（可能未启用）：%s\n", f, strings.TrimSpace(string(out)))
+		}
+	}
+}
+
+// purgeHubData 彻底删除面板数据：先关掉 Kokoro 托管的 SWAP 并清掉 fstab 记录，
+// 再删数据目录与 root 独占的 SWAP 目录。删除路径前一律过 safePurgeDir。
+func purgeHubData(dataDir, hubBinary string) error {
+	if !safePurgeDir(dataDir) {
+		return fmt.Errorf("数据目录 %q 未通过安全检查，已中止删除", dataDir)
+	}
+	swapFiles := hubSwapFiles(dataDir)
+	cancelSwap(swapFiles)
+	if err := stripFstabSwapEntries(swapFiles); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(dataDir); err != nil {
+		return fmt.Errorf("删除数据目录失败: %w", err)
+	}
+	if safePurgeDir(managedSwapDir) {
+		if err := os.RemoveAll(managedSwapDir); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("删除 SWAP 目录失败: %w", err)
+		}
+	}
+	// 安装器会在程序目录里放一个 data 软链；数据没了把它一起清掉，别留悬空链接。
+	if hubBinary != "" {
+		link := filepath.Join(filepath.Dir(hubBinary), "data")
+		if info, err := os.Lstat(link); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			_ = os.Remove(link)
+		}
+	}
+	return nil
 }
 
 func uninstallAgent(reader *bufio.Reader) int {
@@ -657,19 +802,30 @@ func runServe(args []string) int {
 		return 1
 	}
 
-	// 后台任务：聚合与清理
+	// 后台任务：分层 rollup 聚合（每 5 分钟）与保留期清理（每小时）。
+	//
+	// 参照 Komari 的节奏：「关桶聚合」跑得勤（分钟级），「按保留期清理」放低频
+	// （小时级）—— 清理会做大范围 DELETE、必要时 VACUUM，不该挤在写路径上。
+	// 各层保留期见 store 里的 retention* 常量（也可用 settings 覆盖）。
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			if err := st.Aggregate5m(); err != nil {
-				log.Printf("[kokoro] 聚合失败: %v", err)
-			}
-			// 原始表留 24 小时（走势图 1 小时窗足够用），
-			// 5 分钟汇总表留 30 天 —— 详情页「1/7/30 天」的窗口就靠它，
-			// 再久的数据 boss 明确不保留（磁盘留给正事）。
-			if err := st.Prune(24*time.Hour, 30*24*time.Hour); err != nil {
-				log.Printf("[kokoro] 清理失败: %v", err)
+		compact := time.NewTicker(5 * time.Minute)
+		retention := time.NewTicker(time.Hour)
+		defer compact.Stop()
+		defer retention.Stop()
+
+		if err := st.AggregateRollups(); err != nil {
+			log.Printf("[kokoro] 聚合失败: %v", err)
+		}
+		for {
+			select {
+			case <-compact.C:
+				if err := st.AggregateRollups(); err != nil {
+					log.Printf("[kokoro] 聚合失败: %v", err)
+				}
+			case <-retention.C:
+				if err := st.Prune(); err != nil {
+					log.Printf("[kokoro] 清理失败: %v", err)
+				}
 			}
 		}
 	}()

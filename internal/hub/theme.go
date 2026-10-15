@@ -16,6 +16,7 @@ package hub
 //     但仍然走 <style nonce>，保持与其他内联样式一致。
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -146,6 +147,15 @@ func (h *Hub) ActiveThemeID() string {
 	return h.theme.activeID
 }
 
+// refreshActiveThemeIfChanged 在主题内容被替换后，若它正是站点当前生效的
+// 那套，就重建渲染快照。导入同名新版本（裸 JSON → 带包、1.0.0 → 1.0.1）时
+// 注册表换了新清单，但 h.theme.tokens 还停在启动时渲染的旧版本上。
+func (h *Hub) refreshActiveThemeIfChanged(id string) {
+	if h.ActiveThemeID() == id {
+		h.setActiveTheme(id)
+	}
+}
+
 // ---- 模板数据 ----
 
 // themeView 是模板里用的主题上下文。
@@ -205,7 +215,7 @@ type themeView struct {
 	// WallpaperCSS 是站点壁纸要注入的 :root 声明，空串表示没设壁纸。
 	//
 	// 它在 `<style id="kokoro-tokens">` **之后**渲染，靠"后定义的赢"
-	// 压过主题的 --kokoro-bg-image。为什么不让主题自己写：
+	// 作为未自带壁纸的自定义主题的背景。为什么外链不让主题自己写：
 	// 主题 tokens 有沙箱校验（禁外链 url()），而壁纸要么是本地文件、
 	// 要么是管理员填的外链 —— 只有站点级设置这条不受沙箱约束的路能承载。
 	//
@@ -316,8 +326,8 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 	if v.SiteURL != "" {
 		v.ThemeShareURL = v.SiteURL + "/theme.json"
 	}
-	// 内置主题的壁纸由主题包自身提供；站点级壁纸仍可供自定义主题使用。
-	if !builtinWallpaperTheme(m.ID) {
+	// 自带壁纸的主题包与内置主题一样，使用自己的背景；站点壁纸作为后备。
+	if !builtinWallpaperTheme(m.ID) && !hasPackagedWallpaper(m) {
 		v.WallpaperCSS = template.CSS(h.wallpaperCSS())
 	}
 	// 访客选的不是站点默认 → 他需要一条"回到默认"的出路。
@@ -355,6 +365,18 @@ func builtinWallpaperTheme(id string) bool {
 	default:
 		return false
 	}
+}
+
+func hasPackagedWallpaper(m *theme.Manifest) bool {
+	if m == nil || m.Package == nil || len(m.Package.Files) == 0 {
+		return false
+	}
+	for _, tokens := range []map[string]string{m.Tokens, m.TokensDark} {
+		if strings.Contains(tokens["--kokoro-bg-image"], "/_theme-assets/") {
+			return true
+		}
+	}
+	return false
 }
 
 // requestManifest 返回本次请求真正该用的主题：站点默认 + 访客覆盖。
@@ -529,7 +551,7 @@ func safeBackURL(back string) bool {
 //
 // 两种来源：
 //   - 粘贴 theme.json 原文（最容易，也最安全——纯文本，没有包结构可攻击）；
-//   - 上传 .kokoro-theme 包文件（能带字体、背景图）。
+//   - 上传 JSON 清单或 .kokoro-theme 包文件（包能带字体、背景图）。
 //
 // 两者都要过 theme.Parse 的同一套校验，最后都落库。
 func (h *Hub) handleThemeImport(w http.ResponseWriter, r *http.Request) {
@@ -544,14 +566,34 @@ func (h *Hub) handleThemeImport(w http.ResponseWriter, r *http.Request) {
 		h.themeErr(w, "内容太大或格式错误", r)
 		return
 	}
-	// 上传包优先：文件内容比粘贴框更"重"，同时存在时以文件为准。
-	// FormFile 的第二个返回值是 *multipart.FileHeader（不是 error），
-	// 所以「这次有没有带文件」只能靠 fh != nil 判断。
-	if fh, _, _ := r.FormFile("bundle"); fh != nil {
+	// 上传文件优先。JSON 文件和粘贴清单使用相同的解析与保存路径。
+	fh, header, fileErr := r.FormFile("bundle")
+	if fileErr != nil && fileErr != http.ErrMissingFile && fileErr != http.ErrNotMultipart {
+		h.themeErr(w, "上传文件过大或表单格式错误", r)
+		return
+	}
+	if r.MultipartForm != nil {
+		defer r.MultipartForm.RemoveAll()
+	}
+	if fh != nil {
 		defer fh.Close()
 		raw, rerr := io.ReadAll(io.LimitReader(fh, theme.MaxPackageBytes+1))
 		if rerr != nil {
 			h.themeErr(w, "读取上传文件失败", r)
+			return
+		}
+		if len(raw) > theme.MaxPackageBytes {
+			h.themeErr(w, "上传文件超过 8 MB 上限", r)
+			return
+		}
+		if strings.HasSuffix(strings.ToLower(header.Filename), ".json") || bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
+			m, err := h.importManifest(raw, "")
+			if err != nil {
+				h.themeErr(w, err.Error(), r)
+				return
+			}
+			_ = h.store.AddAudit("admin", "theme.import", m.ID, m.Name)
+			h.themeErr(w, "", r, fmt.Sprintf("已导入《%s》%s，共 %d 套主题", m.Name, m.Version, len(h.themes.ListIDs())))
 			return
 		}
 		m, err := h.installBundle(raw, "")
@@ -566,7 +608,7 @@ func (h *Hub) handleThemeImport(w http.ResponseWriter, r *http.Request) {
 
 	raw := strings.TrimSpace(r.PostFormValue("manifest"))
 	if raw == "" {
-		h.themeErr(w, "内容为空（可以粘贴 theme.json，或上传 .kokoro-theme 包）", r)
+		h.themeErr(w, "内容为空（请选择 JSON 文件、主题包，或粘贴 theme.json）", r)
 		return
 	}
 	// 粘贴的也可能是包内容被直接粘进来（有人会把 .kokoro-theme 二进制贴成 base64 之外的东西），
@@ -630,6 +672,12 @@ func (h *Hub) installBundle(raw []byte, sourceURL string) (*theme.Manifest, erro
 		}
 		return nil, err
 	}
+	// 导入的正是当前生效主题时，必须重建渲染缓存：buildThemeView 对站点
+	// 当前主题走的是 h.theme.tokens 这份启动时渲染好的快照，不重建的话
+	// 导入后页面还是旧配色/旧背景，要等到下次重启才生效——表现成
+	// 「导入了但什么都没变」，与主题坏了无从区分（2026-10-16 踩过：
+	// 线上 jiwo.blackgold 导了 1.0.1 包，刷新仍是 1.0.0 的 bg-image:none）。
+	h.refreshActiveThemeIfChanged(m.ID)
 	return m, nil
 }
 
@@ -655,6 +703,7 @@ func (h *Hub) importManifest(raw []byte, sourceURL string) (*theme.Manifest, err
 		}
 		return nil, err
 	}
+	h.refreshActiveThemeIfChanged(m.ID)
 	return m, nil
 }
 

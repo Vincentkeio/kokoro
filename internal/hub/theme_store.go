@@ -109,6 +109,20 @@ func (h *Hub) loadStoredThemes() {
 			log.Printf("[theme] 存档 ID(%s) 与清单 ID(%s) 不一致，按清单登记", t.ID, m.ID)
 		}
 		m.Source = "custom"
+		// 包元数据必须从 themes.meta 快照还原。exportManifest 刻意不序列化
+		// Package（它是"这份主题带没带包"的凭证，不是渲染输入），而
+		// buildThemeView 的 hasPackagedWallpaper 正是靠它判断「要不要让站点
+		// 壁纸退位」。漏了这一步，重启后 m.Package 恒为 nil，站点后备壁纸
+		// 会被注入到 #kokoro-tokens 之后——后定义的赢——主题包自己的背景图
+		// 静默消失，且不报任何错。
+		if len(t.Meta) > 0 && m.Package == nil {
+			var pkg theme.Package
+			if err := json.Unmarshal(t.Meta, &pkg); err != nil {
+				log.Printf("[theme] 存档 %s 的包元数据解析失败：%v", m.ID, err)
+			} else {
+				m.Package = &pkg
+			}
+		}
 		if err := h.themes.Register(m); err != nil {
 			log.Printf("[theme] 登记存档 %s 失败：%v", m.ID, err)
 			continue

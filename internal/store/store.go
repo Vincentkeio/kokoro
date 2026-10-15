@@ -42,10 +42,15 @@ var schemaSQL string
 // 只加 2 不加 1 的后果：新装的库缺列，跑起来报
 // "table xxx has no column named yyy" —— 而且**本地测试会先红**
 // （测试用的都是全新库）。踩过一次。
-const schemaVersion = 15
+const schemaVersion = 16
 
-// 5 分钟聚合窗口长度（毫秒）。
-const bucket5m = int64(5 * 60 * 1000)
+// rollup 各层的窗口长度（毫秒）。级联方向：raw → 1m → 5m → 1h → 1d。
+const (
+	bucket1m = int64(60 * 1000)
+	bucket5m = int64(5 * 60 * 1000)
+	bucket1h = int64(60 * 60 * 1000)
+	bucket1d = int64(24 * 60 * 60 * 1000)
+)
 
 // ErrNotFound 查询不到记录时返回，便于调用方用 errors.Is 区分。
 var ErrNotFound = errors.New("store: 记录不存在")
@@ -282,6 +287,60 @@ INSERT OR IGNORE INTO node_groups (name, created_at)
 SELECT DISTINCT TRIM(group_name), CAST(strftime('%s','now') AS INTEGER) * 1000
 FROM nodes WHERE TRIM(group_name) <> '';
 CREATE INDEX IF NOT EXISTS idx_nodes_group_name ON nodes (group_name);`},
+	// v16：分层降采样。老库只有 metrics_5m，这里补出 1m/1h/1d 三层，
+	// 并把"保留期"从硬编码改成可按层配置（见 Prune）。
+	{version: 16, sql: `
+CREATE TABLE IF NOT EXISTS metrics_1m (
+    node_id       TEXT    NOT NULL,
+    bucket        INTEGER NOT NULL,
+    cpu_avg       REAL    NOT NULL DEFAULT 0,
+    cpu_max       REAL    NOT NULL DEFAULT 0,
+    mem_used_avg  INTEGER NOT NULL DEFAULT 0,
+    net_up_avg    INTEGER NOT NULL DEFAULT 0,
+    net_down_avg  INTEGER NOT NULL DEFAULT 0,
+    load1_avg     REAL    NOT NULL DEFAULT 0,
+    net_up_max    INTEGER NOT NULL DEFAULT 0,
+    net_down_max  INTEGER NOT NULL DEFAULT 0,
+    total_up_max  INTEGER NOT NULL DEFAULT 0,
+    total_down_max INTEGER NOT NULL DEFAULT 0,
+    samples       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_id, bucket)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_metrics_1m_node_bucket ON metrics_1m (node_id, bucket);
+CREATE TABLE IF NOT EXISTS metrics_1h (
+    node_id       TEXT    NOT NULL,
+    bucket        INTEGER NOT NULL,
+    cpu_avg       REAL    NOT NULL DEFAULT 0,
+    cpu_max       REAL    NOT NULL DEFAULT 0,
+    mem_used_avg  INTEGER NOT NULL DEFAULT 0,
+    net_up_avg    INTEGER NOT NULL DEFAULT 0,
+    net_down_avg  INTEGER NOT NULL DEFAULT 0,
+    load1_avg     REAL    NOT NULL DEFAULT 0,
+    net_up_max    INTEGER NOT NULL DEFAULT 0,
+    net_down_max  INTEGER NOT NULL DEFAULT 0,
+    total_up_max  INTEGER NOT NULL DEFAULT 0,
+    total_down_max INTEGER NOT NULL DEFAULT 0,
+    samples       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_id, bucket)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_metrics_1h_node_bucket ON metrics_1h (node_id, bucket);
+CREATE TABLE IF NOT EXISTS metrics_1d (
+    node_id       TEXT    NOT NULL,
+    bucket        INTEGER NOT NULL,
+    cpu_avg       REAL    NOT NULL DEFAULT 0,
+    cpu_max       REAL    NOT NULL DEFAULT 0,
+    mem_used_avg  INTEGER NOT NULL DEFAULT 0,
+    net_up_avg    INTEGER NOT NULL DEFAULT 0,
+    net_down_avg  INTEGER NOT NULL DEFAULT 0,
+    load1_avg     REAL    NOT NULL DEFAULT 0,
+    net_up_max    INTEGER NOT NULL DEFAULT 0,
+    net_down_max  INTEGER NOT NULL DEFAULT 0,
+    total_up_max  INTEGER NOT NULL DEFAULT 0,
+    total_down_max INTEGER NOT NULL DEFAULT 0,
+    samples       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_id, bucket)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_metrics_1d_node_bucket ON metrics_1d (node_id, bucket);`},
 }
 
 // prepare 预编译高频写入语句。
@@ -683,9 +742,12 @@ func (s *Store) LatestMetrics(nodeID string) (*model.Metrics, error) {
 
 // LatestSnapshot 返回全部节点的最新一条指标，键为 node_id，供 SSE 全量推送。
 func (s *Store) LatestSnapshot() (map[string]*model.Metrics, error) {
-	q := `SELECT r.node_id, ` + rawCols + ` FROM metrics_raw r
-JOIN (SELECT node_id, MAX(ts) AS mts FROM metrics_raw GROUP BY node_id) x
-  ON r.node_id = x.node_id AND r.ts = x.mts`
+	// 广播每秒读取一次。按节点索引定位最后一条，避免每秒遍历整天的指标。
+	q := `SELECT r.node_id, ` + rawCols + ` FROM (SELECT id FROM nodes) n
+CROSS JOIN metrics_raw r
+WHERE r.node_id = n.id AND r.ts = (
+    SELECT ts FROM metrics_raw WHERE node_id = n.id ORDER BY ts DESC LIMIT 1
+)`
 	rows, err := s.db.Query(q)
 	if err != nil {
 		return nil, err
@@ -704,7 +766,9 @@ JOIN (SELECT node_id, MAX(ts) AS mts FROM metrics_raw GROUP BY node_id) x
 }
 
 // History 返回节点在 [from, to] 区间内的历史曲线，最多 maxPoints 个点。
-// 跨度超过 6 小时自动改用 metrics_5m 聚合表，否则读 metrics_raw。
+//
+// 按跨度选层：滚动保留期决定哪一层还够用，从最细的一层往上挑。
+// 读路径必须与各层保留期一致（见 retention* 常量），否则图的头部会缺口。
 func (s *Store) History(nodeID string, from, to int64, maxPoints int) ([]MetricPoint, error) {
 	if to <= 0 {
 		to = nowMS()
@@ -724,14 +788,24 @@ func (s *Store) History(nodeID string, from, to int64, maxPoints int) ([]MetricP
 		step = 1
 	}
 
-	var q string
-	if span > 6*60*60*1000 {
-		// 5 分钟粒度：按 step 再降采样一次
-		q = `SELECT MIN(bucket), AVG(cpu_avg), AVG(mem_used_avg), AVG(net_up_avg), AVG(net_down_avg), AVG(load1_avg)
-FROM metrics_5m WHERE node_id = ? AND bucket >= ? AND bucket <= ? GROUP BY bucket / ? ORDER BY 1`
-	} else {
-		q = `SELECT MIN(ts), AVG(cpu), AVG(mem_used), AVG(net_up), AVG(net_down), AVG(load1)
+	// 各层查询只差"表名 + 时间列 + 列名"，按跨度挑一层。
+	const qRaw = `SELECT MIN(ts), AVG(cpu), AVG(mem_used), AVG(net_up), AVG(net_down), AVG(load1)
 FROM metrics_raw WHERE node_id = ? AND ts >= ? AND ts <= ? GROUP BY ts / ? ORDER BY 1`
+	const qAgg = `SELECT MIN(bucket), AVG(cpu_avg), AVG(mem_used_avg), AVG(net_up_avg), AVG(net_down_avg), AVG(load1_avg)
+FROM %s WHERE node_id = ? AND bucket >= ? AND bucket <= ? GROUP BY bucket / ? ORDER BY 1`
+
+	var q string
+	switch {
+	case span <= 2*3600*1000:
+		q = qRaw
+	case span <= 12*3600*1000:
+		q = fmt.Sprintf(qAgg, "metrics_1m")
+	case span <= 3*24*3600*1000:
+		q = fmt.Sprintf(qAgg, "metrics_5m")
+	case span <= 45*24*3600*1000:
+		q = fmt.Sprintf(qAgg, "metrics_1h")
+	default:
+		q = fmt.Sprintf(qAgg, "metrics_1d")
 	}
 	rows, err := s.db.Query(q, nodeID, from, to, step)
 	if err != nil {
@@ -760,21 +834,83 @@ FROM metrics_raw WHERE node_id = ? AND ts >= ? AND ts <= ? GROUP BY ts / ? ORDER
 	return out, rows.Err()
 }
 
-// Aggregate5m 把已闭合的 5 分钟窗口从 metrics_raw 聚合进 metrics_5m。
-// 通过 settings 里的 agg_cursor 记录进度，只处理新数据。
-func (s *Store) Aggregate5m() error {
+// ==================== 分层降采样（rollup ladder）====================
+//
+// 参照 Komari 的做法：磁盘写入量只跟"桶数 × 层数"有关，与采集频率解耦。
+// 级联方向 raw → 1m → 5m → 1h → 1d，每层只在上游"闭合"后聚合一次，
+// 游标落在 settings.agg_cursor_<层>。只处理已闭合窗口，半截窗口不写。
+
+type rollupLayer struct {
+	table  string // 目标表
+	src    string // 来源表
+	srcTs  string // 来源时间列（ts / bucket）
+	bucket int64
+	cursor string // settings 键
+}
+
+var rollupLayers = []rollupLayer{
+	{table: "metrics_1m", src: "metrics_raw", srcTs: "ts", bucket: bucket1m, cursor: "agg_cursor_1m"},
+	{table: "metrics_5m", src: "metrics_1m", srcTs: "bucket", bucket: bucket5m, cursor: "agg_cursor_5m"},
+	{table: "metrics_1h", src: "metrics_5m", srcTs: "bucket", bucket: bucket1h, cursor: "agg_cursor_1h"},
+	{table: "metrics_1d", src: "metrics_1h", srcTs: "bucket", bucket: bucket1d, cursor: "agg_cursor_1d"},
+}
+
+// rollupConflict 是 upsert 段。%[1]s 是目标表名（自引用取 MAX）。
+const rollupConflict = `ON CONFLICT (node_id, bucket) DO UPDATE SET
+  cpu_avg = excluded.cpu_avg,
+  cpu_max = MAX(%[1]s.cpu_max, excluded.cpu_max),
+  mem_used_avg = excluded.mem_used_avg,
+  net_up_avg = excluded.net_up_avg,
+  net_down_avg = excluded.net_down_avg,
+  load1_avg = excluded.load1_avg,
+  net_up_max = MAX(%[1]s.net_up_max, excluded.net_up_max),
+  net_down_max = MAX(%[1]s.net_down_max, excluded.net_down_max),
+  total_up_max = MAX(%[1]s.total_up_max, excluded.total_up_max),
+  total_down_max = MAX(%[1]s.total_down_max, excluded.total_down_max),
+  samples = excluded.samples`
+
+// rollupSQL 按来源类型生成两种聚合语句（原始表 / 上游 rollup 表）。
+// 上游是 rollup 表时，平均值按 samples 加权，避免"桶内样本数不同"把均值带偏。
+func rollupSQL(l rollupLayer) string {
+	head := `INSERT INTO ` + l.table + `
+(node_id, bucket, cpu_avg, cpu_max, mem_used_avg, net_up_avg, net_down_avg, load1_avg,
+ net_up_max, net_down_max, total_up_max, total_down_max, samples)
+`
+	if l.src == "metrics_raw" {
+		return head + `SELECT node_id, (ts / ?) * ?,
+       AVG(cpu), MAX(cpu), AVG(mem_used), AVG(net_up), AVG(net_down), AVG(load1),
+       MAX(net_up), MAX(net_down), MAX(total_up), MAX(total_down), COUNT(*)
+FROM metrics_raw WHERE ts >= ? AND ts < ?
+GROUP BY node_id, (ts / ?) * ?
+` + fmt.Sprintf(rollupConflict, l.table)
+	}
+	return head + `SELECT node_id, (bucket / ?) * ?,
+       SUM(cpu_avg * samples) / SUM(samples), MAX(cpu_max),
+       SUM(mem_used_avg * samples) / SUM(samples),
+       SUM(net_up_avg * samples) / SUM(samples),
+       SUM(net_down_avg * samples) / SUM(samples),
+       SUM(load1_avg * samples) / SUM(samples),
+       MAX(net_up_max), MAX(net_down_max), MAX(total_up_max), MAX(total_down_max),
+       SUM(samples)
+FROM ` + l.src + ` WHERE bucket >= ? AND bucket < ?
+GROUP BY node_id, (bucket / ?) * ?
+` + fmt.Sprintf(rollupConflict, l.table)
+}
+
+// aggregateLayer 把上游已闭合的窗口聚合进目标层。
+func (s *Store) aggregateLayer(l rollupLayer) error {
 	now := nowMS()
-	winStart := now - now%bucket5m
+	winStart := now - now%l.bucket
 
 	cursor := int64(0)
-	if v, err := s.GetSetting("agg_cursor"); err == nil && v != "" {
+	if v, err := s.GetSetting(l.cursor); err == nil && v != "" {
 		cursor, _ = strconv.ParseInt(v, 10, 64)
 	}
 	if cursor == 0 {
-		// 首次运行：从现有最早数据开始，避免把历史全表扫一遍却又落在游标之前。
+		// 首次运行：从上游最早一条开始，避免"游标落在数据之后"漏掉一段。
 		var min sql.NullInt64
-		if err := s.db.QueryRow("SELECT MIN(ts) FROM metrics_raw").Scan(&min); err == nil && min.Valid {
-			cursor = min.Int64
+		if err := s.db.QueryRow("SELECT MIN(" + l.srcTs + ") FROM " + l.src).Scan(&min); err == nil && min.Valid {
+			cursor = min.Int64 - min.Int64%l.bucket
 		} else {
 			cursor = winStart
 		}
@@ -785,61 +921,120 @@ func (s *Store) Aggregate5m() error {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	_, err := s.db.Exec(`INSERT INTO metrics_5m
-(node_id, bucket, cpu_avg, cpu_max, mem_used_avg, net_up_avg, net_down_avg, load1_avg,
- net_up_max, net_down_max, total_up_max, total_down_max, samples)
-SELECT node_id, (ts / ?) * ?,
-       AVG(cpu), MAX(cpu), AVG(mem_used), AVG(net_up), AVG(net_down), AVG(load1),
-       MAX(net_up), MAX(net_down), MAX(total_up), MAX(total_down), COUNT(*)
-FROM metrics_raw WHERE ts >= ? AND ts < ?
-GROUP BY node_id, (ts / ?) * ?
-ON CONFLICT (node_id, bucket) DO UPDATE SET
-  cpu_avg = excluded.cpu_avg,
-  cpu_max = MAX(metrics_5m.cpu_max, excluded.cpu_max),
-  mem_used_avg = excluded.mem_used_avg,
-  net_up_avg = excluded.net_up_avg,
-  net_down_avg = excluded.net_down_avg,
-  load1_avg = excluded.load1_avg,
-  net_up_max = MAX(metrics_5m.net_up_max, excluded.net_up_max),
-  net_down_max = MAX(metrics_5m.net_down_max, excluded.net_down_max),
-  total_up_max = MAX(metrics_5m.total_up_max, excluded.total_up_max),
-  total_down_max = MAX(metrics_5m.total_down_max, excluded.total_down_max),
-  samples = excluded.samples`,
-		bucket5m, bucket5m, cursor, winStart, bucket5m, bucket5m)
-	if err != nil {
-		return fmt.Errorf("聚合 5 分钟指标失败: %w", err)
+	if _, err := s.db.Exec(rollupSQL(l), l.bucket, l.bucket, cursor, winStart, l.bucket, l.bucket); err != nil {
+		return fmt.Errorf("聚合 %s 失败: %w", l.table, err)
 	}
-	return s.SetSetting("agg_cursor", strconv.FormatInt(winStart, 10))
+	return s.SetSetting(l.cursor, strconv.FormatInt(winStart, 10))
 }
 
-// Prune 按保留时长删除过期指标与过期会话。
+// AggregateRollups 依次跑完整条 rollup 阶梯。
+// 顺序有意义：细层必须先于粗层，粗层才拿得到刚闭合的细层桶。
+func (s *Store) AggregateRollups() error {
+	for i := range rollupLayers {
+		if err := s.aggregateLayer(rollupLayers[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Aggregate5m 保留旧入口（旧调用方与测试用）：只跑 1m + 5m 两级。
+func (s *Store) Aggregate5m() error {
+	for i := 0; i < 2 && i < len(rollupLayers); i++ {
+		if err := s.aggregateLayer(rollupLayers[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// 各层默认保留期。改默认值时必须同步 History 的选层阈值，
+// 否则某一层的保留期短于用它画的窗口，图会缺头部。
+const (
+	retentionRawDefault  = 6 * time.Hour
+	retention1mDefault   = 24 * time.Hour
+	retention5mDefault   = 7 * 24 * time.Hour
+	retention1hDefault   = 45 * 24 * time.Hour
+	retention1dDefault   = 365 * 24 * time.Hour
+	retentionNetQDefault = 7 * 24 * time.Hour
+	// 每节点最多保留多少"轮"三网探测（防止某机把探测间隔调到极小）。
+	netqRoundsPerNodeLimit = 2000
+)
+
+// 保留期设置键。值为空/非数字 → 用默认；负值 → 不清理该层。
+const (
+	settingRetentionRaw  = "retention_raw_h"
+	settingRetention1m   = "retention_1m_h"
+	settingRetention5m   = "retention_5m_h"
+	settingRetention1h   = "retention_1h_d"
+	settingRetention1d   = "retention_1d_d"
+	settingRetentionNetQ = "retention_netq_d"
+)
+
+// retention 读某层的保留期：未配置用默认，负数表示"不清理"。
+func (s *Store) retention(key string, def, unit time.Duration) time.Duration {
+	v, err := s.GetSetting(key)
+	if err != nil {
+		return def
+	}
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	if n < 0 {
+		return -1
+	}
+	if n == 0 {
+		return 0
+	}
+	return time.Duration(n) * unit
+}
+
+// Prune 按各层保留期删除过期指标、过期三网探测与过期会话。
 // 删除行数超过阈值时才做一次空间回收，避免频繁 IO。
-func (s *Store) Prune(retentionRaw, retention5m time.Duration) error {
+func (s *Store) Prune() error {
 	now := nowMS()
 	var deleted int64
-	// 网络质量波形最长保留 30 天；全局清理也覆盖长期离线、不会再上报的节点。
-	if res, err := s.db.Exec("DELETE FROM net_quality WHERE ts < ?", now-int64((30*24*time.Hour)/time.Millisecond)); err != nil {
-		return fmt.Errorf("清理过期网络质量失败: %w", err)
-	} else if n, _ := res.RowsAffected(); n > 0 {
+
+	layers := []struct {
+		table, col string
+		keep       time.Duration
+	}{
+		{"metrics_raw", "ts", s.retention(settingRetentionRaw, retentionRawDefault, time.Hour)},
+		{"metrics_1m", "bucket", s.retention(settingRetention1m, retention1mDefault, time.Hour)},
+		{"metrics_5m", "bucket", s.retention(settingRetention5m, retention5mDefault, time.Hour)},
+		{"metrics_1h", "bucket", s.retention(settingRetention1h, retention1hDefault, 24*time.Hour)},
+		{"metrics_1d", "bucket", s.retention(settingRetention1d, retention1dDefault, 24*time.Hour)},
+	}
+	for _, l := range layers {
+		if l.keep <= 0 {
+			continue
+		}
+		res, err := s.db.Exec("DELETE FROM "+l.table+" WHERE "+l.col+" < ?", now-int64(l.keep/time.Millisecond))
+		if err != nil {
+			return fmt.Errorf("清理 %s 失败: %w", l.table, err)
+		}
+		n, _ := res.RowsAffected()
 		deleted += n
 	}
 
-	if retentionRaw > 0 {
-		res, err := s.db.Exec("DELETE FROM metrics_raw WHERE ts < ?", now-int64(retentionRaw/time.Millisecond))
+	// 三网探测：绝对保留期 + 每节点轮数上限。
+	if keep := s.retention(settingRetentionNetQ, retentionNetQDefault, 24*time.Hour); keep > 0 {
+		res, err := s.db.Exec("DELETE FROM net_quality WHERE ts < ?", now-int64(keep/time.Millisecond))
 		if err != nil {
-			return fmt.Errorf("清理原始指标失败: %w", err)
+			return fmt.Errorf("清理 net_quality 失败: %w", err)
 		}
 		n, _ := res.RowsAffected()
 		deleted += n
 	}
-	if retention5m > 0 {
-		res, err := s.db.Exec("DELETE FROM metrics_5m WHERE bucket < ?", now-int64(retention5m/time.Millisecond))
-		if err != nil {
-			return fmt.Errorf("清理聚合指标失败: %w", err)
-		}
-		n, _ := res.RowsAffected()
-		deleted += n
+	if err := s.pruneNetQRounds(netqRoundsPerNodeLimit); err != nil {
+		return err
 	}
+
 	// 顺手清理过期会话。
 	if _, err := s.db.Exec("DELETE FROM sessions WHERE expires_at > 0 AND expires_at < ?", now); err != nil {
 		return fmt.Errorf("清理会话失败: %w", err)
@@ -851,6 +1046,39 @@ func (s *Store) Prune(retentionRaw, retention5m time.Duration) error {
 	case deleted >= 10000:
 		// auto_vacuum 未开启时该语句是空操作，忽略错误即可。
 		_, _ = s.db.Exec("PRAGMA incremental_vacuum")
+	}
+	return nil
+}
+
+// pruneNetQRounds 给每台节点只保留最近 maxRounds 轮三网探测。
+// "轮"按 ts 去重计数（同一轮里每省/网一行）。
+func (s *Store) pruneNetQRounds(maxRounds int) error {
+	if maxRounds <= 0 {
+		return nil
+	}
+	rows, err := s.db.Query("SELECT DISTINCT node_id FROM net_quality")
+	if err != nil {
+		return fmt.Errorf("读取三网探测节点失败: %w", err)
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := s.db.Exec(`DELETE FROM net_quality WHERE node_id = ? AND ts < (
+    SELECT ts FROM net_quality WHERE node_id = ? GROUP BY ts ORDER BY ts DESC LIMIT 1 OFFSET ?)`,
+			id, id, maxRounds-1); err != nil {
+			return fmt.Errorf("裁剪节点 %s 的三网探测轮数失败: %w", id, err)
+		}
 	}
 	return nil
 }

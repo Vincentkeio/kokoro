@@ -208,13 +208,13 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
     <section class="panel" data-atab="themes">
       <h3>导入主题</h3>
       <p class="hint" style="line-height:1.7">
-        两种方式：上传 <code>.kokoro-theme</code> 包（能带自定义字体、背景图），
-        或直接粘贴一份 <code>theme.json</code>（改一套「导出」最快）。
-        两者走同一套校验，且都会存进数据库——<strong>重启不会丢</strong>。
+        选择 <code>.json</code> 主题文件或 <code>.kokoro-theme</code> 包，
+        也可以粘贴 <code>theme.json</code>。主题包可携带字体和壁纸。
+        导入时会校验内容并保存——<strong>重启不会丢</strong>。
       </p>
       <form class="th-form" method="post" action="/admin/themes/import"
             enctype="multipart/form-data">
-        <input type="file" name="bundle" accept=".kokoro-theme,.zip,application/zip"
+        <input type="file" name="bundle" aria-label="选择 JSON 主题文件或主题包" accept=".json,application/json,.kokoro-theme,.zip,application/zip"
                style="font-size:13px">
         <div style="color:var(--muted);font-size:12px">或者粘贴 theme.json：</div>
         <textarea name="manifest" placeholder='{"schemaVersion":1,"id":"mine.mytheme", ...}'></textarea>

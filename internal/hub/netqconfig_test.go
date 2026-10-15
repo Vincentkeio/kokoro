@@ -62,8 +62,8 @@ func TestNetQEmptyMeansProbingOff(t *testing.T) {
 func TestNetQTargetsCommandOnMismatch(t *testing.T) {
 	h, _ := newTestHub(t)
 
-	// 默认范围是 [上海]：agent 报 [上海] → 一致 → 不下发
-	if c := h.netqTargetsCommand([]string{"上海"}, 0); c != nil {
+	// 默认范围是 [上海]：agent 报 [上海]、间隔也和 Hub 当前一致 → 不下发
+	if c := h.netqTargetsCommand([]string{"上海"}, h.netqInterval()); c != nil {
 		t.Errorf("范围一致时不该下发命令：%+v", c)
 	}
 	// agent 报空（刚重启、还是默认）→ 不一致 → 下发一条 netq_targets

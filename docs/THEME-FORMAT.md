@@ -574,7 +574,9 @@ assets/*            可选   附加资源（字体、图片…）
 raw, err := theme.BuildPackage(manifest, assets, preview, license, readme)
 ```
 
-**安装**：后台 `/admin/themes` → 上传 `.kokoro-theme` 文件，或直接粘贴 `theme.json`。
+**安装**：后台 `/admin/themes` → 上传 `.json` 清单或 `.kokoro-theme` 文件，也可以直接粘贴 `theme.json`。
+
+包内通过 `--kokoro-bg-image` 引用本地资源时，使用该主题自带的壁纸；站点级壁纸作为未自带壁纸的自定义主题的后备，不会改写站点壁纸设置。
 
 **导出**：任意站点的 `/theme-bundle/<id>` 返回该主题的完整包（公开、无鉴权）。
 

@@ -683,30 +683,30 @@ input:focus, select:focus, textarea:focus {
 .login label { display: flex; flex-direction: column; gap: 4px; font-size: var(--kokoro-font-size-sm, 13px); color: var(--muted); }
 
 /* 登录页：将小窄卡改为稳定的屏幕中央入口，表单控件提高可读性与触控面积。 */
-body[data-k-theme^="kokoro."] main.login {
+body[data-k-theme] main.login {
   display: grid; place-items: center; min-height: 100svh;
   padding-top: 36px; padding-bottom: 36px;
 }
-body[data-k-theme^="kokoro."] .login > .panel.narrow {
+body[data-k-theme] .login > .panel.narrow {
   width: min(100%, 560px); max-width: 560px; margin: 0 auto;
   padding: clamp(28px, 5vw, 46px);
 }
-body[data-k-theme^="kokoro."] .login h2 {
+body[data-k-theme] .login h2 {
   margin-bottom: 24px; font-size: clamp(27px, 3vw, 34px); letter-spacing: -.035em;
 }
-body[data-k-theme^="kokoro."] .login form { gap: 13px; }
-body[data-k-theme^="kokoro."] .login form input {
+body[data-k-theme] .login form { gap: 13px; }
+body[data-k-theme] .login form input {
   width: 100%; min-height: 50px; padding: 12px 15px; font-size: 16px;
 }
-body[data-k-theme^="kokoro."] .login form .btn { min-height: 50px; justify-content: center; font-size: 16px; }
-body[data-k-theme^="kokoro."] .login .login-home {
+body[data-k-theme] .login form .btn { min-height: 50px; justify-content: center; font-size: 16px; }
+body[data-k-theme] .login .login-home {
   display: flex; align-items: center; justify-content: center; min-height: 46px;
   margin-top: 11px; font-size: 14px;
 }
-body[data-k-theme^="kokoro."] .login .hint { margin-top: 20px; font-size: 13px; line-height: 1.8; }
+body[data-k-theme] .login .hint { margin-top: 20px; font-size: 13px; line-height: 1.8; }
 @media (max-width: 600px) {
-  body[data-k-theme^="kokoro."] main.login { padding-top: 20px; padding-bottom: 20px; }
-  body[data-k-theme^="kokoro."] .login > .panel.narrow { padding: 26px 22px; }
+  body[data-k-theme] main.login { padding-top: 20px; padding-bottom: 20px; }
+  body[data-k-theme] .login > .panel.narrow { padding: 26px 22px; }
 }
 
 .foot-page {
@@ -1556,7 +1556,7 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
    status-offline（灰）—— 于是"掉线格"和"离线灰"一个色，看不出区别。 */
 .cell.lv-bad  { background: var(--danger); }
 .cell.lv-none { background: color-mix(in srgb, var(--fg) 12%, transparent); }
-body[data-k-theme^="kokoro."] .uptime-bar {
+body[data-k-theme] .uptime-bar {
   height: var(--kokoro-uptime-bar-height, 26px);
   gap: var(--kokoro-uptime-bar-gap, 2px);
 }
@@ -2795,66 +2795,66 @@ body[data-k-theme="kokoro.cute"] .admin > .panel[data-atab] { border-color:#f0dd
 @media(max-width:720px) { body[data-k-theme="kokoro.cute"] .console-intro { align-items:start; flex-direction:column; padding:30px 0 22px; } body[data-k-theme="kokoro.cute"] .console-summary { width:100%; } body[data-k-theme="kokoro.cute"] .console-summary > div { flex:1; min-width:0; padding:12px 14px; } body[data-k-theme="kokoro.cute"] .admin { grid-template-columns:minmax(0,1fr); row-gap:14px; padding-top:20px; } body[data-k-theme="kokoro.cute"] .admin-heading { grid-column:1; } body[data-k-theme="kokoro.cute"] .admin > .atabs { top:67px; z-index:20; flex-direction:row; flex-wrap:nowrap; overflow-x:auto; } body[data-k-theme="kokoro.cute"] .admin .atab { width:auto; min-width:max-content; } body[data-k-theme="kokoro.cute"] .admin > .panel[data-atab] { grid-column:1; padding:18px; overflow-x:auto; } body[data-k-theme="kokoro.cute"] .admin .tbl { min-width:720px; } body[data-k-theme="kokoro.cute"] .grid { grid-template-columns:minmax(0,1fr); } }
 
 /* ---- 三套 Kokoro 主题：统一卡片骨架与数据层级 ---- */
-body[data-k-theme^="kokoro."] .grid { grid-auto-rows: 1fr; align-items: stretch; }
-body[data-k-theme^="kokoro."] .card { display: flex; flex-direction: column; height: 100%; }
-body[data-k-theme^="kokoro."] .card-head { min-height: 28px; }
-body[data-k-theme^="kokoro."] .card-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-body[data-k-theme^="kokoro."] .tags {
+body[data-k-theme] .grid { grid-auto-rows: 1fr; align-items: stretch; }
+body[data-k-theme] .card { display: flex; flex-direction: column; height: 100%; }
+body[data-k-theme] .card-head { min-height: 28px; }
+body[data-k-theme] .card-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body[data-k-theme] .tags {
   display: flex; align-items: center; gap: 8px; height: 30px; min-height: 30px;
   margin: 8px 0 2px; overflow: hidden; white-space: nowrap;
 }
-body[data-k-theme^="kokoro."] .tag-list { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
-body[data-k-theme^="kokoro."] .tag-list .tag { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
-body[data-k-theme^="kokoro."] .tag.expire-slot { flex: none; margin-left: auto; min-width: 76px; text-align: center; font-variant-numeric: tabular-nums; }
-body[data-k-theme^="kokoro."] .tag.exp-empty { color: var(--faint); background: transparent; border: 1px dashed var(--line); }
-body[data-k-theme^="kokoro."] .card .specs { gap: 7px 14px; }
-body[data-k-theme^="kokoro."] .card .specs > div:not(.full) { min-height: 22px; align-items: center; }
-body[data-k-theme^="kokoro."] .card .specs dt { font-size: 11px; letter-spacing: .015em; }
-body[data-k-theme^="kokoro."] .card .specs dd { font-size: 12px; line-height: 1.45; }
-body[data-k-theme^="kokoro."] .card .specs dd .osi {
+body[data-k-theme] .tag-list { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+body[data-k-theme] .tag-list .tag { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+body[data-k-theme] .tag.expire-slot { flex: none; margin-left: auto; min-width: 76px; text-align: center; font-variant-numeric: tabular-nums; }
+body[data-k-theme] .tag.exp-empty { color: var(--faint); background: transparent; border: 1px dashed var(--line); }
+body[data-k-theme] .card .specs { gap: 7px 14px; }
+body[data-k-theme] .card .specs > div:not(.full) { min-height: 22px; align-items: center; }
+body[data-k-theme] .card .specs dt { font-size: 11px; letter-spacing: .015em; }
+body[data-k-theme] .card .specs dd { font-size: 12px; line-height: 1.45; }
+body[data-k-theme] .card .specs dd .osi {
   width: 16px; height: 16px; margin-right: 5px; vertical-align: -3px;
   fill: var(--os-brand, currentColor); opacity: 1;
 }
-body[data-k-theme^="kokoro."] .card .gauges { gap: 8px; margin-top: 12px; }
-body[data-k-theme^="kokoro."] .card .gauges .g { gap: 10px; min-height: 18px; }
-body[data-k-theme^="kokoro."] .card .gauges .g .gl { font-size: 11px; letter-spacing: .02em; }
-body[data-k-theme^="kokoro."] .card .gauges .g em { font-size: 11px; font-weight: 600; }
-body[data-k-theme^="kokoro."] .card .net { margin-top: 12px; padding-top: 10px; }
-body[data-k-theme^="kokoro."] .card .spark { height: 38px; }
-body[data-k-theme^="kokoro."] .card .net-num { min-height: 20px; }
-body[data-k-theme^="kokoro."] .card .uptime,
-body[data-k-theme^="kokoro."] .card .uptime-empty { min-height: 76px; margin-top: 12px; }
-body[data-k-theme^="kokoro."] .card .uptime-foot { display: none; }
-body[data-k-theme^="kokoro."] .card .uptime-empty {
+body[data-k-theme] .card .gauges { gap: 8px; margin-top: 12px; }
+body[data-k-theme] .card .gauges .g { gap: 10px; min-height: 18px; }
+body[data-k-theme] .card .gauges .g .gl { font-size: 11px; letter-spacing: .02em; }
+body[data-k-theme] .card .gauges .g em { font-size: 11px; font-weight: 600; }
+body[data-k-theme] .card .net { margin-top: 12px; padding-top: 10px; }
+body[data-k-theme] .card .spark { height: 38px; }
+body[data-k-theme] .card .net-num { min-height: 20px; }
+body[data-k-theme] .card .uptime,
+body[data-k-theme] .card .uptime-empty { min-height: 76px; margin-top: 12px; }
+body[data-k-theme] .card .uptime-foot { display: none; }
+body[data-k-theme] .card .uptime-empty {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 8px 10px; border: 1px dashed var(--line); border-radius: var(--r-sm);
   color: var(--faint); font-size: 11px;
 }
-body[data-k-theme^="kokoro."] .card .uptime-empty b { font: 12px var(--mono); }
-body[data-k-theme^="kokoro."] .card .ipcard { height: 62px; min-height: 62px; margin-top: 12px; }
-body[data-k-theme^="kokoro."] .card .task-hover,
-body[data-k-theme^="kokoro."] .card .ipcard > .task-line,
-body[data-k-theme^="kokoro."] .card .ip-empty { height: 100%; min-height: 0; box-sizing: border-box; }
-body[data-k-theme^="kokoro."] .card .task-line {
+body[data-k-theme] .card .uptime-empty b { font: 12px var(--mono); }
+body[data-k-theme] .card .ipcard { height: 62px; min-height: 62px; margin-top: 12px; }
+body[data-k-theme] .card .task-hover,
+body[data-k-theme] .card .ipcard > .task-line,
+body[data-k-theme] .card .ip-empty { height: 100%; min-height: 0; box-sizing: border-box; }
+body[data-k-theme] .card .task-line {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
   overflow: hidden; margin: 0; padding: 7px 11px; line-height: 1.4;
 }
-body[data-k-theme^="kokoro."] .card .task-line.running { display: flex; -webkit-line-clamp: unset; }
-body[data-k-theme^="kokoro."] .card .ip-empty {
+body[data-k-theme] .card .task-line.running { display: flex; -webkit-line-clamp: unset; }
+body[data-k-theme] .card .ip-empty {
   display: grid; grid-template-rows: 1fr 1fr; place-content: center; gap: 0;
   margin: 0; padding: 6px 11px; line-height: 1.35;
 }
-body[data-k-theme^="kokoro."] .card .ip-empty span:first-child { align-self: end; }
-body[data-k-theme^="kokoro."] .card .ip-empty span:last-child { align-self: start; opacity: .65; }
-body[data-k-theme^="kokoro."] .card .netcard { min-height: 62px; box-sizing: border-box; justify-content: center; gap: 4px; margin-top: 10px; }
-body[data-k-theme^="kokoro."] .card .netqrows { min-height: 78px; box-sizing: border-box; justify-content: center; }
-body[data-k-theme^="kokoro."] .card .netq-empty { display: flex; align-items: center; justify-content: space-between; color: var(--faint); font-size: 11px; }
-body[data-k-theme^="kokoro."] .card .netq-empty b { font-weight: 500; }
-body[data-k-theme^="kokoro."] .card .actbar { margin-top: 12px; padding-top: 10px; }
-body[data-k-theme^="kokoro."] .card .buyrow { margin-top: auto; padding-top: 12px; }
-body[data-k-theme^="kokoro."] .card .buyrow .btn { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; }
-body[data-k-theme^="kokoro."] .card .buyrow .buy { font-weight: 650; }
-body[data-k-theme^="kokoro."] .card .buyrow .more { min-width: 92px; margin-left: 0; }
+body[data-k-theme] .card .ip-empty span:first-child { align-self: end; }
+body[data-k-theme] .card .ip-empty span:last-child { align-self: start; opacity: .65; }
+body[data-k-theme] .card .netcard { min-height: 62px; box-sizing: border-box; justify-content: center; gap: 4px; margin-top: 10px; }
+body[data-k-theme] .card .netqrows { min-height: 78px; box-sizing: border-box; justify-content: center; }
+body[data-k-theme] .card .netq-empty { display: flex; align-items: center; justify-content: space-between; color: var(--faint); font-size: 11px; }
+body[data-k-theme] .card .netq-empty b { font-weight: 500; }
+body[data-k-theme] .card .actbar { margin-top: 12px; padding-top: 10px; }
+body[data-k-theme] .card .buyrow { margin-top: auto; padding-top: 12px; }
+body[data-k-theme] .card .buyrow .btn { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; }
+body[data-k-theme] .card .buyrow .buy { font-weight: 650; }
+body[data-k-theme] .card .buyrow .more { min-width: 92px; margin-left: 0; }
 
 body[data-k-theme="kokoro.simple"] .card .bar {
   height: 7px; background: #edf1ee; border-radius: 4px;
@@ -2969,156 +2969,158 @@ body[data-k-theme="kokoro.midnight"] .card .bar { height:7px; background:#0a172b
 body[data-k-theme="kokoro.midnight"] .card .bar i { border-radius:4px; }
 body[data-k-theme="kokoro.mist"] { background-image:linear-gradient(rgba(222,236,241,.20),rgba(233,243,245,.35)),var(--kokoro-bg-image,none); background-size:auto,cover; background-position:center; background-repeat:no-repeat; background-attachment:scroll,fixed; }
 
-body[data-k-theme^="kokoro."] .top,
-body[data-k-theme^="kokoro."][data-k-header="bordered"] .top {
+body[data-k-theme] .top,
+body[data-k-theme][data-k-header="bordered"] .top {
   border-bottom: 1px solid var(--line); box-shadow: none;
 }
-body[data-k-theme^="kokoro."] .top-clock {
+body[data-k-theme] .top-clock {
   display: grid; grid-template-columns: auto auto; align-items: center; gap: 0 12px;
   min-width: 0; text-align: left;
 }
-body[data-k-theme^="kokoro."] .top-clock .tz { grid-column: 1; white-space: nowrap; }
-body[data-k-theme^="kokoro."] .top-clock .t { grid-column: 2; grid-row: 1 / span 2; font-size: 16px; line-height: 1.2; }
-body[data-k-theme^="kokoro."] .top-clock .d { grid-column: 1; grid-row: 2; }
+body[data-k-theme] .top-clock .tz { grid-column: 1; white-space: nowrap; }
+body[data-k-theme] .top-clock .t { grid-column: 2; grid-row: 1 / span 2; font-size: 16px; line-height: 1.2; }
+body[data-k-theme] .top-clock .d { grid-column: 1; grid-row: 2; }
 @media(max-width:640px) {
-  body[data-k-theme^="kokoro."] .top .wrap { flex-wrap: wrap; }
-  body[data-k-theme^="kokoro."] .top-tools { width: auto; margin-left: auto; }
+  body[data-k-theme] .top .wrap { flex-wrap: wrap; }
+  body[data-k-theme] .top-tools { width: auto; margin-left: auto; }
 }
-body[data-k-theme^="kokoro."] .card .spark-empty {
+body[data-k-theme] .card .spark-empty {
   height: 40px; border-radius: 5px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent);
   border-bottom: 1px dashed color-mix(in srgb, var(--line) 75%, transparent);
 }
-body[data-k-theme^="kokoro."] .card .gauges-empty .bar i { width: 0; }
-body[data-k-theme^="kokoro."] .card .gauges-empty em { color: var(--faint); }
-body[data-k-theme^="kokoro."] .card .net-empty-data .net-num { color: var(--faint); }
+body[data-k-theme] .card .gauges-empty .bar i { width: 0; }
+body[data-k-theme] .card .gauges-empty em { color: var(--faint); }
+body[data-k-theme] .card .net-empty-data .net-num { color: var(--faint); }
 body[data-k-theme="kokoro.tech"] .card .spark-empty {
   background: repeating-linear-gradient(90deg, rgba(103,143,117,.08) 0 1px, transparent 1px 13px),
     linear-gradient(180deg, rgba(44,209,178,.045), transparent);
   border-bottom-color: rgba(103,143,117,.22);
 }
 
+/* Shared component structure applies to every validated theme ID, including imported
+   themes. Only palette-specific rules above depend on a built-in theme ID. */
 /* ---- Kokoro header system: brand, owner, clock and actions have distinct roles ---- */
-body[data-k-theme^="kokoro."] .top {
+body[data-k-theme] .top {
   background: color-mix(in srgb, var(--panel) 94%, var(--bg));
   border-bottom-color: color-mix(in srgb, var(--line) 82%, transparent);
 }
-body[data-k-theme^="kokoro."] .top .wrap {
+body[data-k-theme] .top .wrap {
   display: grid; grid-template-columns: minmax(0, 1fr) auto;
   align-items: center; gap: 22px; min-height: 86px; flex-wrap: nowrap;
 }
-body[data-k-theme^="kokoro."][data-node] .top .wrap { grid-template-columns: minmax(0, 1fr) auto; }
-body[data-k-theme^="kokoro."] .top-identity { display: flex; align-items: center; min-width: 0; gap: 17px; }
-body[data-k-theme^="kokoro."] .brand { display: inline-flex; align-items: center; gap: 11px; flex: none; font-size: 19px; letter-spacing: -.025em; }
-body[data-k-theme^="kokoro."] .top-mark {
+body[data-k-theme][data-node] .top .wrap { grid-template-columns: minmax(0, 1fr) auto; }
+body[data-k-theme] .top-identity { display: flex; align-items: center; min-width: 0; gap: 17px; }
+body[data-k-theme] .brand { display: inline-flex; align-items: center; gap: 11px; flex: none; font-size: 19px; letter-spacing: -.025em; }
+body[data-k-theme] .top-mark {
   display: grid; place-items: center; width: 38px; height: 38px; flex: none;
   border-radius: 10px; color: #fff; background: var(--accent);
   box-shadow: 0 2px 7px color-mix(in srgb, var(--accent) 22%, transparent);
 }
-body[data-k-theme^="kokoro."] .top-mark svg { display: block; width: 21px; height: 21px; color: #fff; }
-body[data-k-theme^="kokoro."] .top-identity-rule { width: 1px; height: 28px; flex: none; background: var(--line); }
-body[data-k-theme^="kokoro."] .top-owner { gap: 10px; min-width: 0; flex: none; }
-body[data-k-theme^="kokoro."] .top-owner .avatar { width: 38px; height: 38px; margin: 0; border-color: color-mix(in srgb, var(--accent) 26%, var(--line)); }
-body[data-k-theme^="kokoro."] .top-owner-txt { display: flex; align-items: center; gap: 12px; min-width: 0; line-height: 1.25; white-space: nowrap; }
-body[data-k-theme^="kokoro."] .top-owner-txt b { color: var(--fg-strong); font-size: 16px; font-weight: 680; }
-body[data-k-theme^="kokoro."] .top-owner-txt i {
+body[data-k-theme] .top-mark svg { display: block; width: 21px; height: 21px; color: #fff; }
+body[data-k-theme] .top-identity-rule { width: 1px; height: 28px; flex: none; background: var(--line); }
+body[data-k-theme] .top-owner { gap: 10px; min-width: 0; flex: none; }
+body[data-k-theme] .top-owner .avatar { width: 38px; height: 38px; margin: 0; border-color: color-mix(in srgb, var(--accent) 26%, var(--line)); }
+body[data-k-theme] .top-owner-txt { display: flex; align-items: center; gap: 12px; min-width: 0; line-height: 1.25; white-space: nowrap; }
+body[data-k-theme] .top-owner-txt b { color: var(--fg-strong); font-size: 16px; font-weight: 680; }
+body[data-k-theme] .top-owner-txt i {
   display: inline-flex; align-items: center; max-width: 250px; min-height: 30px;
   overflow: hidden; padding: 4px 11px; border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
   border-radius: 6px; background: color-mix(in srgb, var(--accent) 7%, var(--panel));
   color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap;
 }
-body[data-k-theme^="kokoro."] .top-clock {
+body[data-k-theme] .top-clock {
   display: flex; align-items: baseline; gap: 9px;
   min-width: 0; margin: 0; padding: 2px 0 2px 18px; border: 0;
   border-left: 1px solid var(--line); border-radius: 0; background: transparent; text-align: left;
 }
-body[data-k-theme^="kokoro."] .top-clock .tz { color: var(--muted); font-size: 12px; white-space: nowrap; }
-body[data-k-theme^="kokoro."] .top-clock .t { color: var(--fg-strong); font-size: 16px; font-variant-numeric: tabular-nums; }
-body[data-k-theme^="kokoro."] .top-clock .d { display: none; }
-body[data-k-theme^="kokoro."] .top-tools { display: flex; align-items: center; justify-self: end; gap: 8px; margin: 0; }
-body[data-k-theme^="kokoro."] .top-tools > .btn { min-height: 40px; padding-inline: 14px; border-radius: 8px; font-size: 14px; }
-body[data-k-theme^="kokoro."] .skin-btn { min-height: 40px; border-radius: 7px; font-size: 14px; }
-body[data-k-theme^="kokoro."] .card .tag-list .tag { border-radius: 5px; }
+body[data-k-theme] .top-clock .tz { color: var(--muted); font-size: 12px; white-space: nowrap; }
+body[data-k-theme] .top-clock .t { color: var(--fg-strong); font-size: 16px; font-variant-numeric: tabular-nums; }
+body[data-k-theme] .top-clock .d { display: none; }
+body[data-k-theme] .top-tools { display: flex; align-items: center; justify-self: end; gap: 8px; margin: 0; }
+body[data-k-theme] .top-tools > .btn { min-height: 40px; padding-inline: 14px; border-radius: 8px; font-size: 14px; }
+body[data-k-theme] .skin-btn { min-height: 40px; border-radius: 7px; font-size: 14px; }
+body[data-k-theme] .card .tag-list .tag { border-radius: 5px; }
 body[data-k-theme="kokoro.cute"] .top-mark { border-radius: 12px; }
 body[data-k-theme="kokoro.tech"] .top-mark { border-radius: 7px; box-shadow: inset 0 0 0 1px rgba(194,220,197,.28), 0 0 16px color-mix(in srgb, var(--accent) 20%, transparent); }
 
 /* 后台顶栏：后台身份收在品牌锁定区，用户和退出收在操作区。 */
-body[data-k-theme^="kokoro."] .admin-topbar .wrap { grid-template-columns: minmax(0, 1fr) auto; }
-body[data-k-theme^="kokoro."] .admin-brand { gap: 11px; }
-body[data-k-theme^="kokoro."] .admin-top-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-body[data-k-theme^="kokoro."] .admin-top-tools .admin-logout-form { display: flex; margin: 0; }
-body[data-k-theme^="kokoro."] .admin-top-tools .btn { min-height: 36px; padding-inline: 13px; border-radius: 9px; }
-body[data-k-theme^="kokoro."] .admin-user-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; margin: 0 2px; padding: 0 12px; border-left: 1px solid var(--line); color: var(--fg-strong); font-size: 12px; font-weight: 620; }
-body[data-k-theme^="kokoro."] .admin-user-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-body[data-k-theme^="kokoro."] .admin-top-tools .admin-exit { color: var(--muted); }
-body[data-k-theme^="kokoro."] .admin-top-tools .admin-exit:hover { color: var(--bad); }
+body[data-k-theme] .admin-topbar .wrap { grid-template-columns: minmax(0, 1fr) auto; }
+body[data-k-theme] .admin-brand { gap: 11px; }
+body[data-k-theme] .admin-top-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+body[data-k-theme] .admin-top-tools .admin-logout-form { display: flex; margin: 0; }
+body[data-k-theme] .admin-top-tools .btn { min-height: 36px; padding-inline: 13px; border-radius: 9px; }
+body[data-k-theme] .admin-user-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; margin: 0 2px; padding: 0 12px; border-left: 1px solid var(--line); color: var(--fg-strong); font-size: 12px; font-weight: 620; }
+body[data-k-theme] .admin-user-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+body[data-k-theme] .admin-top-tools .admin-exit { color: var(--muted); }
+body[data-k-theme] .admin-top-tools .admin-exit:hover { color: var(--bad); }
 @media (max-width: 900px) {
-  body[data-k-theme^="kokoro."] .top .wrap { gap: 12px; }
-  body[data-k-theme^="kokoro."] .top-owner-txt { gap: 7px; }
-  body[data-k-theme^="kokoro."] .top-owner-txt i { max-width: 130px; }
+  body[data-k-theme] .top .wrap { gap: 12px; }
+  body[data-k-theme] .top-owner-txt { gap: 7px; }
+  body[data-k-theme] .top-owner-txt i { max-width: 130px; }
 }
 @media (max-width: 640px) {
-  body[data-k-theme^="kokoro."] .top .wrap { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding-block: 8px; }
-  body[data-k-theme^="kokoro."] .top-identity { grid-column: 1 / -1; gap: 12px; }
-  body[data-k-theme^="kokoro."] .top-identity-rule { height: 24px; }
-  body[data-k-theme^="kokoro."] .top-owner .avatar { width: 30px; height: 30px; }
-  body[data-k-theme^="kokoro."] .top-owner-txt i { max-width: 112px; min-height: 26px; padding: 3px 8px; font-size: 11px; }
-  body[data-k-theme^="kokoro."] .top-clock { grid-column: 1; grid-row: 2; padding-left: 0; border-left: 0; }
-  body[data-k-theme^="kokoro."] .top-tools { grid-column: 2; grid-row: 2; gap: 6px; }
-  body[data-k-theme^="kokoro."] .top-tools > .btn { min-height: 32px; padding-inline: 9px; }
-  body[data-k-theme^="kokoro."] .skin-cur { max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  body[data-k-theme^="kokoro."] .admin-topbar .wrap { grid-template-columns: 1fr; }
-  body[data-k-theme^="kokoro."] .admin-top-tools { justify-content: flex-end; flex-wrap: wrap; }
-  body[data-k-theme^="kokoro."] .admin-user-chip { margin-left: auto; }
+  body[data-k-theme] .top .wrap { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding-block: 8px; }
+  body[data-k-theme] .top-identity { grid-column: 1 / -1; gap: 12px; }
+  body[data-k-theme] .top-identity-rule { height: 24px; }
+  body[data-k-theme] .top-owner .avatar { width: 30px; height: 30px; }
+  body[data-k-theme] .top-owner-txt i { max-width: 112px; min-height: 26px; padding: 3px 8px; font-size: 11px; }
+  body[data-k-theme] .top-clock { grid-column: 1; grid-row: 2; padding-left: 0; border-left: 0; }
+  body[data-k-theme] .top-tools { grid-column: 2; grid-row: 2; gap: 6px; }
+  body[data-k-theme] .top-tools > .btn { min-height: 32px; padding-inline: 9px; }
+  body[data-k-theme] .skin-cur { max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body[data-k-theme] .admin-topbar .wrap { grid-template-columns: 1fr; }
+  body[data-k-theme] .admin-top-tools { justify-content: flex-end; flex-wrap: wrap; }
+  body[data-k-theme] .admin-user-chip { margin-left: auto; }
 }
 @media (max-width: 400px) {
-  body[data-k-theme^="kokoro."] .top-identity { gap: 8px; }
-  body[data-k-theme^="kokoro."] .brand { gap: 7px; font-size: 17px; }
-  body[data-k-theme^="kokoro."] .top-mark { width: 34px; height: 34px; }
-  body[data-k-theme^="kokoro."] .top-owner-txt { gap: 6px; }
-  body[data-k-theme^="kokoro."] .top-owner-txt b { font-size: 14px; }
-  body[data-k-theme^="kokoro."] .top-owner-txt i { max-width: 86px; }
+  body[data-k-theme] .top-identity { gap: 8px; }
+  body[data-k-theme] .brand { gap: 7px; font-size: 17px; }
+  body[data-k-theme] .top-mark { width: 34px; height: 34px; }
+  body[data-k-theme] .top-owner-txt { gap: 6px; }
+  body[data-k-theme] .top-owner-txt b { font-size: 14px; }
+  body[data-k-theme] .top-owner-txt i { max-width: 86px; }
 }
 
 /* 三套 Kokoro 主题的卡片列数交由下方分组栏选择器控制。 */
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-@media (max-width: 1199px) { body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 899px) { body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 580px) { body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: minmax(0, 1fr); } }
+body[data-k-theme][data-k-list-mode="card"] .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1199px) { body[data-k-theme][data-k-list-mode="card"] .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 899px) { body[data-k-theme][data-k-list-mode="card"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 580px) { body[data-k-theme][data-k-list-mode="card"] .grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* Tech 的页面背景保留给整页；控制台表单保持完整的工作区宽度与选项卡隔离。 */
-body[data-k-theme^="kokoro."][data-admin] .admin > .panel[data-atab]:not(.on) { display: none; }
-body[data-k-theme^="kokoro."][data-admin] .admin > .panel[data-atab].on { display: block; }
+body[data-k-theme][data-admin] .admin > .panel[data-atab]:not(.on) { display: none; }
+body[data-k-theme][data-admin] .admin > .panel[data-atab].on { display: block; }
 
 /* 主题页的两张导入卡片共用一个页签容器。容器也必须占主工作区，
    否则它作为额外 grid 子项会自动掉到左侧栏下方，造成后台散架。 */
-body[data-k-theme^="kokoro."][data-admin] .admin > .th-two.panel[data-atab] {
+body[data-k-theme][data-admin] .admin > .th-two.panel[data-atab] {
   grid-column: 2; min-width: 0; width: 100%; margin: 0; padding: 0;
   border: 0; background: transparent; box-shadow: none;
 }
-body[data-k-theme^="kokoro."][data-admin] .admin > .th-two.panel[data-atab].on {
+body[data-k-theme][data-admin] .admin > .th-two.panel[data-atab].on {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4);
 }
-body[data-k-theme^="kokoro."][data-admin] .th-two > .panel { min-width: 0; margin: 0; }
-body[data-k-theme^="kokoro."][data-admin] .admin-node-group th {
+body[data-k-theme][data-admin] .th-two > .panel { min-width: 0; margin: 0; }
+body[data-k-theme][data-admin] .admin-node-group th {
   padding: 11px 12px; border-top: 1px solid var(--line);
   background: color-mix(in srgb, var(--accent) 7%, var(--panel));
   color: var(--fg-strong); text-align: left; font-size: 12px; font-weight: 650;
 }
-body[data-k-theme^="kokoro."][data-admin] .admin-node-group:first-child th { border-top: 0; }
-body[data-k-theme^="kokoro."][data-admin] .admin-node-group th small { margin-left: 9px; color: var(--muted); font-size: 11px; font-weight: 450; }
-body[data-k-theme^="kokoro."][data-admin] .admin-node-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-body[data-k-theme^="kokoro."][data-admin] .admin-node-group-head .btn { min-height: 32px; }
-body[data-k-theme^="kokoro."][data-admin] .node-group-badge { display: inline-block; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); color: var(--fg-strong); font-size: 12px; }
-body[data-k-theme^="kokoro."][data-admin] .node-group-empty { color: var(--faint); font-size: 12px; }
-body[data-k-theme^="kokoro."][data-admin] .node-bulk-test {
+body[data-k-theme][data-admin] .admin-node-group:first-child th { border-top: 0; }
+body[data-k-theme][data-admin] .admin-node-group th small { margin-left: 9px; color: var(--muted); font-size: 11px; font-weight: 450; }
+body[data-k-theme][data-admin] .admin-node-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+body[data-k-theme][data-admin] .admin-node-group-head .btn { min-height: 32px; }
+body[data-k-theme][data-admin] .node-group-badge { display: inline-block; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); color: var(--fg-strong); font-size: 12px; }
+body[data-k-theme][data-admin] .node-group-empty { color: var(--faint); font-size: 12px; }
+body[data-k-theme][data-admin] .node-bulk-test {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   margin: 0 0 18px; padding: 13px 14px;
   border: 1px solid color-mix(in srgb, var(--accent) 23%, var(--line));
   border-radius: 8px; background: color-mix(in srgb, var(--accent) 5%, var(--panel));
 }
-body[data-k-theme^="kokoro."][data-admin] .node-bulk-test > button.btn { min-height: 38px; padding-inline: 14px; border-radius: 7px; font-weight: 650; }
-body[data-k-theme^="kokoro."][data-admin] .node-bulk-test > span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+body[data-k-theme][data-admin] .node-bulk-test > button.btn { min-height: 38px; padding-inline: 14px; border-radius: 7px; font-weight: 650; }
+body[data-k-theme][data-admin] .node-bulk-test > span { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .node-bulk-test .task-list-link { display:inline-flex; align-items:center; justify-content:center; min-height:38px; text-decoration:none; white-space:nowrap; }
 .node-selection-tools { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .node-selection-count { color:var(--muted); font-size:12px; white-space:nowrap; }
@@ -3131,15 +3133,15 @@ body[data-k-theme^="kokoro."][data-admin] .node-bulk-test > span { color: var(--
   .node-selection-tools { width:100%; }
   .node-bulk-test [data-test-selected] { width:100%; }
 }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-feedback {
+body[data-k-theme][data-admin] .admin-task-feedback {
   margin: 0 0 12px; padding: 10px 12px; border-left: 3px solid var(--ok);
   background: color-mix(in srgb, var(--ok) 9%, var(--panel)); color: var(--fg); font-size: 13px;
 }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-feedback.is-error {
+body[data-k-theme][data-admin] .admin-task-feedback.is-error {
   border-left-color: var(--bad);
   background: color-mix(in srgb, var(--bad) 9%, var(--panel));
 }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live {
+body[data-k-theme][data-admin] .admin-task-live {
   position: fixed; z-index: 1000; top: 76px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 10px; width: min(620px, calc(100vw - 28px));
   padding: 11px 12px; border: 1px solid var(--line);
@@ -3148,74 +3150,74 @@ body[data-k-theme^="kokoro."][data-admin] .admin-task-live {
   font-size: 13px; line-height: 1.5; opacity: 1;
   transition: opacity 240ms ease, transform 240ms ease;
 }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live[hidden] { display: none; }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live.is-fading { opacity: 0; transform: translate(-50%, -5px); }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live-mark {
+body[data-k-theme][data-admin] .admin-task-live[hidden] { display: none; }
+body[data-k-theme][data-admin] .admin-task-live.is-fading { opacity: 0; transform: translate(-50%, -5px); }
+body[data-k-theme][data-admin] .admin-task-live-mark {
   flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
 }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live[data-status="done"] .admin-task-live-mark { background: var(--ok); }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live[data-status="failed"] .admin-task-live-mark { background: var(--bad); }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live [data-admin-task-live-text] { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live-close {
+body[data-k-theme][data-admin] .admin-task-live[data-status="done"] .admin-task-live-mark { background: var(--ok); }
+body[data-k-theme][data-admin] .admin-task-live[data-status="failed"] .admin-task-live-mark { background: var(--bad); }
+body[data-k-theme][data-admin] .admin-task-live [data-admin-task-live-text] { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+body[data-k-theme][data-admin] .admin-task-live-close {
   display: inline-flex; flex: 0 0 32px; align-items: center; justify-content: center;
   width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--r-sm);
   background: transparent; color: var(--muted); font: inherit; font-size: 20px; line-height: 1; cursor: pointer;
 }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live-close:hover { background: var(--sunken); color: var(--fg); }
-body[data-k-theme^="kokoro."][data-admin] .admin-task-live-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+body[data-k-theme][data-admin] .admin-task-live-close:hover { background: var(--sunken); color: var(--fg); }
+body[data-k-theme][data-admin] .admin-task-live-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
-  body[data-k-theme^="kokoro."][data-admin] .admin-task-live { transition: none; }
+  body[data-k-theme][data-admin] .admin-task-live { transition: none; }
 }
-body[data-k-theme^="kokoro."][data-admin] .group-manager {
+body[data-k-theme][data-admin] .group-manager {
   margin: 0 0 20px; padding: 16px; border: 1px solid var(--line); border-radius: 9px;
   background: color-mix(in srgb, var(--accent) 2.5%, var(--panel));
 }
-body[data-k-theme^="kokoro."][data-admin] .group-manager-heading {
+body[data-k-theme][data-admin] .group-manager-heading {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
 }
-body[data-k-theme^="kokoro."][data-admin] .group-manager-heading { margin-bottom: 14px; }
-body[data-k-theme^="kokoro."][data-admin] .group-manager-heading h4 { margin: 0; color: var(--fg-strong); }
-body[data-k-theme^="kokoro."][data-admin] .group-manager-heading .hint { margin: 4px 0 0; }
-body[data-k-theme^="kokoro."][data-admin] .group-manager-tags { display: flex; gap: 7px; flex-wrap: wrap; margin: 0 0 12px; }
-body[data-k-theme^="kokoro."][data-admin] .group-manager-tag {
+body[data-k-theme][data-admin] .group-manager-heading { margin-bottom: 14px; }
+body[data-k-theme][data-admin] .group-manager-heading h4 { margin: 0; color: var(--fg-strong); }
+body[data-k-theme][data-admin] .group-manager-heading .hint { margin: 4px 0 0; }
+body[data-k-theme][data-admin] .group-manager-tags { display: flex; gap: 7px; flex-wrap: wrap; margin: 0 0 12px; }
+body[data-k-theme][data-admin] .group-manager-tag {
   min-height: 32px; padding: 4px 11px; border: 1px solid var(--line); border-radius: var(--r-sm);
   color: var(--muted); background: var(--panel); cursor: pointer; font: inherit; font-size: 12px;
 }
-body[data-k-theme^="kokoro."][data-admin] .group-manager-tag[aria-pressed="true"] {
+body[data-k-theme][data-admin] .group-manager-tag[aria-pressed="true"] {
   border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
   color: var(--fg-strong); background: color-mix(in srgb, var(--accent) 11%, var(--panel));
 }
-body[data-k-theme^="kokoro."][data-admin] .group-manager-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-body[data-k-theme^="kokoro."][data-admin] .group-create-form { display: flex; gap: 8px; }
-body[data-k-theme^="kokoro."][data-admin] .group-create-form input { min-width: 190px; }
-body[data-k-theme^="kokoro."][data-admin] .group-manager-empty { margin: 0; padding: 8px 0 2px; }
-body[data-k-theme^="kokoro."][data-admin] .group-actions {
+body[data-k-theme][data-admin] .group-manager-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+body[data-k-theme][data-admin] .group-create-form { display: flex; gap: 8px; }
+body[data-k-theme][data-admin] .group-create-form input { min-width: 190px; }
+body[data-k-theme][data-admin] .group-manager-empty { margin: 0; padding: 8px 0 2px; }
+body[data-k-theme][data-admin] .group-actions {
   display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap;
   padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel);
 }
-body[data-k-theme^="kokoro."][data-admin] .group-actions[hidden] { display: none; }
-body[data-k-theme^="kokoro."][data-admin] .group-rename-form,
-body[data-k-theme^="kokoro."][data-admin] .group-delete-form { display: flex; align-items: flex-end; gap: 9px; flex-wrap: wrap; }
-body[data-k-theme^="kokoro."][data-admin] .group-rename-form label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
-body[data-k-theme^="kokoro."][data-admin] .group-rename-form input { min-width: 180px; min-height: 34px; }
-body[data-k-theme^="kokoro."][data-admin] .group-delete-form .hint { align-self: center; }
-body[data-k-theme^="kokoro."][data-admin] .group-actions .btn { min-height: 34px; }
-body[data-k-theme^="kokoro."][data-admin] .group-assign-dialog select { width: 100%; min-height: 40px; }
+body[data-k-theme][data-admin] .group-actions[hidden] { display: none; }
+body[data-k-theme][data-admin] .group-rename-form,
+body[data-k-theme][data-admin] .group-delete-form { display: flex; align-items: flex-end; gap: 9px; flex-wrap: wrap; }
+body[data-k-theme][data-admin] .group-rename-form label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+body[data-k-theme][data-admin] .group-rename-form input { min-width: 180px; min-height: 34px; }
+body[data-k-theme][data-admin] .group-delete-form .hint { align-self: center; }
+body[data-k-theme][data-admin] .group-actions .btn { min-height: 34px; }
+body[data-k-theme][data-admin] .group-assign-dialog select { width: 100%; min-height: 40px; }
 @media (max-width: 700px) {
-  body[data-k-theme^="kokoro."][data-admin] .group-manager { padding: 12px; }
-  body[data-k-theme^="kokoro."][data-admin] .group-manager-heading { align-items: stretch; }
-  body[data-k-theme^="kokoro."][data-admin] .group-create-form { width: 100%; }
-  body[data-k-theme^="kokoro."][data-admin] .group-create-form input { min-width: 0; flex: 1; width: 100%; }
-  body[data-k-theme^="kokoro."][data-admin] .group-actions { align-items: stretch; }
-  body[data-k-theme^="kokoro."][data-admin] .group-rename-form,
-  body[data-k-theme^="kokoro."][data-admin] .group-delete-form { width: 100%; }
-  body[data-k-theme^="kokoro."][data-admin] .group-rename-form label { flex: 1; min-width: 0; }
-  body[data-k-theme^="kokoro."][data-admin] .group-rename-form input { width: 100%; min-width: 0; }
-  body[data-k-theme^="kokoro."][data-admin] .admin-node-group-head { align-items: flex-start; }
+  body[data-k-theme][data-admin] .group-manager { padding: 12px; }
+  body[data-k-theme][data-admin] .group-manager-heading { align-items: stretch; }
+  body[data-k-theme][data-admin] .group-create-form { width: 100%; }
+  body[data-k-theme][data-admin] .group-create-form input { min-width: 0; flex: 1; width: 100%; }
+  body[data-k-theme][data-admin] .group-actions { align-items: stretch; }
+  body[data-k-theme][data-admin] .group-rename-form,
+  body[data-k-theme][data-admin] .group-delete-form { width: 100%; }
+  body[data-k-theme][data-admin] .group-rename-form label { flex: 1; min-width: 0; }
+  body[data-k-theme][data-admin] .group-rename-form input { width: 100%; min-width: 0; }
+  body[data-k-theme][data-admin] .admin-node-group-head { align-items: flex-start; }
 }
 @media (max-width: 720px) {
-  body[data-k-theme^="kokoro."][data-admin] .admin > .th-two.panel[data-atab] { grid-column: 1; }
-  body[data-k-theme^="kokoro."][data-admin] .admin > .th-two.panel[data-atab].on { grid-template-columns: minmax(0, 1fr); }
+  body[data-k-theme][data-admin] .admin > .th-two.panel[data-atab] { grid-column: 1; }
+  body[data-k-theme][data-admin] .admin > .th-two.panel[data-atab].on { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* 科技后台改回横向页签：短侧栏占据一整列空间，不如把导航放在工作区上沿。 */
@@ -3235,10 +3237,10 @@ body[data-k-theme="kokoro.tech"][data-admin] .admin .atab {
 body[data-k-theme="kokoro.tech"][data-admin] .admin > .th-two.panel[data-atab] { grid-column: 1; }
 
 /* 宽卡片的左右信息区：左侧识别机器与资源，右侧放在线历史和检测结果。 */
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid {
+body[data-k-theme][data-k-list-mode="card"] .grid {
   grid-template-columns: repeat(var(--k-card-columns, 3), minmax(0, 1fr));
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-columns {
+body[data-k-theme][data-k-list-mode="card"] .card-columns {
   display: grid;
   grid-template-columns: minmax(0, 1.16fr) minmax(0, .84fr);
   align-items: stretch;
@@ -3246,21 +3248,21 @@ body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-columns {
   flex: 1 0 auto;
   min-width: 0;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card { container-type: inline-size; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column { min-width: 0; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary { display: flex; flex-direction: column; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary { display: flex; flex-direction: column; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-identification { min-width:0; flex:0 0 auto; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .card-head { margin-bottom: 0; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .gauges { margin-top: 14px; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .net { margin-top: 14px; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime,
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime-empty,
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .ipcard { margin-top: 0; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime,
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime-empty { margin-bottom: 8px; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .ipcard { height: auto; min-height: 62px; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .task-line {
+body[data-k-theme][data-k-list-mode="card"] .card { container-type: inline-size; }
+body[data-k-theme][data-k-list-mode="card"] .card-column { min-width: 0; }
+body[data-k-theme][data-k-list-mode="card"] .card-primary { display: flex; flex-direction: column; }
+body[data-k-theme][data-k-list-mode="card"] .card-secondary { display: flex; flex-direction: column; }
+body[data-k-theme][data-k-list-mode="card"] .card-identification { min-width:0; flex:0 0 auto; }
+body[data-k-theme][data-k-list-mode="card"] .card-column .card-head { margin-bottom: 0; }
+body[data-k-theme][data-k-list-mode="card"] .card-column .gauges { margin-top: 14px; }
+body[data-k-theme][data-k-list-mode="card"] .card-column .net { margin-top: 14px; }
+body[data-k-theme][data-k-list-mode="card"] .card-column .uptime,
+body[data-k-theme][data-k-list-mode="card"] .card-column .uptime-empty,
+body[data-k-theme][data-k-list-mode="card"] .card-column .ipcard { margin-top: 0; }
+body[data-k-theme][data-k-list-mode="card"] .card-column .uptime,
+body[data-k-theme][data-k-list-mode="card"] .card-column .uptime-empty { margin-bottom: 8px; }
+body[data-k-theme][data-k-list-mode="card"] .card-column .ipcard { height: auto; min-height: 62px; }
+body[data-k-theme][data-k-list-mode="card"] .card-column .task-line {
   display: block;
   overflow: visible;
   white-space: normal;
@@ -3269,48 +3271,48 @@ body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .task-line {
   line-height: 1.45;
   padding: 7px 10px;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .task-line.running {
+body[data-k-theme][data-k-list-mode="card"] .card-column .task-line.running {
   display: flex;
   align-items: center;
   height: auto;
   min-height: 0;
   margin: 0;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .task-result-row {
+body[data-k-theme][data-k-list-mode="card"] .task-result-row {
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr);
   gap: 8px;
   padding: 5px 0;
   min-width: 0;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .task-result-row + .task-result-row {
+body[data-k-theme][data-k-list-mode="card"] .task-result-row + .task-result-row {
   border-top: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .task-result-label {
+body[data-k-theme][data-k-list-mode="card"] .task-result-label {
   color: var(--muted);
   font-size: 10px;
   letter-spacing: .02em;
   white-space: nowrap;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .task-result-value {
+body[data-k-theme][data-k-list-mode="card"] .task-result-value {
   min-width: 0;
   color: var(--fg);
   font-size: 11.5px;
   overflow-wrap: anywhere;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .netcard,
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .netqrows { margin-top: 8px; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .netqrows {
+body[data-k-theme][data-k-list-mode="card"] .card-column .netcard,
+body[data-k-theme][data-k-list-mode="card"] .card-column .netqrows { margin-top: 8px; }
+body[data-k-theme][data-k-list-mode="card"] .card-column .netqrows {
   min-height: 96px;
   padding: 8px 11px;
   gap: 4px;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .nqr {
+body[data-k-theme][data-k-list-mode="card"] .card-column .nqr {
   gap: 6px;
   min-height: 24px;
   font-size: 10.5px;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions {
+body[data-k-theme][data-k-list-mode="card"] .vote-actions {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -3318,15 +3320,15 @@ body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions {
   padding-top: 12px;
   border-top: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions .act { min-width: 42px; justify-content: center; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card .spark,
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card .spark-empty { height: 78px; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions {
+body[data-k-theme][data-k-list-mode="card"] .vote-actions .act { min-width: 42px; justify-content: center; }
+body[data-k-theme][data-k-list-mode="card"] .card .spark,
+body[data-k-theme][data-k-list-mode="card"] .card .spark-empty { height: 78px; }
+body[data-k-theme][data-k-list-mode="card"] .card-actions {
   margin-top: auto;
   padding-top: 14px;
   border-top: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .actbar {
+body[data-k-theme][data-k-list-mode="card"] .card-actions .actbar {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
@@ -3335,7 +3337,7 @@ body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .actbar {
   padding: 0;
   border: 0;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .actbar .btnlike {
+body[data-k-theme][data-k-list-mode="card"] .card-actions .actbar .btnlike {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3347,173 +3349,232 @@ body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .actbar .bt
   text-align: center;
   white-space: nowrap;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .buyrow { margin-top: 10px; padding: 0; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .buyrow {
+body[data-k-theme][data-k-list-mode="card"] .card-actions .buyrow { margin-top: 10px; padding: 0; }
+body[data-k-theme][data-k-list-mode="card"] .card-actions .buyrow {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .buyrow .btn {
+body[data-k-theme][data-k-list-mode="card"] .card-actions .buyrow .btn {
   width: 100%; min-width: 0; margin: 0; box-sizing: border-box;
   white-space: nowrap;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-control,
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid-control {
+body[data-k-theme][data-k-list-mode="card"] .group-control,
+body[data-k-theme][data-k-list-mode="card"] .grid-control {
   display: inline-flex; align-items: center; gap: 7px;
   color: var(--muted); font-size: 11px; white-space: nowrap;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid-control select {
+body[data-k-theme][data-k-list-mode="card"] .grid-control select {
   min-height: 34px; width: 92px; padding: 5px 8px;
   border: 1px solid var(--line); border-radius: 6px;
   background: var(--panel); color: var(--fg); font-size: 12px;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid-control select:focus-visible {
+body[data-k-theme][data-k-list-mode="card"] .grid-control select:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-head .grid-control { margin-left: auto; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-head .list-search { margin-left: 0; }
+body[data-k-theme][data-k-list-mode="card"] .group-head .grid-control { margin-left: auto; }
+body[data-k-theme][data-k-list-mode="card"] .group-head .list-search { margin-left: 0; }
 @media (max-width: 899px) {
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body[data-k-theme][data-k-list-mode="card"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 620px) {
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-columns { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime,
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-column .uptime-empty { margin-top: 0; }
+  body[data-k-theme][data-k-list-mode="card"] .card-columns { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  body[data-k-theme][data-k-list-mode="card"] .card-column .uptime,
+  body[data-k-theme][data-k-list-mode="card"] .card-column .uptime-empty { margin-top: 0; }
 }
 @media (max-width: 620px) {
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid { grid-template-columns: minmax(0, 1fr); }
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .grid-control { margin-left: auto; }
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-head .list-search { width: 100%; }
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"] .group-head .list-search input { width: 100%; }
+  body[data-k-theme][data-k-list-mode="card"] .grid { grid-template-columns: minmax(0, 1fr); }
+  body[data-k-theme][data-k-list-mode="card"] .grid-control { margin-left: auto; }
+  body[data-k-theme][data-k-list-mode="card"] .group-head .list-search { width: 100%; }
+  body[data-k-theme][data-k-list-mode="card"] .group-head .list-search input { width: 100%; }
 }
 
-/* ---- 总览：标题与实时节点指标组成同一条编辑式信息带 ---- */
-body[data-k-theme^="kokoro."] .console-intro {
+/* ---- 总览卡：标题 + 时钟 + 四格数据块（2026-10-16 重设）----
+   改前是"一条只有下边框的信息带"，和下面的节点卡片不是一套东西，深色主题下
+   尤其像没渲染完。现在它是一张描边卡：框线走 --kokoro-card-border（主题 token），
+   没定义该 token 的主题自动退回 --line，所以不会把其他主题改丑。 */
+body[data-k-theme] .console-intro {
   display: grid;
-  grid-template-columns: minmax(220px, .78fr) minmax(0, 1.6fr) minmax(210px, .55fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   align-items: center;
-  gap: clamp(22px, 3vw, 52px);
-  min-height: 218px;
-  padding: 30px 0 26px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 84%, transparent);
+  gap: 18px clamp(20px, 2.6vw, 40px);
+  margin: 22px 0 20px;
+  padding: clamp(16px, 1.5vw, 22px);
+  border: var(--kokoro-border-width, 1px) solid var(--kokoro-card-border, var(--line));
+  border-radius: var(--kokoro-radius-lg, 10px);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--panel) 96%, transparent),
+    color-mix(in srgb, var(--panel) 86%, transparent));
+  box-shadow: var(--kokoro-shadow-sm, 0 2px 8px rgba(0, 0, 0, .20));
 }
-body[data-k-theme^="kokoro."] .console-intro-copy { min-width: 0; }
-body[data-k-theme^="kokoro."] .console-clock-slot {
-  display: flex; align-items: center; justify-content: stretch; min-width: 0;
+body[data-k-theme] .console-intro-copy { grid-column: 1; grid-row: 1; min-width: 0; }
+body[data-k-theme] .console-clock-slot {
+  grid-column: 2; grid-row: 1;
+  display: flex; align-items: center; min-width: 0;
 }
-body[data-k-theme^="kokoro."] .overview-clock {
-  --overview-clock-size: clamp(36px, 3vw, 48px);
-  display: grid; grid-template-columns: repeat(3, max-content); justify-content: space-between;
-  grid-template-rows: minmax(0, 1fr); align-items: center; gap: 4px clamp(18px, 1.5vw, 32px); width: 100%; min-width: 0;
-  padding: 14px 20px;
-  border: 0; border-left: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
-  border-radius: 0; background: transparent; text-align: left;
+body[data-k-theme] .overview-clock {
+  --overview-clock-size: clamp(24px, 2.1vw, 32px);
+  display: grid; grid-template-columns: repeat(3, max-content);
+  justify-content: space-between; align-items: baseline;
+  gap: 2px clamp(14px, 1.6vw, 28px); width: 100%; min-width: 0;
+  padding: 12px 16px;
+  border: var(--kokoro-border-width, 1px) solid var(--kokoro-card-border, var(--line));
+  border-radius: var(--kokoro-radius-md, 7px);
+  background: color-mix(in srgb, var(--raised) 62%, transparent);
+  text-align: left;
 }
-body[data-k-theme^="kokoro."] .overview-clock .tz {
+body[data-k-theme] .overview-clock .tz {
   grid-column: 1; grid-row: 1;
-  color: var(--fg); font-size: var(--overview-clock-size); font-weight: 650;
-  letter-spacing: -.025em; line-height: 1.05; text-transform: uppercase; white-space: nowrap;
+  color: var(--muted); font-size: calc(var(--overview-clock-size) * .5);
+  font-weight: 650; letter-spacing: .04em; line-height: 1.1;
+  text-transform: uppercase; white-space: nowrap;
 }
-body[data-k-theme^="kokoro."] .overview-clock .d {
+body[data-k-theme] .overview-clock .d {
   grid-column: 2; grid-row: 1; justify-self: center;
-  display: block; color: var(--muted); font: 650 var(--overview-clock-size)/1.05 var(--mono);
+  display: block; color: var(--fg); font: 650 var(--overview-clock-size)/1.05 var(--mono);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-body[data-k-theme^="kokoro."] .overview-clock .t {
-  grid-column: 3; grid-row: 1;
-  justify-self: end; color: var(--fg-strong); font: 700 var(--overview-clock-size)/1 var(--mono);
-  letter-spacing: -.045em; font-variant-numeric: tabular-nums; white-space: nowrap;
+body[data-k-theme] .overview-clock .t {
+  grid-column: 3; grid-row: 1; justify-self: end;
+  color: var(--fg-strong); font: 700 var(--overview-clock-size)/1 var(--mono);
+  letter-spacing: -.03em; font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-body[data-k-theme^="kokoro."] .console-kicker {
+body[data-k-theme] .console-kicker {
   display: flex; align-items: center; gap: 10px;
-  margin: 0 0 20px;
+  margin: 0 0 14px;
   color: var(--muted); font-size: 11px; font-weight: 650;
   letter-spacing: .16em; line-height: 1.2;
 }
-body[data-k-theme^="kokoro."] .console-kicker > span {
+body[data-k-theme] .console-kicker > span {
   width: 7px; height: 7px; flex: none;
   border-radius: 50%; background: var(--ok);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 13%, transparent);
 }
-body[data-k-theme^="kokoro."] .console-intro h1 {
+body[data-k-theme] .console-intro h1 {
   margin: 0; color: var(--fg-strong);
-  font-size: clamp(30px, 3vw, 42px); font-weight: 650;
-  letter-spacing: -.045em; line-height: 1.15;
+  font-size: clamp(28px, 2.6vw, 38px); font-weight: 650;
+  letter-spacing: -.04em; line-height: 1.15;
 }
-body[data-k-theme^="kokoro."] .console-intro-copy > p:last-child {
-  margin: 12px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65;
+body[data-k-theme] .console-intro-copy > p:last-child {
+  margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.65;
 }
-body[data-k-theme^="kokoro."] .console-summary {
-  display: grid; grid-template-columns: 1fr 1fr;
-  align-items: stretch; min-width: 0;
-  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+body[data-k-theme] .console-summary {
+  grid-column: 1 / -1; grid-row: 2;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(10px, 1.1vw, 14px);
+  min-width: 0;
 }
-body[data-k-theme^="kokoro."] .console-summary > div {
-  position: relative; display: grid; align-content: center; gap: 7px;
-  min-width: 0; min-height: 96px; padding: 5px 22px 5px 26px;
+body[data-k-theme] .console-summary > .sum-tile {
+  display: grid; align-content: center; gap: 4px;
+  min-width: 0; padding: 12px 15px;
+  border: var(--kokoro-border-width, 1px) solid var(--kokoro-card-border, var(--line));
+  border-radius: var(--kokoro-radius-md, 7px);
+  background: color-mix(in srgb, var(--raised) 52%, transparent);
 }
-body[data-k-theme^="kokoro."] .console-summary > div + div {
-  border-left: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
-}
-body[data-k-theme^="kokoro."] .console-summary > div::before {
-  content: "01 / NODES"; color: var(--muted); opacity: .78;
+body[data-k-theme] .console-summary > .sum-tile::before {
+  content: "01 / SERVERS"; color: var(--muted); opacity: .8;
   font: 600 9px/1.2 var(--mono); letter-spacing: .13em;
 }
-body[data-k-theme^="kokoro."] .console-summary > div + div::before { content: "02 / ONLINE"; }
-body[data-k-theme^="kokoro."] .console-summary b {
-  color: var(--fg-strong); font: 560 clamp(38px, 4.1vw, 54px)/.94 var(--mono);
-  letter-spacing: -.075em; font-variant-numeric: tabular-nums;
+body[data-k-theme] .console-summary > .sum-tile.is-online::before { content: "02 / ONLINE"; }
+body[data-k-theme] .console-summary > .sum-tile.is-offline::before { content: "03 / OFFLINE"; }
+body[data-k-theme] .console-summary > .sum-tile.is-regions::before { content: "04 / REGIONS"; }
+body[data-k-theme] .console-summary b {
+  color: var(--fg-strong); font: 600 clamp(28px, 3vw, 40px)/.95 var(--mono);
+  letter-spacing: -.06em; font-variant-numeric: tabular-nums;
 }
-body[data-k-theme^="kokoro."] .console-summary span { color: var(--muted); font-size: 11px; }
-body[data-k-theme^="kokoro."] .console-summary .is-online b { color: var(--ok); }
-body[data-k-theme^="kokoro."] .console-summary .is-online span::after {
+body[data-k-theme] .console-summary span { color: var(--muted); font-size: 11px; }
+body[data-k-theme] .console-summary .is-online b { color: var(--ok); }
+body[data-k-theme] .console-summary .is-regions b { color: var(--accent); }
+body[data-k-theme] .console-summary .is-online span::after {
   content: ""; display: inline-block; width: 5px; height: 5px;
   margin: 0 0 1px 5px; border-radius: 50%; background: var(--ok);
 }
-body[data-k-theme^="kokoro."] .card .netq-empty {
+body[data-k-theme] .card .netq-empty {
   display: flex; align-items: center; justify-content: center; gap: 12px;
   color: var(--faint); font-size: 12px; text-align: center;
 }
-body[data-k-theme^="kokoro."] .card .netq-empty b { color: var(--muted); font-weight: 500; }
-body[data-k-theme="kokoro.cute"] .console-intro { border-bottom-style: dashed; }
-body[data-k-theme="kokoro.cute"] .console-summary > div { padding-left: 22px; }
-body[data-k-theme="kokoro.cute"] .console-summary b { letter-spacing: -.06em; }
+body[data-k-theme] .card .netq-empty b { color: var(--muted); font-weight: 500; }
 body[data-k-theme="kokoro.tech"] .console-kicker { font-family: var(--mono); }
-body[data-k-theme="kokoro.tech"] .console-summary > div::before { color: var(--accent-2); }
+body[data-k-theme="kokoro.tech"] .console-summary > .sum-tile::before { color: var(--accent-2); }
 body[data-k-theme="kokoro.tech"] .console-summary b { text-shadow: 0 0 22px color-mix(in srgb, var(--ok) 15%, transparent); }
+
+/* ---- 黑金顶栏（2026-10-16 重设）----
+   改前是一条纯黑横条 + 无框按钮，和总览卡/节点卡的金框语言不一致。
+   现在：顶栏底部一条金色收边，品牌块、站长名片、右侧工具都套金框小板，
+   与卡片同族。只作用于黑金主题，其他主题不受影响。 */
+body[data-k-theme="jiwo.blackgold"] .top {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg) 97%, transparent),
+    color-mix(in srgb, var(--bg) 84%, transparent));
+  border-bottom: 1px solid var(--kokoro-card-border, var(--line));
+}
+body[data-k-theme="jiwo.blackgold"] .top .wrap { min-height: 66px; gap: 14px; }
+body[data-k-theme="jiwo.blackgold"] .top .btn,
+body[data-k-theme="jiwo.blackgold"] .top .skin-btn {
+  border: 1px solid var(--kokoro-card-border, var(--line));
+  border-radius: var(--kokoro-radius-md, 7px);
+  background: color-mix(in srgb, var(--raised) 55%, transparent);
+  color: var(--fg);
+}
+body[data-k-theme="jiwo.blackgold"] .top .btn:hover,
+body[data-k-theme="jiwo.blackgold"] .top .skin-btn:hover {
+  border-color: var(--kokoro-color-border-strong, var(--line-strong));
+  color: var(--accent);
+}
+body[data-k-theme="jiwo.blackgold"] .top .brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 6px 13px 6px 8px;
+  border: 1px solid var(--kokoro-card-border, var(--line));
+  border-radius: var(--kokoro-radius-md, 7px);
+  background: color-mix(in srgb, var(--raised) 52%, transparent);
+  font-size: 16px; letter-spacing: .01em;
+}
+body[data-k-theme="jiwo.blackgold"] .top .brand .top-mark { color: var(--accent); }
+body[data-k-theme="jiwo.blackgold"] .top .top-identity-rule { display: none; }
+body[data-k-theme="jiwo.blackgold"] .top .top-owner {
+  padding: 5px 13px 5px 6px;
+  border: 1px solid var(--kokoro-card-border, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--raised) 42%, transparent);
+}
+body[data-k-theme="jiwo.blackgold"] .top .top-owner .avatar { width: 26px; height: 26px; }
+body[data-k-theme="jiwo.blackgold"] .top .top-owner-txt b { color: var(--fg-strong); }
+@media (max-width: 720px) {
+  body[data-k-theme="jiwo.blackgold"] .top .top-owner { padding: 4px 10px 4px 4px; }
+}
 
 /* 资源色始终表示 CPU / 内存 / 磁盘；占用档位用纹理和数值颜色表示，
    避免主题系列色恰好与警告色相同，让同一根 BAR 同时传达两类信息。 */
-body[data-k-theme^="kokoro."] .card .gauges .bar i.lv-warn {
+body[data-k-theme] .card .gauges .bar i.lv-warn {
   background-image: repeating-linear-gradient(
     135deg, color-mix(in srgb, var(--fg) 48%, transparent) 0 2px, transparent 2px 6px
   );
 }
-body[data-k-theme^="kokoro."] .card .gauges .bar i.lv-bad {
+body[data-k-theme] .card .gauges .bar i.lv-bad {
   background-image: repeating-linear-gradient(
     135deg, color-mix(in srgb, var(--fg) 72%, transparent) 0 3px, transparent 3px 5px
   );
   box-shadow: inset 0 0 0 1px var(--bad);
 }
-body[data-k-theme^="kokoro."] .card .gauges .g em.lv-ok { color: var(--ok); }
-body[data-k-theme^="kokoro."] .card .gauges .g em.lv-warn { color: var(--warn); }
-body[data-k-theme^="kokoro."] .card .gauges .g em.lv-bad { color: var(--bad); }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary .net {
+body[data-k-theme] .card .gauges .g em.lv-ok { color: var(--ok); }
+body[data-k-theme] .card .gauges .g em.lv-warn { color: var(--warn); }
+body[data-k-theme] .card .gauges .g em.lv-bad { color: var(--bad); }
+body[data-k-theme][data-k-list-mode="card"] .card-primary .net {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
   min-height: 0;
   margin-bottom: 12px;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary .spark,
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary .spark-empty {
+body[data-k-theme][data-k-list-mode="card"] .card-primary .spark,
+body[data-k-theme][data-k-list-mode="card"] .card-primary .spark-empty {
   flex: 0 0 72px;
   height: 72px;
   min-height: 72px;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions { margin-top: auto; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions .act {
+body[data-k-theme][data-k-list-mode="card"] .vote-actions { margin-top: auto; }
+body[data-k-theme][data-k-list-mode="card"] .vote-actions .act {
   min-width: 52px;
   min-height: 36px;
   padding: 7px 12px;
@@ -3523,57 +3584,64 @@ body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions .act {
 }
 
 /* 品牌署名只占一行，靠细线和小字收尾，不再做成一块大色带。 */
-body[data-k-theme^="kokoro."] .site-credit {
+body[data-k-theme] .site-credit {
   display: flex; align-items: center; justify-content: center; gap: 9px;
   width: min(1440px, calc(100% - 48px)); min-height: 62px;
   margin: 30px auto 0; border-top: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
   color: var(--muted); font-size: 11px; letter-spacing: .035em;
 }
-body[data-k-theme^="kokoro."] .site-credit a { color: var(--fg); text-decoration: none; font-weight: 650; }
-body[data-k-theme^="kokoro."] .site-credit a:hover { color: var(--accent); }
-body[data-k-theme^="kokoro."] .site-credit-mark {
+body[data-k-theme] .site-credit a { color: var(--fg); text-decoration: none; font-weight: 650; }
+body[data-k-theme] .site-credit a:hover { color: var(--accent); }
+body[data-k-theme] .site-credit-mark {
   display: grid; place-items: center; width: 19px; height: 19px;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
   border-radius: 6px; color: var(--accent); font: 650 10px/1 var(--mono);
 }
 @media (max-width: 720px) {
-  body[data-k-theme^="kokoro."] .console-intro { grid-template-columns: minmax(0, 1fr); gap: 16px; min-height: 0; padding: 28px 0 20px; }
-  body[data-k-theme^="kokoro."] .console-kicker { margin-bottom: 13px; }
-  body[data-k-theme^="kokoro."] .console-clock-slot { justify-content: flex-start; }
-  body[data-k-theme^="kokoro."] .overview-clock { --overview-clock-size: 28px; grid-template-columns: minmax(0, 1fr) max-content; grid-template-rows: auto auto; gap: 4px 12px; padding: 8px 0 8px 12px; }
-  body[data-k-theme^="kokoro."] .overview-clock .tz { grid-column: 1; grid-row: 1; justify-self: start; }
-  body[data-k-theme^="kokoro."] .overview-clock .d { grid-column: 1; grid-row: 2; justify-self: start; }
-  body[data-k-theme^="kokoro."] .overview-clock .t { grid-column: 2; grid-row: 1 / span 2; }
-  body[data-k-theme^="kokoro."] .console-summary { width: 100%; }
-  body[data-k-theme^="kokoro."] .console-summary > div { min-height: 78px; padding: 5px 16px; }
-  body[data-k-theme^="kokoro."] .console-summary > div:first-child { padding-left: 0; }
-  body[data-k-theme^="kokoro."] .console-summary > div + div { padding-left: 20px; }
-  body[data-k-theme^="kokoro."] .site-credit { width: calc(100% - 36px); min-height: 54px; margin-top: 22px; }
+  body[data-k-theme] .console-intro { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 16px; }
+  body[data-k-theme] .console-intro-copy { grid-column: 1; grid-row: 1; }
+  body[data-k-theme] .console-clock-slot { grid-column: 1; grid-row: 2; }
+  body[data-k-theme] .console-summary { grid-column: 1; grid-row: 3; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* 窄屏把时钟纵排：三个 max-content 列并排会撑破 390px 视口，
+     之前的表现是"整页右侧被切掉一截"（横向溢出）。 */
+  body[data-k-theme] .overview-clock {
+    --overview-clock-size: 20px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(3, auto);
+    justify-content: start;
+    gap: 2px;
+    padding: 10px 13px;
+  }
+  body[data-k-theme] .overview-clock .tz { grid-column: 1; grid-row: 1; }
+  body[data-k-theme] .overview-clock .d { grid-column: 1; grid-row: 2; justify-self: start; font-size: calc(var(--overview-clock-size) * .8); }
+  body[data-k-theme] .overview-clock .t { grid-column: 1; grid-row: 3; justify-self: start; }
+  body[data-k-theme] .console-kicker { margin-bottom: 11px; }
+  body[data-k-theme] .site-credit { width: calc(100% - 36px); min-height: 54px; margin-top: 22px; }
 }
 
 /* 主题可控的首页重点组件：时钟、全网速率与节点卡片。
    布局继续由上面的响应式规则负责，tokens 只调整皮肤和节奏。 */
-body[data-k-theme^="kokoro."] .overview-clock {
+body[data-k-theme] .overview-clock {
   gap: var(--kokoro-clock-gap, 7px);
   padding: var(--kokoro-clock-padding, 14px 20px);
   border-left-color: var(--kokoro-clock-divider, var(--line));
   background: var(--kokoro-clock-bg, transparent);
 }
-body[data-k-theme^="kokoro."] .overview-clock .tz,
-body[data-k-theme^="kokoro."] .overview-clock .d,
-body[data-k-theme^="kokoro."] .overview-clock .t {
+body[data-k-theme] .overview-clock .tz,
+body[data-k-theme] .overview-clock .d,
+body[data-k-theme] .overview-clock .t {
   font-size: var(--kokoro-clock-size, clamp(28px, 3vw, 42px));
 }
-body[data-k-theme^="kokoro."] .overview-clock .tz,
-body[data-k-theme^="kokoro."] .overview-clock .d { color: var(--kokoro-clock-muted, var(--muted)); }
-body[data-k-theme^="kokoro."] .overview-clock .t { color: var(--kokoro-clock-color, var(--fg-strong)); }
-body[data-k-theme^="kokoro."] .top-clock {
+body[data-k-theme] .overview-clock .tz,
+body[data-k-theme] .overview-clock .d { color: var(--kokoro-clock-muted, var(--muted)); }
+body[data-k-theme] .overview-clock .t { color: var(--kokoro-clock-color, var(--fg-strong)); }
+body[data-k-theme] .top-clock {
   border-left-color: var(--kokoro-clock-divider, var(--line));
   background: var(--kokoro-clock-bg, transparent);
 }
-body[data-k-theme^="kokoro."] .top-clock .tz { color: var(--kokoro-clock-muted, var(--muted)); }
-body[data-k-theme^="kokoro."] .top-clock .t { color: var(--kokoro-clock-color, var(--fg-strong)); }
-body[data-k-theme^="kokoro."] #speed {
+body[data-k-theme] .top-clock .tz { color: var(--kokoro-clock-muted, var(--muted)); }
+body[data-k-theme] .top-clock .t { color: var(--kokoro-clock-color, var(--fg-strong)); }
+body[data-k-theme] #speed {
   --cpu: var(--kokoro-rate-up, var(--cpu));
   --mem: var(--kokoro-rate-down, var(--mem));
   background: var(--kokoro-rate-bg, var(--panel));
@@ -3581,59 +3649,59 @@ body[data-k-theme^="kokoro."] #speed {
   border-radius: var(--kokoro-rate-radius, var(--r));
   padding: var(--kokoro-rate-padding, var(--pad));
 }
-body[data-k-theme^="kokoro."] #speed .live-head { gap: var(--kokoro-rate-gap, var(--s2)); }
-body[data-k-theme^="kokoro."] #speed .rate-row { gap: var(--kokoro-rate-gap, var(--s3)); }
-body[data-k-theme^="kokoro."] #speed .rate .rl,
-body[data-k-theme^="kokoro."] #speed .rate-legend,
-body[data-k-theme^="kokoro."] #speed .rate-sub { color: var(--kokoro-rate-label, var(--muted)); }
-body[data-k-theme^="kokoro."] #speed .rate .rl,
-body[data-k-theme^="kokoro."] #speed .rate-legend { font-size: var(--kokoro-rate-label-size, 11px); }
-body[data-k-theme^="kokoro."] #speed .rate .rv {
+body[data-k-theme] #speed .live-head { gap: var(--kokoro-rate-gap, var(--s2)); }
+body[data-k-theme] #speed .rate-row { gap: var(--kokoro-rate-gap, var(--s3)); }
+body[data-k-theme] #speed .rate .rl,
+body[data-k-theme] #speed .rate-legend,
+body[data-k-theme] #speed .rate-sub { color: var(--kokoro-rate-label, var(--muted)); }
+body[data-k-theme] #speed .rate .rl,
+body[data-k-theme] #speed .rate-legend { font-size: var(--kokoro-rate-label-size, 11px); }
+body[data-k-theme] #speed .rate .rv {
   color: var(--kokoro-rate-value, var(--fg-strong));
   font-size: var(--kokoro-rate-value-size, 20px);
 }
-body[data-k-theme^="kokoro."] #speed .rate .rv.sm { font-size: var(--kokoro-font-size-md, 14px); }
-body[data-k-theme^="kokoro."] #speed .rate-chart { position: relative; width: 100%; height: 100%; min-height: 0; }
-body[data-k-theme^="kokoro."] #speed .rate-chart-wrap,
-body[data-k-theme^="kokoro."] #speed .res-chart-wrap { flex: 0 0 auto; min-height: 0; }
-body[data-k-theme^="kokoro."] .card {
+body[data-k-theme] #speed .rate .rv.sm { font-size: var(--kokoro-font-size-md, 14px); }
+body[data-k-theme] #speed .rate-chart { position: relative; width: 100%; height: 100%; min-height: 0; }
+body[data-k-theme] #speed .rate-chart-wrap,
+body[data-k-theme] #speed .res-chart-wrap { flex: 0 0 auto; min-height: 0; }
+body[data-k-theme] .card {
   background: var(--kokoro-node-card-bg, var(--kokoro-card-bg, var(--panel)));
   border-color: var(--kokoro-node-card-border, var(--kokoro-card-border, var(--line)));
   border-radius: var(--kokoro-node-card-radius, var(--r));
   padding: var(--kokoro-node-card-padding, var(--pad));
 }
-body[data-k-theme^="kokoro."] .card-head h2 {
+body[data-k-theme] .card-head h2 {
   color: var(--kokoro-node-card-title, var(--fg-strong));
   font-size: var(--kokoro-node-card-title-size, var(--kokoro-font-size-lg, 16px));
 }
-body[data-k-theme^="kokoro."] .card .specs,
-body[data-k-theme^="kokoro."] .card .gauges,
-body[data-k-theme^="kokoro."] .card .net { margin-top: var(--kokoro-node-card-section-gap, var(--s3)); }
-body[data-k-theme^="kokoro."] .card .specs dt,
-body[data-k-theme^="kokoro."] .card .gauges .g .gl { color: var(--kokoro-node-card-label, var(--muted)); }
-body[data-k-theme^="kokoro."] .card .specs dt,
-body[data-k-theme^="kokoro."] .card .gauges .g .gl { font-size: var(--kokoro-node-card-label-size, 11px); }
-body[data-k-theme^="kokoro."] .card .specs dd,
-body[data-k-theme^="kokoro."] .card .gauges .g em { color: var(--kokoro-node-card-value, var(--fg)); }
-body[data-k-theme^="kokoro."] .card .specs dd { font-size: var(--kokoro-node-card-value-size, 12.5px); }
-body[data-k-theme^="kokoro."] #speed .rate-chart-wrap,
-body[data-k-theme^="kokoro."] #speed .res-chart-wrap {
+body[data-k-theme] .card .specs,
+body[data-k-theme] .card .gauges,
+body[data-k-theme] .card .net { margin-top: var(--kokoro-node-card-section-gap, var(--s3)); }
+body[data-k-theme] .card .specs dt,
+body[data-k-theme] .card .gauges .g .gl { color: var(--kokoro-node-card-label, var(--muted)); }
+body[data-k-theme] .card .specs dt,
+body[data-k-theme] .card .gauges .g .gl { font-size: var(--kokoro-node-card-label-size, 11px); }
+body[data-k-theme] .card .specs dd,
+body[data-k-theme] .card .gauges .g em { color: var(--kokoro-node-card-value, var(--fg)); }
+body[data-k-theme] .card .specs dd { font-size: var(--kokoro-node-card-value-size, 12.5px); }
+body[data-k-theme] #speed .rate-chart-wrap,
+body[data-k-theme] #speed .res-chart-wrap {
   height: clamp(76px, calc((var(--band-h) - 250px) / 2), 112px);
   box-sizing: border-box;
   padding-right: 58px;
 }
 @media (max-width: 1024px) {
-  body[data-k-theme^="kokoro."] #speed .rate-chart-wrap,
-  body[data-k-theme^="kokoro."] #speed .res-chart-wrap { height: 96px; }
+  body[data-k-theme] #speed .rate-chart-wrap,
+  body[data-k-theme] #speed .res-chart-wrap { height: 96px; }
 }
 @media (max-width: 720px) {
-  body[data-k-theme^="kokoro."] .overview-clock { gap: var(--kokoro-clock-gap, 7px); padding: var(--kokoro-clock-padding, 14px 20px); }
+  body[data-k-theme] .overview-clock { gap: var(--kokoro-clock-gap, 7px); padding: var(--kokoro-clock-padding, 14px 20px); }
 }
 
 /* 图表尺寸进入文档流；卡片随内容增长，横排时由网格自动保持等高。 */
-body[data-k-theme^="kokoro."] .home-band > #speed,
-body[data-k-theme^="kokoro."] .home-band .map-card { height:auto; min-height:var(--band-h); max-height:none; }
-body[data-k-theme^="kokoro."] .home-band > #speed > :not(.rate-chart-wrap):not(.res-chart-wrap) { flex-shrink:0; }
+body[data-k-theme] .home-band > #speed,
+body[data-k-theme] .home-band .map-card { height:auto; min-height:var(--band-h); max-height:none; }
+body[data-k-theme] .home-band > #speed > :not(.rate-chart-wrap):not(.res-chart-wrap) { flex-shrink:0; }
 .panel, .map-card, .card, .dlg { backdrop-filter:blur(var(--kokoro-backdrop-blur,0px)); -webkit-backdrop-filter:blur(var(--kokoro-backdrop-blur,0px)); }
 .spark-dot, .dash-point, .dash-point-down, .res-dot-cpu, .res-dot-mem { r:var(--kokoro-chart-point-radius,2.5); }
 .nqwave .spark-bar, .nqwave .spark-dot { fill:var(--accent); }
@@ -3662,16 +3730,17 @@ body[data-k-list-mode="card"] .card-primary .net-num .lat .bar.mini { width:24px
 .card .netcard .netrow .nl { width:2.2em; white-space:nowrap; }
 .card .netcard .netrow .nv { flex:1; min-width:0; white-space:nowrap; overflow-wrap:normal; }
 /* Keep the upper divider; a second divider aligns with the voting footer. */
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions .buyrow {
+body[data-k-theme][data-k-list-mode="card"] .card-actions .buyrow {
   margin-top:12px; padding-top:12px;
   border-top:1px solid color-mix(in srgb,var(--line) 82%,transparent);
 }
 /* Give the clock its own full row on tablet widths instead of squeezing it. */
 @media (min-width:721px) and (max-width:1100px) {
-  body[data-k-theme^="kokoro."] .console-intro { grid-template-columns:minmax(0,1fr) 250px; gap:22px 28px; }
-  body[data-k-theme^="kokoro."] .console-summary { grid-column:2; grid-row:1; }
-  body[data-k-theme^="kokoro."] .console-clock-slot { grid-column:1/-1; grid-row:2; }
-  body[data-k-theme^="kokoro."] .overview-clock { --overview-clock-size:42px; }
+  body[data-k-theme] .console-intro { grid-template-columns:minmax(0,1fr) 250px; gap:18px 24px; }
+  body[data-k-theme] .console-intro-copy { grid-column:1; grid-row:1; }
+  body[data-k-theme] .console-clock-slot { grid-column:2; grid-row:1; }
+  body[data-k-theme] .console-summary { grid-column:1/-1; grid-row:2; }
+  body[data-k-theme] .overview-clock { --overview-clock-size:30px; }
 }
 /* Density and page width share the same geometry, including the upper panels. */
 body[data-k-list-mode="card"]:not([data-node]):not([data-admin]) .wrap {
@@ -3688,33 +3757,33 @@ body[data-k-list-mode="card"]:not([data-node]):not([data-admin]) .wrap {
 .card .spark-cap > span, .card .net-num > span { min-width:0; }
 /* Dense layouts keep one readable internal column when cards become narrow. */
 @container (max-width:320px) {
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"][data-k-card-columns="4"] .card-columns,
-  body[data-k-theme^="kokoro."][data-k-list-mode="card"][data-k-card-columns="5"] .card-columns { grid-template-columns:minmax(0,1fr); }
+  body[data-k-theme][data-k-list-mode="card"][data-k-card-columns="4"] .card-columns,
+  body[data-k-theme][data-k-list-mode="card"][data-k-card-columns="5"] .card-columns { grid-template-columns:minmax(0,1fr); }
 }
 /* The page and speed panel follow card density; the globe remains a square. */
-body[data-k-theme^="kokoro."] .home-band:has(>.map-card) {
+body[data-k-theme] .home-band:has(>.map-card) {
   --globe-card-size:clamp(320px,32vw,520px);
   grid-template-columns:minmax(0,1fr) var(--globe-card-size);
   align-items:start;
 }
-body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > #speed {
+body[data-k-theme] .home-band:has(>.map-card) > #speed {
   width:auto; min-width:0; min-height:var(--globe-card-size); height:auto;
 }
-body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > .map-card {
+body[data-k-theme] .home-band:has(>.map-card) > .map-card {
   box-sizing:border-box; width:100%; height:auto; min-height:0;
   aspect-ratio:1; align-self:start; overflow:hidden;
 }
-body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > .map-card > .globe {
+body[data-k-theme] .home-band:has(>.map-card) > .map-card > .globe {
   flex:1 1 auto; min-height:0; height:auto;
 }
 @media (max-width:1024px) {
-  body[data-k-theme^="kokoro."] .home-band:has(>.map-card) {
+  body[data-k-theme] .home-band:has(>.map-card) {
     grid-template-columns:minmax(0,1fr);
   }
-  body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > #speed {
+  body[data-k-theme] .home-band:has(>.map-card) > #speed {
     min-height:0;
   }
-  body[data-k-theme^="kokoro."] .home-band:has(>.map-card) > .map-card {
+  body[data-k-theme] .home-band:has(>.map-card) > .map-card {
     width:min(100%,520px); justify-self:center;
   }
 }
@@ -3756,7 +3825,7 @@ body[data-k-theme="kokoro.cute"] .card .spark-marker {
 
 /* The status and uptime headline share the first track; tags and the bar share
    the second. Scale the complete headline together when a card gets narrower. */
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime {
+body[data-k-theme][data-k-list-mode="card"] .card-secondary .uptime {
   display:grid;
   grid-template-columns:minmax(0,1fr);
   grid-template-rows:28px max(30px,var(--kokoro-uptime-bar-height,26px));
@@ -3765,16 +3834,16 @@ body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime {
   min-height:0;
   margin-top:0;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-head {
+body[data-k-theme][data-k-list-mode="card"] .card-secondary .uptime-head {
   display:flex; align-items:center; flex-wrap:nowrap; gap:4px;
   min-width:0; height:28px; margin:0; font-size:15px;
 }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-head h4 { flex:none; font-size:.866667em; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-pct { flex:none; font-size:1em; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-sub { flex:none; font-size:.733333em; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary .uptime-bar { align-self:center; }
+body[data-k-theme][data-k-list-mode="card"] .card-secondary .uptime-head h4 { flex:none; font-size:.866667em; }
+body[data-k-theme][data-k-list-mode="card"] .card-secondary .uptime-pct { flex:none; font-size:1em; }
+body[data-k-theme][data-k-list-mode="card"] .card-secondary .uptime-sub { flex:none; font-size:.733333em; }
+body[data-k-theme][data-k-list-mode="card"] .card-secondary .uptime-bar { align-self:center; }
 /* Keep the footer lines together and spread the remaining room between sections. */
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-primary,
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-secondary { justify-content:space-between; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .vote-actions { margin-top:0; }
-body[data-k-theme^="kokoro."][data-k-list-mode="card"] .card-actions { margin-top:12px; }
+body[data-k-theme][data-k-list-mode="card"] .card-primary,
+body[data-k-theme][data-k-list-mode="card"] .card-secondary { justify-content:space-between; }
+body[data-k-theme][data-k-list-mode="card"] .vote-actions { margin-top:0; }
+body[data-k-theme][data-k-list-mode="card"] .card-actions { margin-top:12px; }
