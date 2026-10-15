@@ -8,6 +8,7 @@ package hub
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -105,6 +106,12 @@ type globeData struct {
 	Hub    globePlace   `json:"hub"`
 	Places []globePlace `json:"places"`
 	HasHub bool         `json:"hasHub"`
+	// LitCountries 是有节点落在的国家数（ISO alpha-2 去重）。
+	// LitRuns 是这些国家在 0.5° 格网里占据的格子，压缩成
+	// "start:len,start:len"（纹理序），前端据此把地球纹理里的
+	// 那片陆地染成高亮色 —— 也就是"点亮区域"。
+	LitCountries int    `json:"litCountries,omitempty"`
+	LitRuns      string `json:"litRuns,omitempty"`
 }
 
 // buildGlobe 组装地球数据。
@@ -115,6 +122,9 @@ type globeData struct {
 func (h *Hub) buildGlobe(cards []nodeCard) globeData {
 	var g globeData
 	g.Places = make([]globePlace, 0, len(cards))
+	// 哪个国家有鸡，就点亮哪个国家。用国家码（alpha-2）而不是省/市，
+	// 因为要点亮的是地球上的一整片区域。
+	litSet := make(map[string]struct{}, len(cards))
 	for _, c := range cards {
 		if !c.HasCoord {
 			continue
@@ -127,6 +137,20 @@ func (h *Hub) buildGlobe(cards []nodeCard) globeData {
 			Lon:    c.Lon,
 			Online: c.Online,
 		})
+		// FlagCode 已经是 ISO alpha-2（列表画国旗用的那份），直接拿它当
+		// 点亮用的国家码，不去猜 Country 字段的文本格式。
+		if code := strings.ToUpper(strings.TrimSpace(c.FlagCode)); code != "" {
+			litSet[code] = struct{}{}
+		}
+	}
+	if len(litSet) > 0 {
+		codes := make([]string, 0, len(litSet))
+		for code := range litSet {
+			codes = append(codes, code)
+		}
+		sort.Strings(codes)
+		g.LitRuns = geo.LitRanges(codes)
+		g.LitCountries = len(codes)
 	}
 	if lat, lon, ok := h.hubCoord(); ok {
 		name := "主机"

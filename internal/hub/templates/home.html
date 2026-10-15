@@ -202,7 +202,7 @@
            aria-label="节点分布地球"></div>
       <div class="map-foot">
         <span>拖动旋转 · 滚轮缩放</span>
-        <span>{{len .Globe.Places}} 个可定位节点</span>
+        <span>{{len .Globe.Places}} 个可定位节点{{if .Globe.LitCountries}} · 点亮 {{.Globe.LitCountries}} 个国家/地区{{end}}</span>
       </div>
     </section>
     {{end}}

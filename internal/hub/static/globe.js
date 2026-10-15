@@ -89,13 +89,40 @@
 
   // 将紧凑掩码展开为无重复采样的单通道纹理。线性过滤会柔化海岸线，
   // 连续色块替代屏幕点阵，避免高 DPI 屏幕产生摩尔纹。
-  function landTextureData(m) {
+  //
+  // 单通道要表达三态，用三个灰度档位（着色器按阈值拆开）：
+  //   0   = 海洋
+  //   140 = 陆地
+  //   255 = "点亮区域"（这个国家有节点）
+  // 之所以不打成 0/1 二进制，是因为还要保住海岸线的线性插值过渡。
+  function landTextureData(m, lit) {
     var pixels = new Uint8Array(m.nlon * m.nlat);
     for (var y = 0; y < m.nlat; y++) {
       var row = m.nlat - 1 - y;
-      for (var x = 0; x < m.nlon; x++) pixels[y * m.nlon + x] = isLand(m, x, row) ? 255 : 0;
+      for (var x = 0; x < m.nlon; x++) {
+        if (!isLand(m, x, row)) continue;
+        var i = y * m.nlon + x;
+        pixels[i] = (lit && lit[i]) ? 255 : 140;
+      }
     }
     return pixels;
+  }
+
+  // 把 "start:len,start:len" 展开成逐格标记。索引是纹理序
+  // （与 landTextureData 的遍历顺序一致），所以不用再做行列换算。
+  function decodeLitRuns(s, total) {
+    if (!s) return null;
+    var out = new Uint8Array(total);
+    var parts = String(s).split(',');
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i].split(':');
+      var start = parseInt(p[0], 10);
+      var n = parseInt(p[1], 10);
+      if (!isFinite(start) || !isFinite(n) || n <= 0) continue;
+      var end = Math.min(total, start + n);
+      for (var k = start < 0 ? 0 : start; k < end; k++) out[k] = 1;
+    }
+    return out;
   }
 
   // 掩码 -> 单位球顶点数组。高纬度按比例抽稀：
@@ -209,6 +236,8 @@
     'uniform vec3 uOceanNight;',
     'uniform vec3 uLandDay;',
     'uniform vec3 uLandNight;',
+    'uniform vec3 uLitDay;',
+    'uniform vec3 uLitNight;',
     'uniform float uYaw;',
     'uniform float uPitch;',
     'uniform float uLatMin;',
@@ -233,10 +262,17 @@
     '  vec2 uv = vec2(lon / 6.2831853 + 0.5, (lat - uLatMin) / (uLatMax - uLatMin));',
     '  float landSample = 0.0;',
     '  if (uv.y >= 0.0 && uv.y <= 1.0) landSample = texture2D(uLand, uv).r;',
-    '  float land = smoothstep(0.34, 0.66, landSample);',
+    // 三态拆解：0=海、0.55=陆、1=点亮。阈值按线性插值的 50% 点选，
+    // 这样和原来"陆地=1、海=0"的二分版相比海岸线位置不变。
+    '  float land = smoothstep(0.19, 0.36, landSample);',
+    '  float litArea = smoothstep(0.68, 0.88, landSample);',
     '  vec3 ocean = mix(uOceanNight, uOceanDay, lit);',
     '  vec3 continent = mix(uLandNight, uLandDay, lit);',
     '  vec3 c = mix(ocean, continent, land);',
+    // 点亮区域：有节点的国家整片换成高亮色。
+    // 阈值必须跟 landTextureData 的 140/255 档位对齐（140/255≈0.55）。
+    '  vec3 litCol = mix(uLitNight, uLitDay, lit);',
+    '  c = mix(c, litCol, litArea);',
     '  c *= 0.9 + 0.1 * z;',
     '  gl_FragColor = vec4(c, 1.0);',
     '}'
@@ -338,6 +374,8 @@
     // 必须在这里就接住 opts.places。之前只写了 this.places = []，
     // 结果初始化时节点列表永远是空的——地球画得好好的，一条航线都没有。
     this.places = (opts.places || []).slice();
+    // "点亮区域"：服务端算好的格子 run（纹理序）。为空就是纯陆地配色。
+    this.litRuns = opts.litRuns || '';
     this.hub = opts.hub || null;
     // 初始视角对准**所有节点的重心**。
     //
@@ -468,6 +506,8 @@
       oceanNight: gl.getUniformLocation(dprog, 'uOceanNight'),
       landDay: gl.getUniformLocation(dprog, 'uLandDay'),
       landNight: gl.getUniformLocation(dprog, 'uLandNight'),
+      litDay: gl.getUniformLocation(dprog, 'uLitDay'),
+      litNight: gl.getUniformLocation(dprog, 'uLitNight'),
       yaw: gl.getUniformLocation(dprog, 'uYaw'),
       pitch: gl.getUniformLocation(dprog, 'uPitch'),
       latMin: gl.getUniformLocation(dprog, 'uLatMin'),
@@ -483,12 +523,11 @@
     this.landTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.landTex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, this.mask.nlon, this.mask.nlat, 0,
-      gl.LUMINANCE, gl.UNSIGNED_BYTE, landTextureData(this.mask));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this._uploadLand();
 
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
@@ -647,6 +686,11 @@
 
   KokoroGlobe.prototype.setPlaces = function (cfg) {
     if (cfg && cfg.places) this.places = cfg.places.slice();
+    // 点亮区域只在"哪些国家有节点"变化时才重传纹理。
+    if (cfg && cfg.litRuns !== undefined && cfg.litRuns !== this.litRuns) {
+      this.litRuns = cfg.litRuns || '';
+      this._uploadLand();
+    }
     if (cfg && cfg.hub) {
       this.hub = cfg.hub;
       if (cfg.focus) {
@@ -740,6 +784,8 @@
     gl.uniform3fv(this.dloc.oceanNight, parseColor(c.oceanNight, '#d8dfea'));
     gl.uniform3fv(this.dloc.landDay, parseColor(c.day, '#c9d4e2'));
     gl.uniform3fv(this.dloc.landNight, parseColor(c.night, '#39435a'));
+    gl.uniform3fv(this.dloc.litDay, parseColor(c.litDay || c.flow, '#e8c880'));
+    gl.uniform3fv(this.dloc.litNight, parseColor(c.litNight || c.flow, '#c39a45'));
     gl.uniform1f(this.dloc.yaw, this.yaw);
     gl.uniform1f(this.dloc.pitch, this.pitch);
     gl.uniform1f(this.dloc.latMin, this.mask.latMin * DEG);
@@ -750,8 +796,19 @@
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   };
 
-  KokoroGlobe.prototype._project = function (lat, lon) {
-    var v = rotate(toVec(lat, lon, [0, 0, 0]), this.yaw, this.pitch, [0, 0, 0]);
+  // 上传（或刷新）陆地纹理。点亮区域变了就重传一次，不必重建程序。
+  KokoroGlobe.prototype._uploadLand = function () {
+    var gl = this.gl;
+    if (!gl || !this.mask || !this.landTex) return;
+    var total = this.mask.nlon * this.mask.nlat;
+    var lit = decodeLitRuns(this.litRuns, total);
+    gl.bindTexture(gl.TEXTURE_2D, this.landTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, this.mask.nlon, this.mask.nlat, 0,
+      gl.LUMINANCE, gl.UNSIGNED_BYTE, landTextureData(this.mask, lit));
+  };
+
+  KokoroGlobe.prototype._project = function (lat, lon) {    var v = rotate(toVec(lat, lon, [0, 0, 0]), this.yaw, this.pitch, [0, 0, 0]);
     return { x: this.cx + v[0] * this.R, y: this.cy - v[1] * this.R, z: v[2] };
   };
 

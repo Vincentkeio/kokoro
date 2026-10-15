@@ -5,7 +5,7 @@
      脚本顺序有讲究：globe.js 必须**先**执行完，下面的初始化才能拿到
      window.KokoroGlobe。所以不能用 defer —— 内联脚本在解析时就跑，
      而 defer 的脚本要等解析完，反而会晚一步。 */}}
-<script src="/static/globe.js?v=76"></script>
+<script src="/static/globe.js?v=77"></script>
 <script>
 (function () {
   'use strict';
@@ -77,6 +77,9 @@
     landUrl: host.getAttribute('data-land') || '/static/land.bin',
     hub: data.hasHub ? data.hub : null,
     places: data.places,
+    // 点亮区域：服务端把"有节点的国家"折算成格子 run，前端据此给
+    // 陆地纹理染色 —— 于是地球上那片国家是亮的，而不是只有一个点。
+    litRuns: data.litRuns || '',
     effects: effects,
     colors: function () {
       var el = document.documentElement;
@@ -88,6 +91,9 @@
         arc:   colorVar(el, '--kokoro-globe-route', '#2f6feb'),
         flow:  colorVar(el, '--kokoro-globe-flow', '#2f6feb'),
         flowCore: colorVar(el, '--kokoro-globe-flow-core', '#f5fff9'),
+        // 点亮区域用地球的"流光金"：和航线同色系，一眼能看出是同一套语义
+        litDay:   colorVar(el, '--kokoro-globe-flow', '#dfbd74'),
+        litNight: colorVar(el, '--kokoro-globe-flow', '#dfbd74'),
         hub:   colorVar(el, '--kokoro-globe-route', '#2f6feb'),
         ok:    colorVar(el, '--kokoro-globe-node-online', '#1a7f37'),
         off:   colorVar(el, '--kokoro-globe-node-offline', '#8b949e'),
