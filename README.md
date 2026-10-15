@@ -7,8 +7,10 @@ Kokoro 是一个用于管理多台 VPS 的主控面板与轻量探针。Hub 部�
 ## 功能
 
 - 汇总 VPS 在线状态、硬件信息、网络流量和延迟，并支持节点分组与筛选。
+- 首页总览显示服务器总数、在线/离线与**点亮地区数**；点阵地球把有节点的**国家/地区整片点亮**。
 - 通过任务队列下发硬件跑分、IP 质量与解锁、网络测速及三网回程检测。
 - 查看任务进度、历史结果和原始输出。
+- 指标分层降采样保存，磁盘占用与采集频率解耦（见下一节）。
 - 按目标容量增加节点 SWAP；不支持减少 SWAP。
 - Agent 只接受预先定义的结构化指令，不执行 Hub 下发的任意 Shell 命令或脚本。
 
@@ -38,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/Vincentkeio/kokoro/main/scripts/ins
 - 检测到 Nginx（包括常见的宝塔配置目录）时，保留 Nginx 现有网站，只为 Kokoro 添加独立站点；Caddy 在本地备用端口申请和续期证书，续期后自动重载 Nginx。
 - 若 80/443 被其他程序占用、无法识别安全的 Nginx 配置目录、域名已配置，或发现需要人工合并的自定义 Caddy 配置，安装器会停止以避免覆盖现有站点。它不会停止或接管 Nginx，也不会自动修改其他站点配置。
 
-安装目录为 `/opt/kokoro`，数据目录为 `/var/lib/kokoro`。安装完成后运行 `kokoro` 打开管理菜单；可用 `systemctl status kokoro-hub` 查看服务状态，用 `journalctl -u kokoro-hub -f` 查看实时日志。Nginx 模式下也可检查 `nginx` 和 `caddy` 服务。
+安装目录为 `/opt/kokoro`，数据目录为 `/var/lib/kokoro`。安装完成后运行 `kokoro` 打开管理菜单；可用 `systemctl status kokoro-hub` 查看服务状态，用 `journalctl -u kokoro-hub -f` 查看实时日志。Nginx 模式下也可检查 `nginx` 和 `caddy` 服务。管理菜单中的「卸载面板」会询问是否**连数据一起删除**：选择彻底删除时会先关闭 Kokoro 托管的 SWAP 并清理 `/etc/fstab` 里的对应挂载行，再删数据目录（默认只卸载面板、保留数据）。
 
 安装器从 GitHub Release 下载 Hub、Linux amd64/arm64 Agent、Agent 安装脚本和固定测试脚本，并校验 SHA-256。目标主机不需要 Go 或编译工具；建议预留约 100 MB 临时空间和运行空间。Release 资产版本由 [`scripts/install-hub.sh`](scripts/install-hub.sh) 中的 `RELEASE_TAG` 指定，安装脚本与 Release 资产应配套发布。
 
@@ -54,6 +56,27 @@ curl -fsSL https://<Hub域名>/i/<安装令牌> | sh
 
 请从 Hub 后台复制实际生成的命令，不要把安装令牌提交到代码仓库或公开分享。管理菜单中的“更新探针程序”更新 Agent 及其本地管理安装脚本；Hub 主程序需通过部署端更新。Agent 安装入口见 [`scripts/install.sh`](scripts/install.sh)，部署单元示例见 [`deploy/`](deploy/)。
 
+## 数据存储与保留
+
+指标按**分层降采样（rollup ladder）**保存：写入量只跟"桶数 × 层数"有关，与采集频率解耦，所以提高上报频率不会再线性撑大数据库。级联方向 `metrics_raw → metrics_1m → metrics_5m → metrics_1h → metrics_1d`。
+
+| 层 | 粒度 | 默认保留 | 主要用途 |
+| --- | --- | --- | --- |
+| `metrics_raw` | 每次上报 | 6 小时 | 详情页「近 1 小时」 |
+| `metrics_1m` | 1 分钟 | 24 小时 | 「近 6 小时」 |
+| `metrics_5m` | 5 分钟 | 7 天 | 「近 1 天」 |
+| `metrics_1h` | 1 小时 | 45 天 | 「近 7/30 天」 |
+| `metrics_1d` | 1 天 | 365 天 | 长期趋势 |
+| `net_quality` | 每轮三网探测（默认 5 分钟一轮） | 7 天，且每节点最多 2000 轮 | 三网延迟波形 |
+
+- 每层只聚合**已闭合**的窗口，各层有独立游标（`settings.agg_cursor_*`），因此重启不会重算或漏算。
+- 上游是聚合表时，平均值按样本数加权，最大值取最大，避免"桶内样本数不同"把均值带偏。
+- 后台节奏：**每 5 分钟**聚合一次，**每小时**按保留期清理一次（清理会做大范围删除，必要时回收空间，不挤在写路径上）。
+- 详情页按跨度自动选层（≤2 小时读原始、≤12 小时读 1 分钟、≤3 天读 5 分钟、≤45 天读 1 小时，更久读 1 天）。
+- 各层保留期可用 `settings` 覆盖：`retention_raw_h`、`retention_1m_h`、`retention_5m_h`、`retention_1h_d`、`retention_1d_d`、`retention_netq_d`（分别为小时/天，**负值表示不清理该层**）。⚠️ 调整保留期时要和详情页的选层阈值一起考虑，否则曲线头部会缺口。
+
+默认保留下，四台节点的数据库实测约 **5 MiB**（迁移前那套「原始表 24 小时 + 5 分钟表 90 天 + 三网连续探测 30 天」在同样数据量下是 **200 MiB 以上**，且随天数继续增长）。
+
 ## 安全与资源占用
 
 - Hub 与 Agent 都使用 Go 编写；Hub 页面资源随程序一起打包，无需额外安装前端运行环境。
@@ -61,7 +84,7 @@ curl -fsSL https://<Hub域名>/i/<安装令牌> | sh
 - 管理员密码使用带随机盐的 PBKDF2-HMAC-SHA256 保存。Agent 默认通过 HTTPS 通信；Hub 服务以专用系统用户运行，并由 systemd 限制可写目录。
 - Agent 需要 root 权限采集主机信息及执行 SWAP 等管理操作；其 systemd 服务启用文件系统隔离，并将常驻服务的可写范围限制在配置目录。
 
-发布二进制的磁盘占用约为：Hub **16.5 MiB**；每台 Agent **16.5 MiB（amd64）**或 **15.5 MiB（arm64）**。Hub 为子机分发程序还需保存两种架构的 Agent 文件，Hub 与两份 Agent 二进制合计约 **48.5 MiB**；不含数据库、Caddy、系统依赖及运行数据。大小会随版本变化。
+发布二进制的磁盘占用约为：Hub **15.6 MiB**；每台 Agent **15.6 MiB（amd64）**或 **14.7 MiB（arm64）**。Hub 为子机分发程序还需保存两种架构的 Agent 文件，Hub 与两份 Agent 二进制合计约 **45.9 MiB**；不含数据库、Caddy、系统依赖及运行数据。数据库本身的占用取决于保留期设置，默认约在**几十 MiB**量级。大小会随版本变化。
 
 ## 开发
 

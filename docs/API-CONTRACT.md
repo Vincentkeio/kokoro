@@ -169,8 +169,12 @@ Hub 每 interval 推一次全量快照（节点数 <200 时全量最简单可靠
 
 见 `internal/store/schema.sql`。核心表：
 
-`nodes` / `metrics_raw`（保留 24h）/ `metrics_5m`（保留 90 天）/ `node_profile` /
-`comments` / `trade_offers` / `themes` / `users` / `sessions` / `audit_log` / `alerts`
+`nodes` / `metrics_raw`（保留 6 小时）/ `metrics_1m`（24 小时）/ `metrics_5m`（7 天）/
+`metrics_1h`（45 天）/ `metrics_1d`（365 天）/ `net_quality`（7 天 + 每节点 2000 轮上限）/
+`node_profile` / `comments` / `trade_offers` / `themes` / `users` / `sessions` / `audit_log` / `alerts`
+
+指标按分层降采样保存（`raw → 1m → 5m → 1h → 1d`），每层保留期可用 `settings`
+里的 `retention_*` 覆盖；详情页按查询跨度自动选层。详见 README「数据存储与保留」。
 
 命名规则：所有 ID 带前缀（`nd_` 节点、`nt_` 节点令牌、`it_` 安装令牌、`cm_` 命令、`th_` 主题）。
 
