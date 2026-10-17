@@ -47,6 +47,8 @@
 
 `node_name` 为可选显示名称，最多 128 个字符。未提供时使用安装令牌预设的节点名或备注，均未设置时使用 `hostname`。`hostname` 始终保留真实主机名。
 
+`local_ips` 为可选网卡地址数组，最多 64 个合法 IPv4 / IPv6 地址；上报的 `facts.local_ips` 使用相同约束。Hub 仅将来源 IP 与同地址族的网卡地址比较来判断 NAT，不将缺少 IPv6 地址的旧探针误判为 NAT。启用反代模式时，从本地反代的转发链核验 Cloudflare 官方代理网段后，才读取 Cloudflare 的真实客户端地址头；直接连接的普通客户端请求头不受信任。旧 Hub 只接受 IPv4，新增 IPv6 采集的 Agent 应在 Hub 升级后更新。
+
 响应：
 
 ```json

@@ -682,7 +682,7 @@ func hostInfo() hostFacts {
 	f.diskTotal = detectDiskTotal()
 	f.tcpCC = detectTCPCC()
 	f.tcpQdisc = detectTCPQdisc()
-	f.localIPs = localIPv4s()
+	f.localIPs = localInterfaceIPs()
 	return f
 }
 
@@ -771,11 +771,11 @@ func readProcLine(path string) string {
 	return strings.TrimSpace(string(b))
 }
 
-// localIPv4s 取本机网卡上的 IPv4。
+// localInterfaceIPs 取本机网卡上的 IPv4 / IPv6。
 //
 // **只用来判 NAT**：Hub 那边把这份列表和它看到的来源 IP 比一下，
 // 对不上就说明机器在 NAT 后面。Hub 不存这些地址、也不展示。
-func localIPv4s() []string {
+func localInterfaceIPs() []string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil
@@ -794,8 +794,12 @@ func localIPv4s() []string {
 			if !ok {
 				continue
 			}
-			if v4 := ipnet.IP.To4(); v4 != nil {
-				out = append(out, v4.String())
+			ip := ipnet.IP
+			if ip.IsGlobalUnicast() {
+				out = append(out, ip.String())
+				if len(out) == 64 {
+					return out // Same bound as the registration/facts contract.
+				}
 			}
 		}
 	}

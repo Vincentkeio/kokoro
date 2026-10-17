@@ -185,7 +185,7 @@ func validRegisterRequest(req model.RegisterRequest) bool {
 	}
 	for _, raw := range req.LocalIPs {
 		ip := net.ParseIP(raw)
-		if ip == nil || ip.To4() == nil {
+		if ip == nil {
 			return false
 		}
 	}
@@ -341,40 +341,23 @@ func validHostFacts(f *model.HostFacts) bool {
 //
 // 只返回布尔值 —— 两边比对完就把地址丢掉，不落库、不展示。
 func isBehindNAT(localIPs []string, seenIP string) bool {
-	if seenIP == "" || len(localIPs) == 0 {
+	seen := net.ParseIP(seenIP)
+	if seen == nil || len(localIPs) == 0 {
 		return false // 判不了就当没有，别瞎猜
 	}
-	for _, ip := range localIPs {
-		if ip == seenIP {
+	comparable := false
+	for _, raw := range localIPs {
+		ip := net.ParseIP(raw)
+		if ip == nil || (ip.To4() == nil) != (seen.To4() == nil) {
+			continue
+		}
+		comparable = true
+		if ip.Equal(seen) {
 			return false // 公网 IP 就在自己网卡上 → 直连
 		}
 	}
-	return true
-}
-
-func (h *Hub) clientIP(r *http.Request) string {
-	if h.cfg.BehindProxy {
-		if peer := remoteIP(r.RemoteAddr); peer != nil && (peer.IsLoopback() || peer.IsPrivate() || peer.IsLinkLocalUnicast()) {
-			// Only honor forwarding headers when the TCP peer is a local/private
-			// reverse proxy. Use the right-most valid hop so a client-supplied
-			// X-Forwarded-For prefix cannot trivially spoof its rate-limit identity.
-			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-				parts := strings.Split(xff, ",")
-				for i := len(parts) - 1; i >= 0; i-- {
-					if ip := net.ParseIP(strings.TrimSpace(parts[i])); ip != nil {
-						return ip.String()
-					}
-				}
-			}
-			if xr := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))); xr != nil {
-				return xr.String()
-			}
-		}
-	}
-	if ip := remoteIP(r.RemoteAddr); ip != nil {
-		return ip.String()
-	}
-	return r.RemoteAddr
+	// Older agents sent only IPv4. An IPv6 report cannot prove IPv4 NAT.
+	return comparable
 }
 
 func remoteIP(remoteAddr string) net.IP {
