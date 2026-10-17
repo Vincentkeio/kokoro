@@ -48,6 +48,9 @@ jobs:
             (cd release && sha256sum "$agent_asset" > "${agent_asset}.sha256")
           done
           cp scripts/install.sh scripts/kokoro-bench.sh release/
+          sed -i "s|^GH_TAG=.*|GH_TAG=\"\${GH_TAG:-${GITHUB_REF_NAME}}\"|" release/install.sh
+          grep -Fqx "GH_TAG=\"\${GH_TAG:-${GITHUB_REF_NAME}}\"" release/install.sh
+          bash -n release/install.sh
           expected_bench_sha="$(sed -nE 's/^const testToolSHA256 = "([0-9a-f]{64})"$/\1/p' internal/agent/test_command.go)"
           actual_bench_sha="$(sha256sum release/kokoro-bench.sh | awk '{print $1}')"
           [[ -n "$expected_bench_sha" && "$actual_bench_sha" == "$expected_bench_sha" ]]

@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/Vincentkeio/kokoro/main/scripts/ins
 - 检测到 Nginx（包括常见的宝塔配置目录）时，保留 Nginx 现有网站，只为 Kokoro 添加独立站点；Caddy 在本地备用端口申请和续期证书，续期后自动重载 Nginx。
 - 若 80/443 被其他程序占用、无法识别安全的 Nginx 配置目录、域名已配置，或发现需要人工合并的自定义 Caddy 配置，安装器会停止以避免覆盖现有站点。它不会停止或接管 Nginx，也不会自动修改其他站点配置。
 
-安装目录为 `/opt/kokoro`，数据目录为 `/var/lib/kokoro`。安装完成后运行 `kokoro` 打开管理菜单；可用 `systemctl status kokoro-hub` 查看服务状态，用 `journalctl -u kokoro-hub -f` 查看实时日志。Nginx 模式下也可检查 `nginx` 和 `caddy` 服务。管理菜单中的「卸载面板」会询问是否**连数据一起删除**：选择彻底删除时会先关闭 Kokoro 托管的 SWAP 并清理 `/etc/fstab` 里的对应挂载行，再删数据目录（默认只卸载面板、保留数据）。
+安装目录为 `/opt/kokoro`，数据目录为 `/var/lib/kokoro`。安装完成后运行 `kokoro` 打开管理菜单；可用 `systemctl status kokoro-hub` 查看服务状态，用 `journalctl -u kokoro-hub -f` 查看实时日志。Nginx 模式下也可检查 `nginx` 和 `caddy` 服务。菜单里面板与探针的更新、卸载是分开的，且只显示本机实际装了的角色：「更新面板（Hub 主程序）」从 GitHub Release 取已发布版本（含 Preview），按架构下载并校验 SHA-256，原子替换 Hub 二进制后重启服务，健康检查失败自动回滚旧版本；「更新探针程序」只更新 Agent。管理菜单中的「卸载面板」会询问是否**连数据一起删除**：选择彻底删除时会先关闭 Kokoro 托管的 SWAP 并清理 `/etc/fstab` 里的对应挂载行，再删数据目录（默认只卸载面板、保留数据）；「卸载 Agent」只卸载子机探针，不会动面板及其数据。
 
 安装器从 GitHub Release 下载 Hub、Linux amd64/arm64 Agent、Agent 安装脚本和固定测试脚本，并校验 SHA-256。目标主机不需要 Go 或编译工具；建议预留约 100 MB 临时空间和运行空间。Release 资产版本由 [`scripts/install-hub.sh`](scripts/install-hub.sh) 中的 `RELEASE_TAG` 指定，安装脚本与 Release 资产应配套发布。
 
@@ -54,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/Vincentkeio/kokoro/main/scripts/ins
 curl -fsSL https://<Hub域名>/i/<安装令牌> | sh
 ```
 
-请从 Hub 后台复制实际生成的命令，不要把安装令牌提交到代码仓库或公开分享。管理菜单中的“更新探针程序”更新 Agent 及其本地管理安装脚本；Hub 主程序需通过部署端更新。Agent 安装入口见 [`scripts/install.sh`](scripts/install.sh)，部署单元示例见 [`deploy/`](deploy/)。
+请从 Hub 后台复制实际生成的命令，不要把安装令牌提交到代码仓库或公开分享。在子机上以 root 运行 `kokoro`，选择“更新探针程序”；也可直接运行 `sh /usr/local/lib/kokoro/install.sh --upgrade`。这会更新 Agent，不会更新 Hub。Hub 主程序在面板主机上运行 `kokoro` 选择「更新面板」更新，也可继续用部署端脚本更新。发布包中的 Agent 安装脚本会将 GitHub 回退下载固定到对应发布标签，避免 Hub 分发暂时不可用时回退到旧正式版。Agent 安装入口见 [`scripts/install.sh`](scripts/install.sh)，部署单元示例见 [`deploy/`](deploy/)。
 
 ## 数据存储与保留
 

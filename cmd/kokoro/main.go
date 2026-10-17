@@ -25,6 +25,7 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -42,7 +43,7 @@ var Version = "0.1.3-preview.1"
 const usage = `kokoro - 每台小鸡都有一颗心
 
 用法:
-  kokoro                 打开管理菜单（查看信息 / 重置唯一管理员）
+  kokoro                 打开管理菜单（服务状态 / 更新面板 / 重置唯一管理员）
   kokoro serve    [选项]    启动主控 Hub
   kokoro agent    [选项]    启动子机探针（别名: kokoro run）
   kokoro register [选项]    仅执行一次注册（把 token 写回配置文件）
@@ -132,21 +133,50 @@ func main() {
 	}
 }
 
+// menuItem 是管理菜单的一项。用表驱动而不是写死编号：菜单项会随本机装了什么
+// （Hub / Agent）增减，硬编码编号很容易错位。
+type menuItem struct {
+	label string
+	run   func(reader *bufio.Reader) int
+}
+
+func menuItems() []menuItem {
+	hub := unitInstalled("kokoro-hub")
+	agentInstalled := unitInstalled("kokoro-agent")
+
+	items := []menuItem{
+		{label: "服务状态", run: func(*bufio.Reader) int { showServiceStatus(); return 0 }},
+		{label: "安装信息", run: func(*bufio.Reader) int { showInstallInfo(); return 0 }},
+		{label: "重启服务", run: func(*bufio.Reader) int { restartServices(); return 0 }},
+	}
+	// 面板与探针的更新、卸载分开，只显示本机实际装了的角色：
+	// 面板主机不会看到"更新/卸载探针"，纯子机也不会看到面板相关项。
+	if agentInstalled {
+		items = append(items, menuItem{label: "更新探针程序（Agent）", run: func(*bufio.Reader) int { updateAgent(); return 0 }})
+	}
+	if hub {
+		items = append(items, menuItem{label: "更新面板（Hub 主程序）", run: updateHub})
+		items = append(items, menuItem{label: "重置唯一管理员账户", run: resetAdminFromMenu})
+	}
+	items = append(items, menuItem{label: "查看最近日志", run: func(*bufio.Reader) int { showLogs(); return 0 }})
+	if hub {
+		items = append(items, menuItem{label: "卸载面板（可选连数据库一起删除）", run: uninstallHub})
+	}
+	if agentInstalled {
+		items = append(items, menuItem{label: "卸载 Agent", run: uninstallAgent})
+	}
+	items = append(items, menuItem{label: "卸载快捷命令与管理脚本", run: func(*bufio.Reader) int { return uninstallMenuCommand() }})
+	return items
+}
+
 func runMenu() int {
 	reader := bufio.NewReader(os.Stdin)
 	for {
+		items := menuItems()
 		fmt.Println("\nKokoro 管理菜单")
-		fmt.Println("1) 服务状态")
-		fmt.Println("2) 安装信息")
-		fmt.Println("3) 重启服务")
-		fmt.Println("4) 更新探针程序（Hub 主程序请从部署端更新）")
-		if unitInstalled("kokoro-hub") {
-			fmt.Println("5) 重置唯一管理员账户")
+		for i, item := range items {
+			fmt.Printf("%d) %s\n", i+1, item.label)
 		}
-		fmt.Println("6) 查看最近日志")
-		fmt.Println("7) 卸载面板（可选连数据库一起删除）")
-		fmt.Println("8) 卸载 Agent")
-		fmt.Println("9) 卸载快捷命令与管理脚本")
 		fmt.Println("0) 退出")
 		fmt.Print("请选择：")
 		line, err := reader.ReadString('\n')
@@ -155,40 +185,21 @@ func runMenu() int {
 		}
 		choice := strings.TrimSpace(line)
 		switch choice {
-		case "1":
-			showServiceStatus()
-		case "2":
-			showInstallInfo()
-		case "3":
-			restartServices()
-		case "4":
-			updateAgent()
-		case "5":
-			if unitInstalled("kokoro-hub") && resetAdminFromMenu(reader) != 0 {
-				return 1
-			}
-		case "6":
-			showLogs()
-		case "7":
-			if uninstallHub(reader) != 0 {
-				return 1
-			}
-		case "8":
-			if uninstallAgent(reader) != 0 {
-				return 1
-			}
-		case "9":
-			if uninstallMenuCommand() != 0 {
-				return 1
-			}
-		case "0", "q", "quit", "exit":
-			return 0
-		default:
+		case "", "q", "quit", "exit":
 			if choice == "" {
 				fmt.Println("请输入菜单编号。")
-			} else {
-				fmt.Println("无效选项，请选择菜单中的编号。")
 			}
+			continue
+		case "0":
+			return 0
+		}
+		index, convErr := strconv.Atoi(choice)
+		if convErr != nil || index < 1 || index > len(items) {
+			fmt.Println("无效选项，请选择菜单中的编号。")
+			continue
+		}
+		if rc := items[index-1].run(reader); rc != 0 {
+			return 1
 		}
 	}
 }
@@ -255,7 +266,7 @@ func updateAgent() {
 	if _, err := os.Stat(installer); err != nil {
 		fmt.Println("未找到探针安装脚本。请在节点上重新运行 Hub 提供的安装命令。")
 		if unitInstalled("kokoro-hub") {
-			fmt.Println("Hub 主程序的版本更新请在部署端运行 scripts/deploy.ps1。")
+			fmt.Println("本机是面板主机；更新 Hub 主程序请用菜单里的「更新面板」。")
 		}
 		return
 	}
@@ -271,6 +282,22 @@ func updateAgent() {
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("更新探针失败：%v\n", err)
 	}
+}
+
+// updateHub 更新 Hub 主程序本体。与 updateAgent 完全分开：这里只动
+// Hub 二进制和 kokoro-hub 服务，不碰 Agent、也不碰 /var/lib/kokoro 数据。
+func updateHub(reader *bufio.Reader) int {
+	if !unitInstalled("kokoro-hub") {
+		fmt.Println("未检测到 Kokoro 面板服务。")
+		return 0
+	}
+	binaryPath, _ := installedHubPaths()
+	updater := newHubUpdater(binaryPath, Version, reader, os.Stdout)
+	if err := updater.Run(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "更新面板失败：%v\n", err)
+		return 1
+	}
+	return 0
 }
 
 const maxInstallerSize = 2 << 20
