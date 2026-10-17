@@ -317,7 +317,7 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 		v.ThemeShareURL = v.SiteURL + "/theme.json"
 	}
 	// 自带壁纸的主题包与内置主题一样，使用自己的背景；站点壁纸作为后备。
-	if !builtinWallpaperTheme(m.ID) && !hasPackagedWallpaper(m) {
+	if !themeProvidesOwnWallpaper(m) {
 		v.WallpaperCSS = template.CSS(h.wallpaperCSS())
 	}
 	// 访客选的不是站点默认 → 他需要一条"回到默认"的出路。
@@ -348,18 +348,24 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 	return v
 }
 
-func builtinWallpaperTheme(id string) bool {
-	switch id {
-	case "kokoro.simple", "kokoro.paper", "kokoro.midnight", "kokoro.mist":
-		return true
-	default:
+// themeProvidesOwnWallpaper 判断主题是否自带壁纸 —— 只有自带时，站点壁纸才让位。
+//
+// 判据是主题自己的 --kokoro-bg-image 有没有指向包内资源（/_theme-assets/），
+// 而不是写死的主题 ID 名单：kokoro.simple 的 token 是 none（它并不自带壁纸），
+// 却被那份名单当成自带，于是站点壁纸被抑制、主题自己又没图 —— 后台设了壁纸，
+// 一切到简洁主题背景全空。按 token 判断就不会再有"改了 token 忘了同步名单"。
+//
+// 资源存不存在按来源区分：内置主题的图由二进制 embed 提供，看 token 就够；
+// 导入主题必须真的带着包文件，否则那个 /_theme-assets/ 是 404，
+// 应当退回站点壁纸，而不是留一块空白（见 theme_store.go 的包元数据还原）。
+func themeProvidesOwnWallpaper(m *theme.Manifest) bool {
+	if m == nil {
 		return false
 	}
-}
-
-func hasPackagedWallpaper(m *theme.Manifest) bool {
-	if m == nil || m.Package == nil || len(m.Package.Files) == 0 {
-		return false
+	if m.Source != "builtin" && m.Source != "builtin-modified" {
+		if m.Package == nil || len(m.Package.Files) == 0 {
+			return false
+		}
 	}
 	for _, tokens := range []map[string]string{m.Tokens, m.TokensDark} {
 		if strings.Contains(tokens["--kokoro-bg-image"], "/_theme-assets/") {

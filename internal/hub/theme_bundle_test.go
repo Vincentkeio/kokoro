@@ -558,6 +558,44 @@ func TestDeleteThemeRemovesFromStore(t *testing.T) {
 	}
 }
 
+// TestBuiltinThemeWallpaperFollowsItsToken 盯的是「内置主题该不该拿站点壁纸」。
+//
+// 判据必须来自主题自己的 --kokoro-bg-image，而不是写死的主题 ID 名单：
+// kokoro.simple 的 token 是 none（它并不自带壁纸），却被那份名单当成自带，
+// 于是站点壁纸被抑制、主题自己又没有图 —— 后台设了壁纸，一切到简洁主题背景全空。
+func TestBuiltinThemeWallpaperFollowsItsToken(t *testing.T) {
+	dir := t.TempDir()
+	st := newStoreOn(t, dir)
+	h := newHubOn(t, st, dir)
+	if err := st.SetSetting(settingWallpaperKind, "url"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSetting(settingWallpaperURL, "https://cdn.example.com/site.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	// 自带壁纸的三个内置主题：站点壁纸要让位，不该注入。
+	for _, id := range []string{"kokoro.paper", "kokoro.mist", "kokoro.midnight"} {
+		m := h.themes.Get(id)
+		if m == nil {
+			t.Fatalf("内置主题 %s 未注册", id)
+		}
+		if v := h.buildThemeView(req, m); v.WallpaperCSS != "" {
+			t.Errorf("%s 自带壁纸，站点壁纸不该注入: %s", id, v.WallpaperCSS)
+		}
+	}
+
+	// 简洁主题的 token 是 none —— 它不该被算成自带壁纸，站点壁纸必须注入。
+	m := h.themes.Get("kokoro.simple")
+	if m == nil {
+		t.Fatal("内置简洁主题未注册")
+	}
+	if v := h.buildThemeView(req, m); v.WallpaperCSS == "" {
+		t.Error("简洁主题没拿到站点壁纸 —— 背景会是空的")
+	}
+}
+
 // ---- 极简 zip 写入辅助 ----
 
 // zipEntries 按给定条目造一个 zip 字节流。键是条目名，值是内容。

@@ -188,3 +188,36 @@ func TestWallpaperPanelOnThemePage(t *testing.T) {
 		t.Error("壁纸面板缺少填 URL 的输入框")
 	}
 }
+
+// TestWallpaperURLFormIsUrlencoded 盯的是一个只有真实浏览器才暴露的坑。
+//
+// 填地址那个表单没有 enctype，浏览器按 application/x-www-form-urlencoded 发；
+// 端点以前无条件 ParseMultipartForm，ErrNotMultipart 被当成"图太大"，
+// 于是"填地址"永远存不进去、还弹一条牛头不对马嘴的提示。
+//
+// 注意：本文件里的 wallpaperPost 桩**总是**发 multipart，所以它测不出这个 bug ——
+// 这条测试必须按真实表单的编码发请求。
+func TestWallpaperURLFormIsUrlencoded(t *testing.T) {
+	h, st := newThemeTestHub(t)
+	ck := wallpaperCookies(t, h, st)
+
+	// 手写编码，和 <form> 实际发出的 body 一致。
+	body := "action=url&wallpaper_url=https%3A%2F%2Fcdn.example.com%2Fbg.jpg"
+	req := httptest.NewRequest(http.MethodPost, "/admin/wallpaper", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, c := range ck {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	h.mux.ServeHTTP(rec, req)
+
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "wperr=") {
+		t.Fatalf("urlencoded 填地址不该报错，实际 Location=%q", loc)
+	}
+	if kind := h.wallpaperKind(); kind != "url" {
+		t.Fatalf("URL 壁纸没存下来，kind=%q", kind)
+	}
+	if css := h.wallpaperCSS(); !strings.Contains(css, "cdn.example.com") {
+		t.Fatalf("注入的 CSS 里没有那个地址：%q", css)
+	}
+}

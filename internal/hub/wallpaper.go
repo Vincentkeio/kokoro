@@ -127,6 +127,8 @@ func (h *Hub) wallpaperFor(errCode string) wallpaperView {
 		v.Err = "只支持 png / jpg / webp / gif。svg 不能用：它是唯一能在图片位置执行脚本的格式。"
 	case "big":
 		v.Err = "图太大了，上限 6 MB。"
+	case "form":
+		v.Err = "表单没解析成功，请重试。"
 	case "file":
 		v.Err = "没选到文件。"
 	case "save":
@@ -174,9 +176,23 @@ func (h *Hub) handleAdminWallpaper(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxWallpaperBytes+(1<<20))
-	if err := r.ParseMultipartForm(maxWallpaperBytes + (1 << 20)); err != nil {
-		http.Redirect(w, r, "/admin?wperr=big#themes", http.StatusSeeOther)
-		return
+	// ⚠️ 这个端点有两种编码：本地上传是 multipart，填地址/清除是
+	// application/x-www-form-urlencoded。以前无条件 ParseMultipartForm，
+	// urlencoded 请求会拿到 ErrNotMultipart，却被当成"图太大" ——
+	// 于是"填地址"永远存不进去，还弹一条牛头不对马嘴的提示。
+	// 反过来也不能一律 ParseForm：那样 multipart 的 body 根本不会被读。
+	// 按 Content-Type 分开走。
+	switch {
+	case strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data"):
+		if err := r.ParseMultipartForm(maxWallpaperBytes + (1 << 20)); err != nil {
+			http.Redirect(w, r, "/admin?wperr=big#themes", http.StatusSeeOther)
+			return
+		}
+	default:
+		if err := r.ParseForm(); err != nil {
+			http.Redirect(w, r, "/admin?wperr=form#themes", http.StatusSeeOther)
+			return
+		}
 	}
 
 	switch r.FormValue("action") {
