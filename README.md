@@ -16,6 +16,10 @@ Kokoro 是一个用于管理多台 VPS 的主控面板与轻量探针。Hub 部�
 - 按目标容量增加节点 SWAP；不支持减少 SWAP。
 - Agent 只接受预先定义的结构化指令，不执行 Hub 下发的任意 Shell 命令或脚本。
 
+## 社区与反馈
+
+TG 群组：[Kokoro Panel](https://t.me/kokoropanel)
+
 ## 部署
 
 ### Hub 主机
