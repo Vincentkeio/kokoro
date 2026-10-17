@@ -13,14 +13,30 @@
   padding: var(--s4);
   display: flex; flex-direction: column; gap: var(--s2);
   position: relative;
-  transition: border-color var(--t) var(--ease), transform var(--t) var(--ease);
+  transition: border-color var(--t) var(--ease), background-color var(--t) var(--ease),
+    box-shadow var(--t) var(--ease), transform 140ms cubic-bezier(.2,.75,.25,1);
+  cursor: pointer;
 }
 .th-card:hover { transform: translateY(-2px); }
 .th-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-/* 「选中」= 后台正在给这套设壁纸（点卡片切换），**不等于**启用：
-   用左侧色条区分，别和右上角那个「使用中」徽标混成一回事。 */
-.th-card.sel { border-color: color-mix(in srgb, var(--accent) 52%, var(--line)); box-shadow: inset 3px 0 0 var(--accent); }
-.th-card.sel .th-name b::after { content: "· 设置壁纸中"; color: var(--accent); font-size: 11px; font-weight: 500; margin-left: 6px; }
+/* 「选中」表示当前正在编辑壁纸；用整卡浅底、清晰外框与角标表达，
+   避免与右上角「使用中」状态混淆。 */
+.th-card.sel {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 5px 16px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.th-card:active { transform: scale(.985); }
+.th-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.th-card.sel .th-swatch { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.th-pick-state {
+  display: none; align-self: flex-start; align-items: center; gap: 6px;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, var(--panel));
+  border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 600;
+}
+.th-card.sel .th-pick-state { display: inline-flex; }
+.th-pick-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .th-swatch { display: flex; gap: 0; height: 34px; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--line); }
 .th-swatch i { flex: 1; }
 .th-name { display: flex; align-items: baseline; gap: var(--s2); }
@@ -92,6 +108,10 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
   }
   .th-card { flex: 0 0 260px; scroll-snap-align: start; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .th-card { transition: none; }
+  .th-card:hover, .th-card:active { transform: none; }
+}
 </style>
   <section class="panel" data-atab="themes">
     <h3>主题</h3>
@@ -106,7 +126,9 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
     <div class="th-grid">
       {{range .Themes}}
       <article class="th-card{{if .Active}} on{{end}}{{if .Selected}} sel{{end}}"
-               data-pick="/admin?theme={{.ID}}#themes">
+               data-pick="/admin?theme={{.ID}}#themes" tabindex="0"
+               aria-label="选择{{.Name}}主题以编辑壁纸">
+        {{if .Selected}}<span class="th-pick-state" aria-current="true">正在编辑</span>{{end}}
         {{if .Active}}<span class="th-on">使用中</span>{{end}}
         <div class="th-swatch" aria-hidden="true">
           {{range .Swatch}}<i style="background:{{.}}"></i>{{end}}
@@ -156,6 +178,13 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
       if (ev.target.closest('a, button, input, select, textarea, summary, label')) return;
       var card = ev.target.closest('.th-card');
       if (!card) return;
+      var pick = card.getAttribute('data-pick');
+      if (pick) location.href = pick;
+    });
+    grid.addEventListener('keydown', function (ev) {
+      var card = ev.target.closest('.th-card');
+      if (!card || ev.target !== card || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+      ev.preventDefault();
       var pick = card.getAttribute('data-pick');
       if (pick) location.href = pick;
     });

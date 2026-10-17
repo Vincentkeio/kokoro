@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "kokoro.simple",
   "name": "简洁",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "以雾灰底色、石墨文字与冷调蓝色强调构成的清爽运维界面。",
   "author": "Kokoro",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "default": "light"
   },
   "tokens": {
-    "--kokoro-bg-image": "url(/_theme-assets/kokoro.simple/wallpaper.webp)",
+    "--kokoro-bg-image": "url(/_theme-assets/kokoro.simple/wallpaper.webp?v=1.4.1)",
     "--kokoro-chart-area-opacity": ".12",
     "--kokoro-chart-tooltip-bg": "#263246",
     "--kokoro-space-5": "20px",
