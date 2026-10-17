@@ -97,7 +97,7 @@ go test ./...
 
 运行 `kokoro` 查看命令帮助。主要子命令包括 `serve`（启动 Hub）、`agent`（运行 Agent）和 `passwd`（管理唯一管理员账户）。
 
-维护者可使用 [`scripts/build-release.ps1`](scripts/build-release.ps1) 构建 Linux amd64/arm64 发布资产，并将生成的 `dist/release/` 文件上传至对应 GitHub Release。服务器部署和更新流程应在本地维护，避免将主机地址、SSH 配置或线上节点信息提交到仓库。
+维护者可用 [`scripts/build-release.ps1`](scripts/build-release.ps1) 在本地构建 Linux amd64/arm64 发布资产（输出到 `dist/release/`），用于部署到自有服务器；推送 `v*` 标签会触发 GitHub Actions 自动构建并创建对应 Release。服务器部署和更新流程应在本地维护，避免将主机地址、SSH 配置或线上节点信息提交到仓库。
 
 ## 文档
 
