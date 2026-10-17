@@ -658,16 +658,22 @@ Hub 只肯下发这些类型，其余（**尤其 `.svg`**）一律 404：
 
 ### 8.1 使用
 
-后台 `/admin/themes` → 「一键获取别人的皮肤」→ 填地址。支持三种地址：
+后台 `/admin/themes` → 「一键获取别人的皮肤」→ 填地址。支持以下地址：
 
 - **GitHub 链接**（推荐）：`https://github.com/user/repo`、
   子目录 `https://github.com/user/repo/tree/main/themes/dark`、
   或单文件 `https://github.com/user/repo/blob/main/theme.json`
 - 对方站点地址：`https://vps.example.com`
 - 清单完整地址：`https://vps.example.com/theme.json`
+- 访客复制的完整包地址：`https://vps.example.com/theme-bundle/<主题ID>`
+
+站点和清单链接可以带查询参数，获取时会保留参数并正确拼接端点路径。
 
 抓下来就**存在你自己的面板里**，此后与来源断开关联：对方改了他的主题，
 你这边不会跟着变（来源地址会记在清单的 `sourceUrl` 里，只作追溯）。
+
+一键获取遇到已安装的同 ID 主题会提示「已存在」，保留本地修改，不自动启用或覆盖。
+需要明确替换内容时，请使用后台「导入主题」上传文件。
 
 **填站点地址时**，Hub 的取件顺序：
 

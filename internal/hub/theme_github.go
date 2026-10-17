@@ -119,36 +119,20 @@ func (h *Hub) grabGitHubTheme(src string, target githubThemeTarget) (*theme.Mani
 
 	// 目录：先找 theme.json。
 	if raw, err := fetch(target.Dir + "/theme.json"); err == nil {
-		m, err := h.importManifest(raw, src)
-		if err != nil {
-			return nil, "", err
-		}
-		return m, "manifest", nil
+		return h.importGrabManifest(raw, src)
 	}
 	// 再找仓库里的主题包（约定名 theme.kokoro-theme）。
 	raw, err := fetch(target.Dir + "/theme" + theme.PackageExt)
 	if err != nil {
 		return nil, "", fmt.Errorf("该目录下既没有 theme.json，也没有 theme%s", theme.PackageExt)
 	}
-	m, err := h.installBundle(raw, src)
-	if err != nil {
-		return nil, "", err
-	}
-	return m, "bundle", nil
+	return h.installGrabBundle(raw, src)
 }
 
 // installFetchedTheme 按内容判断抓来的是清单还是包，分别走对应安装路径。
 func (h *Hub) installFetchedTheme(raw []byte, src string) (*theme.Manifest, string, error) {
 	if len(raw) >= 2 && raw[0] == 'P' && raw[1] == 'K' {
-		m, err := h.installBundle(raw, src)
-		if err != nil {
-			return nil, "", err
-		}
-		return m, "bundle", nil
+		return h.installGrabBundle(raw, src)
 	}
-	m, err := h.importManifest(raw, src)
-	if err != nil {
-		return nil, "", err
-	}
-	return m, "manifest", nil
+	return h.importGrabManifest(raw, src)
 }

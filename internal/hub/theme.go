@@ -831,12 +831,12 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 	fetch := themeFetcher(newThemeGrabClient(themeFetchTimeout, h.themeFetchPolicy()))
 
 	// 第一步：探当前生效主题的清单与 ID。
-	if raw, err := fetch(base + "/theme.json"); err == nil && len(raw) > 0 {
+	if raw, err := fetch(themeEndpointURL(base, "/theme.json")); err == nil && len(raw) > 0 {
 		var probe struct {
 			ID string `json:"id"`
 		}
 		if json.Unmarshal(raw, &probe) == nil && theme.ValidID(probe.ID) {
-			pkg, perr := fetch(base + "/theme-bundle/" + probe.ID)
+			pkg, perr := fetch(themeEndpointURL(base, "/theme-bundle/"+probe.ID))
 			if perr != nil {
 				// 没有包端点是很常见的情况（对方只开放了清单），退回即可。
 				log.Printf("[theme] %s 没有提供主题包，按清单方式获取: %v", base, perr)
@@ -858,7 +858,8 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 	}
 
 	// 用户可能直接填了具体的文件地址，那就不用再拼。
-	if strings.HasSuffix(base, ".json") {
+	baseURL, _ := url.Parse(base)
+	if strings.HasSuffix(baseURL.Path, ".json") {
 		raw, err := fetch(base)
 		if err != nil {
 			return nil, "", err
@@ -869,7 +870,7 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 		}
 		return m, kind, nil
 	}
-	raw, err := fetch(base + "/theme.json")
+	raw, err := fetch(themeEndpointURL(base, "/theme.json"))
 	if err != nil {
 		return nil, "", err
 	}
@@ -926,8 +927,9 @@ func normalizeThemeURL(src string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !strings.HasSuffix(u, ".json") {
-		u += "/theme.json"
+	parsed, _ := url.Parse(u)
+	if !strings.HasSuffix(parsed.Path, ".json") {
+		u = themeEndpointURL(u, "/theme.json")
 	}
 	return u, nil
 }
@@ -936,15 +938,27 @@ func normalizeThemeURL(src string) (string, error) {
 //
 // 允许三种写法：站点根、/theme.json 全路径、.kokoro-theme 包全路径。
 func normalizeThemeBase(src string) (string, error) {
-	u := strings.TrimSpace(src)
-	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-		return "", fmt.Errorf("请填写 http(s) 开头的地址")
+	u, err := safeThemeURL(src)
+	if err != nil {
+		return "", err
 	}
-	u = strings.TrimRight(u, "/")
+	u.Path = strings.TrimRight(u.Path, "/")
 	for _, suf := range []string{"/theme.json", theme.PackageExt} {
-		u = strings.TrimSuffix(u, suf)
+		u.Path = strings.TrimSuffix(u.Path, suf)
 	}
-	return strings.TrimRight(u, "/"), nil
+	u.Path = strings.TrimRight(u.Path, "/")
+	u.RawPath = ""
+	u.Fragment = ""
+	return u.String(), nil
+}
+
+// Append endpoint paths before the query, so copied sharing parameters remain
+// query parameters instead of swallowing /theme.json or /theme-bundle/<id>.
+func themeEndpointURL(base, endpoint string) string {
+	u, _ := url.Parse(base) // base has already passed normalizeThemeBase.
+	u.Path = strings.TrimRight(u.Path, "/") + endpoint
+	u.RawPath = ""
+	return u.String()
 }
 
 // handleThemeManifest 公开当前生效主题的 theme.json。
