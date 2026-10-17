@@ -55,11 +55,10 @@ type hubAsset struct {
 
 // hubRelease 是 GitHub Releases API 返回的一条已发布版本。
 type hubRelease struct {
-	Tag         string     `json:"tag_name"`
-	Draft       bool       `json:"draft"`
-	Prerelease  bool       `json:"prerelease"`
-	PublishedAt time.Time  `json:"published_at"`
-	Assets      []hubAsset `json:"assets"`
+	Tag        string     `json:"tag_name"`
+	Draft      bool       `json:"draft"`
+	Prerelease bool       `json:"prerelease"`
+	Assets     []hubAsset `json:"assets"`
 }
 
 // hubReleaseSource 抽象「列出发布版本 / 下载资产」，测试可用桩替换。
@@ -257,7 +256,7 @@ func (u *hubUpdater) Run(ctx context.Context) error {
 		return err
 	}
 
-	if !releaseUpdateAvailable(rel, u.currentVersion, releases) {
+	if compareKokoroVersion(rel.Tag, u.currentVersion) <= 0 {
 		fmt.Fprintln(u.out, "当前面板已是最新版本，没有可用更新。")
 		return nil
 	}
@@ -342,38 +341,18 @@ func (u *hubUpdater) Run(ctx context.Context) error {
 	return nil
 }
 
-// PublishedAt is the ordering authority, independent of a release's naming
-// convention or later edits to its description. Keep API order for ties.
+// chooseRelease uses the version order understood by older Kokoro installations.
 func (u *hubUpdater) chooseRelease(releases []hubRelease) (hubRelease, error) {
 	if len(releases) == 0 {
 		return hubRelease{}, errors.New("GitHub 上没有可用的已发布版本")
 	}
 	chosen := releases[0]
 	for _, rel := range releases[1:] {
-		if rel.PublishedAt.After(chosen.PublishedAt) {
+		if compareKokoroVersion(rel.Tag, chosen.Tag) > 0 {
 			chosen = rel
 		}
 	}
 	return chosen, nil
-}
-
-func releaseUpdateAvailable(latest hubRelease, current string, releases []hubRelease) bool {
-	normalize := func(tag string) string {
-		return strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(tag), "v"), "V")
-	}
-	if normalize(latest.Tag) == normalize(current) {
-		return false
-	}
-	if !latest.PublishedAt.IsZero() {
-		for _, release := range releases {
-			if normalize(release.Tag) == normalize(current) && !release.PublishedAt.IsZero() {
-				return latest.PublishedAt.After(release.PublishedAt)
-			}
-		}
-		return true // Locally built/unlisted versions can follow the public release.
-	}
-	// Compatibility with release sources which omit GitHub's timestamp field.
-	return compareKokoroVersion(latest.Tag, current) > 0
 }
 
 func (u *hubUpdater) restartAndCheck(ctx context.Context) error {

@@ -140,19 +140,19 @@ func TestHubAssetURLsReportsMissingAssets(t *testing.T) {
 	}
 }
 
-func TestChooseReleaseDefaultsToNewestPublished(t *testing.T) {
+func TestChooseReleaseDefaultsToHighestVersion(t *testing.T) {
 	releases := []hubRelease{
-		{Tag: "v0.1.3-preview.31", Prerelease: true, PublishedAt: time.Unix(100, 0)},
-		{Tag: "alpha1.0", Prerelease: true, PublishedAt: time.Unix(200, 0)},
-		{Tag: "v0.1.2", PublishedAt: time.Unix(50, 0)},
+		{Tag: "v0.1.3-preview.9", Prerelease: true},
+		{Tag: "v0.1.3-preview.31", Prerelease: true},
+		{Tag: "v0.1.2"},
 	}
 	u := &hubUpdater{currentVersion: "v0.1.2", out: io.Discard, assumeYes: true}
 	got, err := u.chooseRelease(releases)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Tag != "alpha1.0" {
-		t.Fatalf("默认应选最新已发布（含预览）版本，得到 %s", got.Tag)
+	if got.Tag != "v0.1.3-preview.31" {
+		t.Fatalf("应选择编号最高的兼容版本，得到 %s", got.Tag)
 	}
 	if _, err := u.chooseRelease(nil); err == nil {
 		t.Error("没有可用版本时应报错")
