@@ -46,6 +46,21 @@ const bars = render('M200 25 L210 20', 'bar');
 assert.equal((bars.match(/<rect/g) || []).length, 2);
 assert.ok(!bars.includes('x="0.'), 'late samples must not be stretched across the whole chart');
 
+// Memory must use RAM capacity across low/high usage windows, without rounding
+// it to a traffic-style peak. Unknown capacity retains the automatic fallback.
+const detail = source.slice(source.indexOf('  function niceCeil(v)'), source.indexOf('  // ---- 点赞 / 点踩 ----'));
+vm.runInContext(detail, context);
+let detailScale;
+context.drawChartAxes = (_, scale) => { detailScale = scale; };
+const ram = 487272448;
+for (const used of [160 * 1024 * 1024, 400 * 1024 * 1024]) {
+  const memory = { innerHTML: '', getAttribute: () => String(ram) };
+  context.drawSpark(memory, [used, used], 'memory');
+  assert.equal(detailScale, ram, 'memory scale must equal actual RAM capacity');
+}
+context.drawSpark({ innerHTML: '', getAttribute: () => '0' }, [100, 120], 'bytes');
+assert.equal(detailScale, 200, 'unknown RAM capacity must retain automatic scaling');
+
 const update = source.slice(source.indexOf('  function setCardRange(card, select, key)'), source.indexOf("  document.querySelectorAll('[data-home-range]')"));
 vm.runInContext("var allowedRanges=['1h','6h','12h','1d','7d','30d']; var nodeRangePrefix='test.';" + update, context);
 const oldSvg = { childNodes: [{ tagName: 'rect' }, { tagName: 'ellipse' }, { tagName: 'path' }], replaceChildren(...nodes) { this.childNodes = nodes; } };

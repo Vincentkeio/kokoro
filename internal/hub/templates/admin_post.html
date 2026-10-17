@@ -56,11 +56,9 @@
 
   {{if .Saved}}<p class="saved-tip">已保存。详情页 <a href="/n/{{.Node.Slug}}" target="_blank" rel="noopener">/n/{{.Node.Slug}}</a> 已更新。</p>{{end}}
 
-  {{/* 每台小鸡一篇文章：node_profile 以 node_id 为主键，存的就是这一篇。
-       不需要"新建/删除"，写就是这篇、清空就是删掉。 */}}
   <p class="post-hint">每台小鸡只有一篇文章，写在这里就是它的介绍。支持 Markdown：
     标题、列表、表格、引用、代码块和图片。图片使用 <code>![说明](图片直链)</code>，也可以上传、粘贴或拖入图片。
-    正文留空即表示不显示文章。</p>
+    </p>
 
   <form class="post-form" method="post" action="/admin/nodes">
     <input type="hidden" name="action" value="save_profile">
@@ -145,7 +143,7 @@
 
 </main>
 
-<script src="/static/app.js?v=152"></script>
+<script src="/static/app.js?v=153"></script>
 </body>
 </html>
 {{end}}

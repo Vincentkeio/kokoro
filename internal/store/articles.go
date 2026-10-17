@@ -136,6 +136,35 @@ func (s *Store) DeleteArticle(id string) error {
 	return err
 }
 
+// DeleteNodeArticles removes article records and their legacy profile copy in
+// one transaction so deleted content cannot reappear in the editor.
+func (s *Store) DeleteNodeArticles(nodeID string) (int64, error) {
+	if strings.TrimSpace(nodeID) == "" {
+		return 0, errors.New("文章缺少所属节点")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("开始删除文章事务失败: %w", err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`DELETE FROM node_articles WHERE node_id = ?`, nodeID)
+	if err != nil {
+		return 0, fmt.Errorf("删除文章失败: %w", err)
+	}
+	deleted, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("读取删除结果失败: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE node_profile SET summary = '', content_md = '', updated_at = ? WHERE node_id = ?`, nowMS(), nodeID); err != nil {
+		return 0, fmt.Errorf("清理文章兼容数据失败: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("提交文章删除失败: %w", err)
+	}
+	return deleted, nil
+}
+
 // autoSummary 没写摘要时，从正文里自动截一段。
 //
 // 为什么要有：列表页只显示标题 + 摘要，不渲染全文（可能是几万字）。

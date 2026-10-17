@@ -2,9 +2,8 @@ package hub
 
 // 后台的「文章」编辑页：每台小鸡一篇文章。
 //
-// 数据落在 node_profile.content_md（Markdown），详情页用 md 模板函数渲染。
-// 之所以天然就是「一台一篇」：node_profile 以 node_id 为主键，
-// SaveProfile 是 upsert，不会出现第二篇。
+// 正文存储在 node_articles，通过 SaveArticle 更新每台节点的一篇文章。
+// node_profile 保留旧版兼容副本，删除文章时一并清理。
 
 import (
 	"log"

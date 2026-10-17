@@ -210,6 +210,71 @@ func TestAdminPostSaveKeepsStats(t *testing.T) {
 	}
 }
 
+// TestAdminArticleDeletion verifies the admin action removes both article copies
+// without touching renewal data, visit counters or another node's article.
+func TestAdminArticleDeletion(t *testing.T) {
+	h, st := newTestHub(t)
+	n := mkNode(t, st, "删除文章节点", "JP", "日本", "")
+	other := mkNode(t, st, "保留文章节点", "SG", "新加坡", "")
+	if err := st.SaveProfile(&model.NodeProfile{
+		NodeID: n.ID, Summary: "待删除摘要", ContentMD: "待删除兼容正文",
+		Price: "99 CNY / 年", ExpireAt: "2027-03-01", Cover: "/uploads/cover.png", PV: 12, UV: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range []*model.Node{n, other} {
+		if err := st.SaveArticle(&model.Article{NodeID: node.ID, Title: "节点文章", ContentMD: "待删除文章正文"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cookies := loginAsAdmin(t, h)
+	code, before := getWithCookies(h, "/admin", cookies)
+	if code != http.StatusOK || !strings.Contains(before, `value="delete_article"`) {
+		t.Fatalf("删除入口未渲染，HTTP %d", code)
+	}
+	post := func(nodeID string, authenticated bool) *httptest.ResponseRecorder {
+		form := url.Values{"action": {"delete_article"}, "id": {nodeID}}
+		req := httptest.NewRequest(http.MethodPost, "/admin/nodes", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if authenticated {
+			for _, cookie := range cookies {
+				req.AddCookie(cookie)
+			}
+		}
+		rec := httptest.NewRecorder()
+		h.mux.ServeHTTP(rec, req)
+		return rec
+	}
+	post(other.ID, false)
+	if count, err := st.CountArticles(other.ID); err != nil || count != 1 {
+		t.Fatalf("未登录请求改动了文章：count=%d err=%v", count, err)
+	}
+	rec := post(n.ID, true)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin?article_deleted=1#nodes" {
+		t.Fatalf("删除返回异常：HTTP %d Location=%q", rec.Code, rec.Header().Get("Location"))
+	}
+	if count, err := st.CountArticles(n.ID); err != nil || count != 0 {
+		t.Fatalf("文章未删除：count=%d err=%v", count, err)
+	}
+	if count, err := st.CountArticles(other.ID); err != nil || count != 1 {
+		t.Fatalf("误删其他节点文章：count=%d err=%v", count, err)
+	}
+	profile, err := st.GetProfile(n.ID)
+	if err != nil || profile == nil {
+		t.Fatalf("读取节点资料失败：%v", err)
+	}
+	if profile.Summary != "" || profile.ContentMD != "" {
+		t.Fatal("旧文章内容仍留在兼容字段中")
+	}
+	if profile.Price != "99 CNY / 年" || profile.ExpireAt != "2027-03-01" || profile.Cover != "/uploads/cover.png" || profile.PV != 12 || profile.UV != 7 {
+		t.Fatalf("删除文章改动了节点资料：%+v", profile)
+	}
+	_, editor := getWithCookies(h, "/admin/post?node="+url.QueryEscape(n.ID), cookies)
+	if strings.Contains(editor, "待删除") {
+		t.Fatal("已删除文章重新出现在编辑器中")
+	}
+}
+
 // TestAdminPostAccessControl 未登录不能看别人的文章编辑器。
 func TestAdminPostAccessControl(t *testing.T) {
 	h, st := newTestHub(t)

@@ -183,11 +183,11 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     });
   }
 
-  function fmtSize(f) {
+  function fmtSize(f, digits) {
     var u = ['', 'K', 'M', 'G', 'T', 'P'], i = 0;
     while (f >= 1024 && i < u.length - 1) { f /= 1024; i++; }
     if (i === 0) return Math.round(f) + ' B';
-    return (f >= 100 ? f.toFixed(0) : f.toFixed(1)) + ' ' + u[i] + 'B';
+    return (typeof digits === 'number' ? f.toFixed(digits) : f >= 100 ? f.toFixed(0) : f.toFixed(1)) + ' ' + u[i] + 'B';
   }
   function fmtRate(n) { return n == null ? '-' : fmtSize(n) + '/s'; }
   function pct(used, total) {
@@ -315,7 +315,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
 
   function fmtAxisValue(v, unit) {
     if (unit === 'pct') return Math.round(v) + '';
-    return fmtSize(v);
+    return fmtSize(v, unit === 'memory' ? 1 : undefined);
   }
 
   // __POINTS__ 的 t 是 Unix 毫秒（服务端直接塞 store 的 ts），历史上有别处
@@ -333,8 +333,9 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     var w = 300, h = 60, pad = 2;
     var dataMax = 0;
     for (var i = 0; i < values.length; i++) if (values[i] > dataMax) dataMax = values[i];
-    // CPU 固定 0-100 刻度；其余序列向上取整到 1/2/4/8×10^k，保证四等分刻度都是干净数字。
-    var scaleMax = unit === 'pct' ? 100 : niceCeil(dataMax);
+    // CPU 固定为 100%；内存使用实际 RAM 容量，网络速率随历史峰值缩放。
+    var fixedMax = Number(svg.getAttribute('data-scale-max'));
+    var scaleMax = unit === 'pct' ? 100 : Number.isFinite(fixedMax) && fixedMax > 0 ? fixedMax : niceCeil(dataMax);
     var step = (w - pad * 2) / (values.length - 1);
     var curvePoints = [];
     for (var j = 0; j < values.length; j++) {
@@ -394,7 +395,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
         if (kind === 'up') return p.up || 0;
         return p.down || 0;
       });
-      drawSpark(svgs[i], vals, kind === 'cpu' ? 'pct' : 'bytes');
+      drawSpark(svgs[i], vals, kind === 'cpu' ? 'pct' : kind === 'mem' ? 'memory' : 'bytes');
     }
   }
 

@@ -106,6 +106,7 @@
       <a class="btn ghost task-list-link" href="/admin/tasks">任务列表</a>
     </form>
     {{if .GroupMsg}}<p class="admin-task-feedback" role="status">{{.GroupMsg}}</p>{{end}}
+    {{if .ArticleDeleted}}<p class="ok" role="status">文章已删除。</p>{{end}}
     <section class="group-manager" aria-labelledby="group-manager-title">
       <div class="group-manager-heading">
         <div>
@@ -264,7 +265,14 @@
             </form>
             <a class="btn small ghost" href="/admin/tasks?node={{.ID}}">测试</a>
             <button class="btn small ghost" type="button" data-swap-open data-node-id="{{.ID}}" data-node-name="{{.Name}}">调整 SWAP</button>
-            <a class="btn small ghost" href="/admin/post?node={{.ID}}">文章</a>
+            <div class="admin-article-actions">
+              <a class="btn small ghost" href="/admin/post?node={{.ID}}">编辑文章</a>
+              {{if gt (index $.ArticleCounts .ID) 0}}<form method="post" action="/admin/nodes" onsubmit="return confirm('确认删除「{{.Name}}」的文章？此操作不可撤销。')">
+                <input type="hidden" name="action" value="delete_article">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button class="btn small danger" type="submit">删除文章</button>
+              </form>{{end}}
+            </div>
             <a class="btn small ghost" href="/n/{{.Slug}}">查看</a>
           </div>
         </td>
@@ -674,7 +682,7 @@
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=152"></script>
+<script src="/static/app.js?v=153"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

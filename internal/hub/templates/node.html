@@ -101,7 +101,7 @@
       <div class="chart"><span class="chart-label">内存用量</span>
         <div class="chart-plot">
           <div class="chart-yaxis" data-yaxis aria-hidden="true"></div>
-          <svg class="spark mem" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="mem"></svg>
+          <svg class="spark mem" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="mem" data-scale-max="{{if gt .Latest.Mem.Total 0}}{{.Latest.Mem.Total}}{{else}}{{.Node.MemTotal}}{{end}}"></svg>
         </div>
         <div class="chart-xaxis" data-xaxis aria-hidden="true"></div>
       </div>
@@ -194,7 +194,7 @@
 window.__POINTS__ = [{{range .Points}}{"t":{{.Ts}},"cpu":{{.CPU}},"mu":{{.MemUsed}},"up":{{.NetUp}},"down":{{.NetDown}}},{{end}}];
 window.__SLUG__ = {{.Node.Slug | js}};
 </script>
-<script src="/static/app.js?v=152"></script>
+<script src="/static/app.js?v=153"></script>
 </body>
 </html>
 {{end}}

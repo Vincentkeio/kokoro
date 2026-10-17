@@ -2312,6 +2312,8 @@ body[data-k-theme] .uptime-bar {
 .node-sort-control { display: inline-flex; }
 .node-sort-control input { box-sizing: border-box; width: 66px; height: 34px; padding: 0 7px; text-align: center; font-variant-numeric: tabular-nums; }
 .admin-node-sort .btn { min-height: 34px; padding: 0 9px; }
+.admin-article-actions { display:flex; align-items:center; gap:var(--s2); flex-wrap:nowrap; }
+.admin-article-actions .btn { white-space:nowrap; }
 .renewal-entry { margin-right: 2px; }
 .renewal-entry input { width: 140px; min-width: 0; }
 

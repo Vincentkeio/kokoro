@@ -1082,17 +1082,19 @@ type adminData struct {
 	SiteName string
 	// SelectedID 是后台主题页"正在编辑哪套主题"（点卡片切换，不等于启用）：
 	// 壁纸面板按它取数据，站点默认主题不受影响。
-	SelectedID    string
-	Nodes         []model.Node
-	NodeGroups    []adminNodeGroup
-	Groups        []store.NodeGroup
-	GroupMsg      string
-	SelectedGroup string
-	TaskMsg       string
-	TaskMsgError  bool
-	Tokens        []installToken
-	HubURL        string
-	BootPass      string
+	SelectedID     string
+	Nodes          []model.Node
+	ArticleCounts  map[string]int
+	NodeGroups     []adminNodeGroup
+	Groups         []store.NodeGroup
+	GroupMsg       string
+	ArticleDeleted bool
+	SelectedGroup  string
+	TaskMsg        string
+	TaskMsgError   bool
+	Tokens         []installToken
+	HubURL         string
+	BootPass       string
 
 	Comments []modComment
 	// BuyIntents 是站内消息：访客购买咨询会先保存，再尝试 Telegram / Webhook 推送。
@@ -2387,6 +2389,7 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		nodes = nil
 	}
+	articleCounts, _ := h.store.CountByNode("node_articles", "")
 	// 每台机器的名片（价格 / 到期日）。一次批量查 ——
 	// 节点表里每行都要显示，逐个查就是 N 次往返。
 	profiles, err := h.store.ProfilesByNode()
@@ -2410,8 +2413,10 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 	data := adminData{
 		SiteName:         h.cfg.SiteName,
 		Nodes:            nodes,
+		ArticleCounts:    articleCounts,
 		NodeGroups:       groupAdminNodes(nodes),
 		GroupMsg:         strings.TrimSpace(r.URL.Query().Get("groupmsg")),
+		ArticleDeleted:   r.URL.Query().Get("article_deleted") == "1",
 		SelectedGroup:    strings.TrimSpace(r.URL.Query().Get("group")),
 		TaskMsg:          strings.TrimSpace(r.URL.Query().Get("taskmsg")),
 		TaskMsgError:     r.URL.Query().Get("taskmsg_error") == "1",
@@ -3065,6 +3070,18 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 				http.StatusSeeOther)
 			return
 		}
+	case "delete_article":
+		deleted, err := h.store.DeleteNodeArticles(node.ID)
+		if err != nil {
+			log.Printf("[hub] 删除文章失败 node=%s: %v", node.ID, err)
+			http.Error(w, "删除文章失败，请重试", http.StatusInternalServerError)
+			return
+		}
+		if deleted > 0 {
+			_ = h.store.AddAudit("admin", "article.delete", node.ID, node.Name)
+		}
+		http.Redirect(w, r, "/admin?article_deleted=1#nodes", http.StatusSeeOther)
+		return
 	case "delete":
 		_ = h.store.DeleteNode(node.ID)
 		_ = h.store.AddAudit("admin", "node.delete", node.ID, node.Name)
