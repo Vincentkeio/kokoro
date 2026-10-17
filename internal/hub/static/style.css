@@ -320,6 +320,7 @@ body[data-k-dot="none"] .dot { display: none; }
 
 .card-head { display: flex; align-items: center; gap: var(--s2); }
 .card-head h2 {
+  display: flex; align-items: center;
   margin: 0; font-size: var(--kokoro-font-size-lg, 16px);
   font-weight: var(--kokoro-font-weight-bold, 700);
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
