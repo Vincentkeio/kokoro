@@ -96,3 +96,54 @@ func TestPersistedResultCanReturnAfterLongOutage(t *testing.T) {
 		t.Fatal("late completed result was not saved")
 	}
 }
+
+func TestDeleteNodeRemovesQueuedTasks(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	n := &model.Node{ID: "nd_delete", Name: "Delete me", Online: true}
+	if err := s.CreateNode(n); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateTask(&model.NodeTask{ID: "tk_orphan", NodeID: n.ID, Kind: "bench", Cmd: "test:bench"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteNode(n.ID); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM node_tasks WHERE node_id=?`, n.ID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("节点删除后仍有 %d 条幽灵任务", count)
+	}
+}
+
+func TestOfflineWatchDoesNotOverwriteFreshHeartbeatOrVisibility(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	n := &model.Node{ID: "nd_race", Name: "Race", Online: true, LastSeen: nowMS() - time.Hour.Milliseconds(), Visibility: model.VisibilityPrivate}
+	if err := s.CreateNode(n); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TouchNode(n.ID, nowMS(), ""); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := s.MarkNodeOfflineIfStale(n.ID, nowMS()-time.Minute.Milliseconds(), nowMS()+time.Minute.Milliseconds())
+	if err != nil || changed {
+		t.Fatalf("新心跳不应被过期扫描覆盖：changed=%v err=%v", changed, err)
+	}
+	got, err := s.GetNode(n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Online || got.Visibility != model.VisibilityPrivate {
+		t.Fatalf("在线或可见性被错误覆盖：online=%v visibility=%s", got.Online, got.Visibility)
+	}
+}

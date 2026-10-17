@@ -37,13 +37,20 @@ jobs:
             cp "release/${asset}" "release/${agent_asset}"
             (cd release && sha256sum "$agent_asset" > "${agent_asset}.sha256")
           done
+          cp scripts/install.sh scripts/kokoro-bench.sh release/
+          expected_bench_sha="$(sed -nE 's/^const testToolSHA256 = "([0-9a-f]{64})"$/\1/p' internal/agent/test_command.go)"
+          actual_bench_sha="$(sha256sum release/kokoro-bench.sh | awk '{print $1}')"
+          [[ -n "$expected_bench_sha" && "$actual_bench_sha" == "$expected_bench_sha" ]]
+          (cd release && sha256sum install.sh > install.sh.sha256)
+          (cd release && sha256sum kokoro-bench.sh > kokoro-bench.sh.sha256)
+          test "$(find release -maxdepth 1 -type f | wc -l)" -eq 12
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          args=("$GITHUB_REF_NAME" release/kokoro-linux-* release/kokoro-agent-linux-* --title "$GITHUB_REF_NAME" --generate-notes)
+          args=("$GITHUB_REF_NAME" release/* --title "$GITHUB_REF_NAME" --generate-notes)
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then
             args+=(--prerelease)
           fi

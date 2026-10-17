@@ -6,6 +6,7 @@ package hub
 // 用事件表不行 —— 它是今天才建的，没有历史。
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,8 +47,11 @@ func TestUptimeAllGood(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "测试节点 JP", "JP", "日本 · 东京", "")
 	// 前 5 天各塞满一天
-	for d := 1; d <= 5; d++ {
+	for d := 0; d <= 6; d++ {
 		seedBuckets(t, h, n.ID, d, 288, 142)
+	}
+	if _, err := st.DB().Exec(`UPDATE nodes SET created_at=? WHERE id=?`, time.Now().AddDate(0, 0, -6).UnixMilli(), n.ID); err != nil {
+		t.Fatal(err)
 	}
 
 	sum := h.loadUptime(n.ID)
@@ -62,6 +66,26 @@ func TestUptimeAllGood(t *testing.T) {
 	}
 	if sum.Level != "ok" {
 		t.Errorf("全正常应为 ok，实际 %s", sum.Level)
+	}
+}
+
+func TestUptimeSummaryCountsFullOfflineDays(t *testing.T) {
+	h, st := newTestHub(t)
+	n := mkNode(t, st, "间歇上报节点", "JP", "日本 · 东京", "")
+	seedBuckets(t, h, n.ID, 1, 288, 142)
+	if _, err := st.DB().Exec(`UPDATE nodes SET created_at=? WHERE id=?`, time.Now().AddDate(0, 0, -3).UnixMilli(), n.ID); err != nil {
+		t.Fatal(err)
+	}
+	sum := h.loadUptime(n.ID)
+	if sum == nil {
+		t.Fatal("时间轴为空")
+	}
+	var pct float64
+	if _, err := fmt.Sscanf(sum.Pct, "%f%%", &pct); err != nil {
+		t.Fatal(err)
+	}
+	if pct >= 50 || pct <= 20 {
+		t.Fatalf("只在近 3 天中的 1 天上报，在线率应体现两天离线，实际 %s", sum.Pct)
 	}
 }
 

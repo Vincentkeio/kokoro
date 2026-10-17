@@ -122,6 +122,46 @@ func TestCardShowsThreeISPLatency(t *testing.T) {
 	}
 }
 
+func TestCardRangeRefreshReusesOneSharedSeriesWindow(t *testing.T) {
+	h, st := newTestHub(t)
+	a := mkNode(t, st, "Tokyo", "JP", "Tokyo", "")
+	b := mkNode(t, st, "Hong Kong", "HK", "Hong Kong", "")
+	bucket := time.Now().Add(-5 * time.Minute).UnixMilli()
+	for _, id := range []string{a.ID, b.ID} {
+		if _, err := st.DB().Exec(`INSERT INTO metrics_5m(node_id,bucket,net_up_avg,net_down_avg,samples) VALUES(?,?,100,200,1)`, id, bucket); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var firstFrom, firstTo int64
+	for _, id := range []string{a.ID, b.ID} {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/card-series?id="+id+"&range=1d", nil)
+		w := httptest.NewRecorder()
+		h.handleHomeCardSeries(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("刷新 %s 曲线返回 %d: %s", id, w.Code, w.Body.String())
+		}
+		if firstTo == 0 {
+			for _, entry := range h.cardSeriesCache {
+				firstFrom, firstTo = entry.from, entry.to
+			}
+		}
+	}
+	if len(h.cardSeriesCache) != 1 {
+		t.Fatalf("同一范围的多张卡应共用一个批量查询，缓存项=%d", len(h.cardSeriesCache))
+	}
+	for _, entry := range h.cardSeriesCache {
+		if len(entry.series) != 2 {
+			t.Fatalf("共享查询应同时包含两台公开节点，实际 %d", len(entry.series))
+		}
+		if entry.from != firstFrom || entry.to != firstTo {
+			t.Fatal("同一时间范围下刷新不同卡片重新读取了不一致的时间窗口")
+		}
+		if entry.to-entry.from != (24 * time.Hour).Milliseconds() {
+			t.Fatalf("时间窗口不一致：%dms", entry.to-entry.from)
+		}
+	}
+}
+
 // TestNetQOnlyLatestRound 只取**最近一轮**，不把历史混进来平均。
 //
 // 混进来的话，早上 200ms、现在 40ms 会显示成 120ms ——

@@ -29,7 +29,9 @@ type DayUptime struct {
 	//
 	// 跟"采集中断"要分开：一片灰格子可能是"机器那时候还不存在"，
 	// 也可能是"机器在那儿但没上报"。前者不是故障，别吓着站长。
-	BeforeStart bool
+	BeforeStart     bool
+	ExpectedBuckets int
+	ExpectedSamples int64
 }
 
 // DailyUptime 取最近 days 天的在线率。
@@ -58,7 +60,9 @@ func (s *Store) DailyUptime(nodeID string, days int, tzOffsetMin int) ([]DayUpti
 	// 不写死数字（比如 150）：上报间隔是可以配的，写死会算出一堆假的百分比。
 	var total int
 	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM metrics_5m WHERE node_id = ?`, nodeID).Scan(&total); err != nil {
+		`SELECT COUNT(*) FROM (
+SELECT bucket FROM uptime_buckets WHERE node_id=? AND bucket<=?
+UNION SELECT bucket FROM metrics_5m WHERE node_id=? AND bucket<=?)`, nodeID, time.Now().UnixMilli(), nodeID, time.Now().UnixMilli()).Scan(&total); err != nil {
 		return nil, fmt.Errorf("统计上报失败: %w", err)
 	}
 	if total == 0 {
@@ -66,8 +70,11 @@ func (s *Store) DailyUptime(nodeID string, days int, tzOffsetMin int) ([]DayUpti
 	}
 	var perBucket int
 	if err := s.db.QueryRow(
-		`SELECT samples FROM metrics_5m WHERE node_id = ? ORDER BY samples LIMIT 1 OFFSET ?`,
-		nodeID, total*4/5).Scan(&perBucket); err != nil {
+		`SELECT samples FROM (
+SELECT samples FROM uptime_buckets WHERE node_id=? AND bucket<=? UNION ALL
+SELECT samples FROM metrics_5m WHERE node_id=? AND bucket<=? AND bucket NOT IN (SELECT bucket FROM uptime_buckets WHERE node_id=?)
+) ORDER BY samples LIMIT 1 OFFSET ?`,
+		nodeID, time.Now().UnixMilli(), nodeID, time.Now().UnixMilli(), nodeID, total*4/5).Scan(&perBucket); err != nil {
 		return nil, fmt.Errorf("取上报基准失败: %w", err)
 	}
 	if perBucket <= 0 {
@@ -76,7 +83,9 @@ func (s *Store) DailyUptime(nodeID string, days int, tzOffsetMin int) ([]DayUpti
 
 	// 时区偏移用 SQLite 的修饰符传进去（'+480 minutes'）
 	mod := fmt.Sprintf("%+d minutes", tzOffsetMin)
-	cutoff := time.Now().AddDate(0, 0, -(days - 1)).Truncate(24 * time.Hour).UnixMilli()
+	loc := time.FixedZone("hub", tzOffsetMin*60)
+	localNow := time.Now().In(loc)
+	cutoff := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, -(days - 1)).UnixMilli()
 
 	rows, err := s.db.Query(`
 SELECT date(bucket/1000, 'unixepoch', ?) AS d,
@@ -84,10 +93,13 @@ SELECT date(bucket/1000, 'unixepoch', ?) AS d,
        COALESCE(SUM(samples), 0) AS samples,
        MIN(bucket)           AS min_b,
        MAX(bucket)           AS max_b
-FROM metrics_5m
-WHERE node_id = ? AND bucket >= ?
+FROM (
+  SELECT node_id,bucket,samples FROM uptime_buckets WHERE node_id=? AND bucket>=? AND bucket<=?
+  UNION
+  SELECT node_id,bucket,samples FROM metrics_5m WHERE node_id=? AND bucket>=? AND bucket<=?
+)
 GROUP BY d
-ORDER BY d`, mod, nodeID, cutoff)
+ORDER BY d`, mod, nodeID, cutoff, time.Now().UnixMilli(), nodeID, cutoff, time.Now().UnixMilli())
 	if err != nil {
 		return nil, fmt.Errorf("查每日在线率失败: %w", err)
 	}
@@ -104,7 +116,7 @@ ORDER BY d`, mod, nodeID, cutoff)
 		_ = minB
 		got[d] = DayUptime{
 			Date: d, Buckets: buckets, Samples: samples,
-			Pct: dayPct(d, int64(samples), perBucket, tzOffsetMin, since),
+			Pct: dayPct(d, int64(samples), perBucket, tzOffsetMin, since), HasData: samples > 0,
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -113,15 +125,13 @@ ORDER BY d`, mod, nodeID, cutoff)
 
 	// 补齐没有数据的天 —— 空格子本身也是信息（那天机器是挂的）
 	out := make([]DayUptime, 0, days)
-	now := time.Now()
+	now := localNow
 	for i := days - 1; i >= 0; i-- {
 		t := now.AddDate(0, 0, -i)
 		key := t.Format("2006-01-02")
 		du, ok := got[key]
-		if !ok {
+		if !ok || !du.HasData {
 			du = DayUptime{Date: key, Pct: 0, HasData: false}
-		} else {
-			du.HasData = true
 		}
 		du.Label = key[5:] // 10-06
 		// 整天都在接入之前 —— 那天这台机器还不存在。
@@ -130,12 +140,14 @@ ORDER BY d`, mod, nodeID, cutoff)
 		// 那个保留的是"当前时刻"（比如 11:21），于是"昨天"的日末尾
 		// 正好等于今天 11:21，跟创建时间撞在边界上，判断结果随机。
 		// 用零点算，"昨天 24:00" 严格早于"今天 11:21"，稳定成立。
-		if since > 0 && !du.HasData {
+		if since > 0 {
 			dayStart := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 			dayEnd := dayStart.AddDate(0, 0, 1).UnixMilli()
 			du.BeforeStart = dayEnd <= since
 		}
 		// 装机当天和今天都只覆盖半天，标出来免得被误读成"那天挂了一半"
+		du.ExpectedBuckets = dayExpectedBuckets(key, tzOffsetMin, since)
+		du.ExpectedSamples = int64(du.ExpectedBuckets) * int64(perBucket)
 		du.Partial = i == 0 || du.Buckets > 0 && du.Buckets < 280
 		out = append(out, du)
 	}
@@ -158,28 +170,10 @@ func dayPct(dateKey string, samples int64, perBucket, tzOffsetMin int, sinceMS i
 		return 0
 	}
 	loc := time.FixedZone("hub", tzOffsetMin*60)
-	dayStart, err := time.ParseInLocation("2006-01-02", dateKey, loc)
-	if err != nil {
+	if _, err := time.ParseInLocation("2006-01-02", dateKey, loc); err != nil {
 		return 0
 	}
-	dayEnd := dayStart.AddDate(0, 0, 1)
-
-	start := dayStart
-	if sinceMS > 0 {
-		if t := time.UnixMilli(sinceMS).In(loc); t.After(start) {
-			start = t
-		}
-	}
-	end := dayEnd
-	if now := time.Now().In(loc); now.Before(end) {
-		end = now // 今天只算到此刻
-	}
-	if !end.After(start) {
-		return 0 // 机器还没创建，或者这一天还没开始
-	}
-
-	const bucketMS = int64(5 * 60 * 1000)
-	expectedBuckets := (end.UnixMilli() - start.UnixMilli() + bucketMS - 1) / bucketMS
+	expectedBuckets := int64(dayExpectedBuckets(dateKey, tzOffsetMin, sinceMS))
 	if expectedBuckets <= 0 {
 		return 0
 	}
@@ -191,6 +185,28 @@ func dayPct(dateKey string, samples int64, perBucket, tzOffsetMin int, sinceMS i
 		pct = 0
 	}
 	return pct
+}
+
+func dayExpectedBuckets(dateKey string, tzOffsetMin int, sinceMS int64) int {
+	loc := time.FixedZone("hub", tzOffsetMin*60)
+	dayStart, err := time.ParseInLocation("2006-01-02", dateKey, loc)
+	if err != nil {
+		return 0
+	}
+	start, end := dayStart, dayStart.AddDate(0, 0, 1)
+	if sinceMS > 0 {
+		if created := time.UnixMilli(sinceMS).In(loc); created.After(start) {
+			start = created
+		}
+	}
+	if now := time.Now().In(loc); now.Before(end) {
+		end = now
+	}
+	if !end.After(start) {
+		return 0
+	}
+	const bucketMS = int64(5 * 60 * 1000)
+	return int((end.UnixMilli() - start.UnixMilli() + bucketMS - 1) / bucketMS)
 }
 
 // UpdateNodeFacts 更新节点的静态信息（虚拟化 / CPU / 加速 / NAT / 国家地区）。

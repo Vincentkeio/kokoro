@@ -1221,6 +1221,12 @@ type homeCardSeriesResponse struct {
 	Info string `json:"info"`
 }
 
+type cardSeriesCacheEntry struct {
+	expires  time.Time
+	from, to int64
+	series   map[string][]store.NetPoint
+}
+
 // handleHomeCardSeries refreshes only one public node card's sparkline. The
 // overview range remains page-wide; this endpoint keeps per-card ranges local.
 func (h *Hub) handleHomeCardSeries(w http.ResponseWriter, r *http.Request) {
@@ -1263,17 +1269,38 @@ func (h *Hub) handleHomeCardSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	win := netqWindow(key)
-	to := time.Now().UnixMilli()
-	from := to - win.dur.Milliseconds()
 	ids := make([]string, 0, len(nodes))
 	for _, node := range nodes {
 		ids = append(ids, node.ID)
 	}
-	series, err := h.store.NetSeriesByNode(ids, from, to, win.maxPoints)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+	cacheKey := key + "\x00" + strings.Join(ids, "\x00")
+	h.cardSeriesMu.Lock()
+	if h.cardSeriesCache == nil {
+		h.cardSeriesCache = make(map[string]cardSeriesCacheEntry)
 	}
+	entry, ok := h.cardSeriesCache[cacheKey]
+	if !ok || time.Now().After(entry.expires) {
+		to := time.Now().UnixMilli()
+		from := to - win.dur.Milliseconds()
+		series, queryErr := h.store.NetSeriesByNode(ids, from, to, dashMaxPoints)
+		if queryErr != nil {
+			h.cardSeriesMu.Unlock()
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		entry = cardSeriesCacheEntry{expires: time.Now().Add(5 * time.Second), from: from, to: to, series: series}
+		for k, v := range h.cardSeriesCache {
+			if time.Now().After(v.expires) {
+				delete(h.cardSeriesCache, k)
+			}
+		}
+		if len(h.cardSeriesCache) >= 8 {
+			h.cardSeriesCache = make(map[string]cardSeriesCacheEntry)
+		}
+		h.cardSeriesCache[cacheKey] = entry
+	}
+	h.cardSeriesMu.Unlock()
+	series, from, to := entry.series, entry.from, entry.to
 	points := series[id]
 	line, area := sparkPathsInWindowScale(points, from, to, sparkSeriesWindowMax(series, from, to))
 	response := homeCardSeriesResponse{Line: line, Area: area}

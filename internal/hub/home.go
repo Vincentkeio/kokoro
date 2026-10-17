@@ -292,7 +292,9 @@ func sparkPathsInWindowScale(points []store.NetPoint, from, to int64, maxV float
 	}
 	var lines, areas strings.Builder
 	for _, seg := range segments {
-		if len(seg) < 2 {
+		if len(seg) == 1 {
+			fmt.Fprintf(&lines, "M%.1f %.1f L%.1f %.1f", seg[0].x, seg[0].y, seg[0].x+0.2, seg[0].y)
+			fmt.Fprintf(&areas, "M%.1f %.1f L%.1f %.1f L%.1f %.1f Z", seg[0].x, seg[0].y, seg[0].x+0.2, seg[0].y, seg[0].x, sparkH)
 			continue
 		}
 		fmt.Fprintf(&lines, "M%.1f %.1f", seg[0].x, seg[0].y)

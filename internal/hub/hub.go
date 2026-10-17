@@ -68,9 +68,11 @@ type Hub struct {
 	snapAt   time.Time
 	snapData map[string]*model.Metrics
 
-	netqHitMu   sync.Mutex
-	netqHitAt   time.Time
-	netqHitData map[string]netqProvHitRate
+	netqHitMu       sync.Mutex
+	netqHitAt       time.Time
+	netqHitData     map[string]netqProvHitRate
+	cardSeriesMu    sync.Mutex
+	cardSeriesCache map[string]cardSeriesCacheEntry
 
 	// done 在开始关闭时被 close，用来通知 SSE 之类的长连接主动退出。
 	//

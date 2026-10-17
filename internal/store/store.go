@@ -42,7 +42,7 @@ var schemaSQL string
 // 只加 2 不加 1 的后果：新装的库缺列，跑起来报
 // "table xxx has no column named yyy" —— 而且**本地测试会先红**
 // （测试用的都是全新库）。踩过一次。
-const schemaVersion = 18
+const schemaVersion = 19
 
 // rollup 各层的窗口长度（毫秒）。级联方向：raw → 1m → 5m → 1h → 1d。
 const (
@@ -343,6 +343,31 @@ CREATE TABLE IF NOT EXISTS metrics_1d (
 CREATE INDEX IF NOT EXISTS idx_metrics_1d_node_bucket ON metrics_1d (node_id, bucket);`},
 	{version: 17, sql: `ALTER TABLE metrics_raw ADD COLUMN connectivity TEXT NOT NULL DEFAULT '';`},
 	{version: 18, sql: `CREATE INDEX IF NOT EXISTS idx_metrics_5m_node_samples ON metrics_5m (node_id, samples);`},
+	{version: 19, sql: `CREATE TABLE IF NOT EXISTS uptime_buckets (
+    node_id TEXT NOT NULL,
+    bucket INTEGER NOT NULL,
+    samples INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_id, bucket)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_uptime_buckets_time ON uptime_buckets (bucket);
+INSERT OR IGNORE INTO uptime_buckets (node_id, bucket, samples)
+SELECT node_id, bucket, samples FROM metrics_5m;
+-- Restore the 30-day uptime window from retained hourly rollups when the
+-- original five-minute buckets have already expired. Spread sample counts
+-- across the hour while preserving their sum; recent five-minute rows remain
+-- exact and take precedence.
+WITH RECURSIVE slots(n) AS (SELECT 0 UNION ALL SELECT n+1 FROM slots WHERE n<11)
+INSERT OR IGNORE INTO uptime_buckets (node_id, bucket, samples)
+SELECT h.node_id, h.bucket + slots.n * 300000,
+       h.samples / 12 + CASE WHEN slots.n < h.samples % 12 THEN 1 ELSE 0 END
+FROM metrics_1h h CROSS JOIN slots
+WHERE h.bucket >= CAST(strftime('%s','now') AS INTEGER)*1000 - 30*86400000
+  AND h.bucket < CAST(strftime('%s','now') AS INTEGER)*1000 - 7*86400000
+  AND h.samples >= 12
+  AND NOT EXISTS (SELECT 1 FROM metrics_5m m
+                  WHERE m.node_id=h.node_id AND m.bucket=h.bucket + slots.n*300000);
+DELETE FROM node_tasks WHERE node_id NOT IN (SELECT id FROM nodes);
+DELETE FROM uptime_buckets WHERE node_id NOT IN (SELECT id FROM nodes);`},
 }
 
 // prepare 预编译高频写入语句。
@@ -568,8 +593,24 @@ WHERE id=?`,
 
 // DeleteNode 删除节点，其指标、内容、评论等通过外键级联删除。
 func (s *Store) DeleteNode(id string) error {
-	if _, err := s.db.Exec("DELETE FROM nodes WHERE id = ?", id); err != nil {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
 		return fmt.Errorf("删除节点失败: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM node_tasks WHERE node_id = ?", id); err != nil {
+		return fmt.Errorf("删除节点任务失败: %w", err)
+	}
+	if _, err := tx.Exec("DELETE FROM uptime_buckets WHERE node_id = ?", id); err != nil {
+		return fmt.Errorf("删除在线率历史失败: %w", err)
+	}
+	if _, err := tx.Exec("DELETE FROM nodes WHERE id = ?", id); err != nil {
+		return fmt.Errorf("删除节点失败: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交节点删除失败: %w", err)
 	}
 	return nil
 }
@@ -620,6 +661,46 @@ func (s *Store) SetNodeOnline(id string, online bool) error {
 	_, _ = s.db.Exec(`INSERT INTO events (ts, node_id, kind, text, ref) VALUES (?,?,?,?,?)`,
 		nowMS(), id, kind, text, "")
 	return nil
+}
+
+// MarkNodeOfflineIfStale 将过期心跳的在线节点原子地标记为离线。
+// 条件更新可避免离线扫描覆盖并发到达的新心跳或后台编辑的其他字段。
+func (s *Store) MarkNodeOfflineIfStale(id string, cutoff, futureCutoff int64) (bool, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE nodes SET online=0
+WHERE id=? AND online=1 AND (last_seen<=? OR last_seen>?)`, id, cutoff, futureCutoff)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	var name string
+	_ = tx.QueryRow("SELECT name FROM nodes WHERE id=?", id).Scan(&name)
+	if name == "" {
+		name = id
+	}
+	if _, err := tx.Exec(`INSERT INTO events (ts,node_id,kind,text,ref) VALUES (?,?,?,?,?)`, nowMS(), id, "offline", name+" 掉线了", ""); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ArchiveUptimeBuckets copies compact five-minute liveness samples before the
+// source rollup retention removes them. The table stores only two integers per
+// bucket, retaining uptime history without extending full metric retention.
+func (s *Store) ArchiveUptimeBuckets() error {
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO uptime_buckets(node_id,bucket,samples)
+SELECT node_id,bucket,samples FROM metrics_5m`)
+	return err
 }
 
 // ==================== 指标 ====================
@@ -1005,6 +1086,9 @@ func (s *Store) retention(key string, def, unit time.Duration) time.Duration {
 func (s *Store) Prune() error {
 	now := nowMS()
 	var deleted int64
+	if err := s.ArchiveUptimeBuckets(); err != nil {
+		return fmt.Errorf("归档在线率历史失败: %w", err)
+	}
 
 	layers := []struct {
 		table, col string
@@ -1026,6 +1110,9 @@ func (s *Store) Prune() error {
 		}
 		n, _ := res.RowsAffected()
 		deleted += n
+	}
+	if _, err := s.db.Exec("DELETE FROM uptime_buckets WHERE bucket < ?", now-int64(90*24*time.Hour/time.Millisecond)); err != nil {
+		return fmt.Errorf("清理在线率历史失败: %w", err)
 	}
 
 	// 三网探测：绝对保留期 + 每节点轮数上限。

@@ -90,12 +90,14 @@ func (h *Hub) loadUptime(nodeID string) *uptimeSummary {
 			if d.Partial {
 				cell.Tip += "（这天只有部分数据）"
 			}
-			totalSamples += float64(d.Samples)
-			// 反推这一天的期望样本数，用于加权
-			if d.Pct > 0 {
-				totalExpected += float64(d.Samples) / (d.Pct / 100)
+			samples := float64(d.Samples)
+			if d.ExpectedSamples > 0 && samples > float64(d.ExpectedSamples) {
+				samples = float64(d.ExpectedSamples)
 			}
+			totalSamples += samples
 		}
+		// 离线的整天也必须计入分母；接入前日期的 ExpectedSamples 为零。
+		totalExpected += float64(d.ExpectedSamples)
 		sum.Cells = append(sum.Cells, cell)
 	}
 

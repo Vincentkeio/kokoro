@@ -386,14 +386,21 @@ func (h *Hub) startStatusWatch(ctx context.Context) {
 			// 兼容旧版本用 VPS 本地时间记录 LastSeen 的数据：未来时间
 			// 超过宽限值也视为过期；新版本上报会改用 Hub 接收时间。
 			offline := n.LastSeen <= 0 || age > offlineAfter.Milliseconds() || age < -offlineAfter.Milliseconds()
+			statusOnline := n.Online && !offline
 			if n.Online && offline {
-				n.Online = false
-				_ = h.store.UpdateNode(&n)
-				h.publishStatus(n.ID, false)
-				h.broadcastNodeTaskConnection(n.ID, false)
-				h.broadcastTaskCard(n.ID)
+				changed, err := h.store.MarkNodeOfflineIfStale(n.ID, now-offlineAfter.Milliseconds(), now+offlineAfter.Milliseconds())
+				if err == nil && changed {
+					statusOnline = false
+					h.publishStatus(n.ID, false)
+					h.broadcastNodeTaskConnection(n.ID, false)
+					h.broadcastTaskCard(n.ID)
+				} else if fresh, getErr := h.store.GetNode(n.ID); getErr == nil {
+					// 心跳可能刚好在列表读取后到达；发布数据库里的现状，
+					// 不要把已恢复在线的节点广播成离线。
+					statusOnline = fresh.Online
+				}
 			}
-			statuses[n.ID] = n.Online && !offline
+			statuses[n.ID] = statusOnline
 		}
 		h.broker.broadcast("node_status", statuses)
 	}

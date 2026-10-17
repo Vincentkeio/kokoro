@@ -423,6 +423,15 @@ CREATE TABLE IF NOT EXISTS node_tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_node    ON node_tasks (node_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status  ON node_tasks (status, created_at);
 
+-- Compact liveness history survives the shorter metrics_5m retention.
+CREATE TABLE IF NOT EXISTS uptime_buckets (
+    node_id TEXT NOT NULL,
+    bucket INTEGER NOT NULL,
+    samples INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (node_id, bucket)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_uptime_buckets_time ON uptime_buckets (bucket);
+
 -- 每台机器可以有多篇文章。
 --
 -- 为什么另起一张表而不是复用 node_profile：那张表是"一台一条"的

@@ -545,10 +545,9 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       if (svg.dataset.kRendered) return;
       var source=svg.querySelector('.sp-line, .wl');
       if (!source) return;
-      var nums=(source.getAttribute('d')||'').match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi)||[];
-      var points=[];
-      for(var i=0;i+1<nums.length;i+=2) points.push([Number(nums[i]),Number(nums[i+1])]);
-      if(points.length<2) return;
+      var d=source.getAttribute('d')||'', chunks=d.match(/[ML][^ML]*/g)||[], segments=[], points=[];
+      chunks.forEach(function(chunk){var nums=chunk.slice(1).match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi)||[], seg=[];for(var i=0;i+1<nums.length;i+=2)seg.push([Number(nums[i]),Number(nums[i+1])]);if(seg.length){segments.push(seg);points=points.concat(seg);}});
+      if(!points.length) return;
       var box=svg.viewBox.baseVal, w=box.width,h=box.height, html='';
       if(type==='bar') {
         // Keep each bar at the sample's real time coordinate. Spreading by
@@ -564,9 +563,12 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       } else if(type==='dot') {
         points.forEach(function(p){html+='<ellipse class="spark-dot" cx="'+p[0]+'" cy="'+p[1]+'"/>';});
       } else {
-        var line=kokoroChartPath(points,type,kokoroSmoothCharts());
-        if(type==='area') html+='<path class="sp-area" d="'+line+' L'+points[points.length-1][0]+' '+h+' L'+points[0][0]+' '+h+' Z"/>';
-        html+='<path class="sp-line" d="'+line+'"/>';
+        segments.forEach(function(seg){
+          if(seg.length===1){html+='<ellipse class="spark-dot" cx="'+seg[0][0]+'" cy="'+seg[0][1]+'"/>';return;}
+          var line=kokoroChartPath(seg,type,kokoroSmoothCharts());
+          if(type==='area') html+='<path class="sp-area" d="'+line+' L'+seg[seg.length-1][0]+' '+h+' L'+seg[0][0]+' '+h+' Z"/>';
+          html+='<path class="sp-line" d="'+line+'"/>';
+        });
       }
       svg.dataset.kRendered=type;
       svg.innerHTML=html;
