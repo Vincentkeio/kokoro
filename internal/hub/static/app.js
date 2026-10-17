@@ -566,6 +566,13 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       fitSparkDots(svg);
     });
   }
+  // Per-card range updates replace the server-rendered path data. Re-run the
+  // active theme renderer so bar, dot, step and smooth-line themes all redraw.
+  window.kokoroRerenderServerSpark = function (svg) {
+    if (!svg) return;
+    delete svg.dataset.kRendered;
+    styleServerSparks(svg);
+  };
   // Non-uniform SVG scaling must not turn round data markers into tall ovals.
   function fitSparkDots(svg) {
     var box=svg.viewBox.baseVal, rect=svg.getBoundingClientRect();
@@ -1870,8 +1877,14 @@ function renderResChart(svg, pts) {
           var area = svg.querySelector('.sp-area');
           if (!line) { line = document.createElementNS('http://www.w3.org/2000/svg', 'path'); line.setAttribute('class', 'sp-line'); svg.appendChild(line); }
           if (!area) { area = document.createElementNS('http://www.w3.org/2000/svg', 'path'); area.setAttribute('class', 'sp-area'); svg.insertBefore(area, line); }
-          if (line) line.setAttribute('d', data.line || '');
-          if (area) area.setAttribute('d', data.area || '');
+          if (data.line) {
+            if (line) line.setAttribute('d', data.line);
+            if (area) area.setAttribute('d', data.area || '');
+            if (window.kokoroRerenderServerSpark) window.kokoroRerenderServerSpark(svg);
+          } else {
+            svg.replaceChildren();
+            delete svg.dataset.kRendered;
+          }
         }
         var label = card.querySelector('[data-spark-label]');
         if (label) label.textContent = data.line ? '峰值 ' + data.peak : (data.info || '暂无数据');
