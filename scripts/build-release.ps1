@@ -1,5 +1,5 @@
 param(
-    [string]$Version = 'v0.1.3-preview.5',
+    [string]$Version = 'v0.1.3-preview.6',
     [string]$GoPath = 'go',
     [string]$OutputDirectory = 'dist\release'
 )

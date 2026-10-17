@@ -698,8 +698,10 @@ WHERE id=? AND online=1 AND (last_seen<=? OR last_seen>?)`, id, cutoff, futureCu
 // source rollup retention removes them. The table stores only two integers per
 // bucket, retaining uptime history without extending full metric retention.
 func (s *Store) ArchiveUptimeBuckets() error {
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO uptime_buckets(node_id,bucket,samples)
-SELECT node_id,bucket,samples FROM metrics_5m`)
+	_, err := s.db.Exec(`INSERT INTO uptime_buckets(node_id,bucket,samples)
+SELECT node_id,bucket,samples FROM metrics_5m WHERE true
+ON CONFLICT(node_id,bucket) DO UPDATE SET samples=excluded.samples
+WHERE uptime_buckets.samples<>excluded.samples`)
 	return err
 }
 
@@ -799,18 +801,49 @@ func (s *Store) InsertMetricsBatch(nodeID string, ms []*model.Metrics) error {
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 	stmt := tx.Stmt(s.insertRaw)
+	now := nowMS()
+	closedMinute := now - now%bucket1m
+	var lateTimestamps []int64
 	for _, m := range ms {
 		if m == nil {
 			continue
 		}
-		if _, err := stmt.Exec(metricsArgs(nodeID, m)...); err != nil {
+		result, err := stmt.Exec(metricsArgs(nodeID, m)...)
+		if err != nil {
 			stmt.Close()
 			tx.Rollback()
 			return fmt.Errorf("写入指标失败: %w", err)
 		}
+		if n, err := result.RowsAffected(); err == nil && n > 0 && m.Ts > 0 && m.Ts < closedMinute {
+			lateTimestamps = append(lateTimestamps, m.Ts)
+		}
 	}
 	stmt.Close()
+	if len(lateTimestamps) > 0 {
+		// Recompute only while the full raw minute is still retained. Rewinding
+		// beyond retention would replace old aggregates with incomplete data.
+		keep := s.retention(settingRetentionRaw, retentionRawDefault, time.Hour)
+		completeFrom := int64(0)
+		if keep > 0 {
+			completeFrom = (now - keep.Milliseconds() + bucket1m - 1) / bucket1m * bucket1m
+		}
+		var lateFrom int64
+		for _, ts := range lateTimestamps {
+			if ts >= completeFrom && (lateFrom == 0 || ts < lateFrom) {
+				lateFrom = ts
+			}
+		}
+		if lateFrom > 0 {
+			for _, layer := range rollupLayers {
+				from := lateFrom - lateFrom%layer.bucket
+				if _, err := tx.Exec(`UPDATE settings SET value=? WHERE key=? AND CAST(value AS INTEGER)>?`, strconv.FormatInt(from, 10), layer.cursor, from); err != nil {
+					return fmt.Errorf("标记补报聚合失败: %w", err)
+				}
+			}
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("提交指标事务失败: %w", err)
 	}
@@ -986,6 +1019,8 @@ GROUP BY node_id, (bucket / ?) * ?
 
 // aggregateLayer 把上游已闭合的窗口聚合进目标层。
 func (s *Store) aggregateLayer(l rollupLayer) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	now := nowMS()
 	winStart := now - now%l.bucket
 
@@ -1006,8 +1041,6 @@ func (s *Store) aggregateLayer(l rollupLayer) error {
 		return nil
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
 	if _, err := s.db.Exec(rollupSQL(l), l.bucket, l.bucket, cursor, winStart, l.bucket, l.bucket); err != nil {
 		return fmt.Errorf("聚合 %s 失败: %w", l.table, err)
 	}

@@ -21,6 +21,16 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
+      - name: Verify release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -count=1 ./...
+          go vet ./...
+          node --check internal/hub/static/app.js
+          node scripts/check-chart-rendering.cjs
+          bash -n scripts/install-hub.sh scripts/install.sh scripts/kokoro-bench.sh
+
       - name: Build Linux releases
         shell: bash
         run: |

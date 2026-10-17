@@ -89,3 +89,46 @@ func TestMigrationBackfillsUptimeFromHourlyRollups(t *testing.T) {
 		t.Fatalf("迁移后仍有 %d 条幽灵任务", count)
 	}
 }
+
+func TestUptimePrefersCorrectedLiveBucketAndRefreshesArchive(t *testing.T) {
+	s := openTmp(t)
+	n := &model.Node{ID: "corrected", Name: "corrected", CreatedAt: time.Now().AddDate(0, 0, -3).UnixMilli()}
+	if err := s.CreateNode(n); err != nil {
+		t.Fatal(err)
+	}
+	bucket := time.Now().Add(-24*time.Hour).UnixMilli() / bucket5m * bucket5m
+	for i, samples := range []int{10, 100} {
+		if _, err := s.db.Exec(`INSERT INTO metrics_5m(node_id,bucket,samples) VALUES(?,?,?)`, n.ID, bucket+int64(i)*bucket5m, samples); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ArchiveUptimeBuckets(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE metrics_5m SET samples=50 WHERE node_id=? AND bucket=?`, n.ID, bucket); err != nil {
+		t.Fatal(err)
+	}
+	check := func() {
+		t.Helper()
+		days, err := s.DailyUptime(n.ID, 30, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var samples, buckets int
+		for _, d := range days {
+			samples += d.Samples
+			buckets += d.Buckets
+		}
+		if samples != 150 || buckets != 2 {
+			t.Fatalf("同一五分钟段被重复计入或归档未更新：samples=%d buckets=%d", samples, buckets)
+		}
+	}
+	check()
+	if err := s.ArchiveUptimeBuckets(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`DELETE FROM metrics_5m WHERE node_id=?`, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	check()
+}

@@ -545,7 +545,8 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       if (svg.dataset.kRendered) return;
       var source=svg.querySelector('.sp-line, .wl');
       if (!source) return;
-      var d=source.getAttribute('d')||'', chunks=d.match(/[ML][^ML]*/g)||[], segments=[], points=[];
+      // Only M starts a disconnected subpath. L belongs to the current trace.
+      var d=source.getAttribute('d')||'', chunks=d.match(/M[^M]*/g)||[], segments=[], points=[];
       chunks.forEach(function(chunk){var nums=chunk.slice(1).match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi)||[], seg=[];for(var i=0;i+1<nums.length;i+=2)seg.push([Number(nums[i]),Number(nums[i+1])]);if(seg.length){segments.push(seg);points=points.concat(seg);}});
       if(!points.length) return;
       var box=svg.viewBox.baseVal, w=box.width,h=box.height, html='';
@@ -1883,10 +1884,13 @@ function renderResChart(svg, pts) {
           if (empty) empty.replaceWith(svg);
         }
         if (svg) {
-          var line = svg.querySelector('.sp-line');
-          var area = svg.querySelector('.sp-area');
-          if (!line) { line = document.createElementNS('http://www.w3.org/2000/svg', 'path'); line.setAttribute('class', 'sp-line'); svg.appendChild(line); }
-          if (!area) { area = document.createElementNS('http://www.w3.org/2000/svg', 'path'); area.setAttribute('class', 'sp-area'); svg.insertBefore(area, line); }
+          var ns = 'http://www.w3.org/2000/svg';
+          var line = document.createElementNS(ns, 'path');
+          var area = document.createElementNS(ns, 'path');
+          line.setAttribute('class', 'sp-line');
+          area.setAttribute('class', 'sp-area');
+          // Replace every old segment/bar/dot before applying the new range.
+          svg.replaceChildren(area, line);
           if (data.line) {
             if (line) line.setAttribute('d', data.line);
             if (area) area.setAttribute('d', data.area || '');

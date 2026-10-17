@@ -10,11 +10,35 @@ package store
 // 50% 在线，是假的。所以每天按**实际覆盖到的时间跨度**折算期望值。
 
 import (
+	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/Vincentkeio/kokoro/internal/model"
-	"time"
 )
+
+// Prefer the current rollup when an archived bucket has since been corrected.
+// UNION on (bucket,samples) would count both versions of a changed bucket.
+const uptimeSourceSQL = `
+SELECT bucket,samples FROM metrics_5m WHERE node_id=? AND bucket>=? AND bucket<=?
+UNION ALL
+SELECT u.bucket,u.samples FROM uptime_buckets u WHERE u.node_id=? AND u.bucket>=? AND u.bucket<=?
+AND NOT EXISTS (SELECT 1 FROM metrics_5m m WHERE m.node_id=u.node_id AND m.bucket=u.bucket)`
+
+// Calibrate from the most recent 2016 observed buckets (a full week), rather
+// than old reporting intervals. Limit each indexed branch before the merge;
+// limiting only the outer UNION sorts the entire retained archive.
+const recentUptimeSourceSQL = `
+SELECT bucket,samples FROM (
+ SELECT bucket,samples FROM metrics_5m WHERE node_id=? AND bucket>=? AND bucket<=?
+ ORDER BY bucket DESC LIMIT 2016
+)
+UNION ALL
+SELECT bucket,samples FROM (
+ SELECT u.bucket,u.samples FROM uptime_buckets u WHERE u.node_id=? AND u.bucket>=? AND u.bucket<=?
+ AND NOT EXISTS (SELECT 1 FROM metrics_5m m WHERE m.node_id=u.node_id AND m.bucket=u.bucket)
+ ORDER BY u.bucket DESC LIMIT 2016
+)`
 
 // DayUptime 是某一天的在线率。
 type DayUptime struct {
@@ -58,48 +82,37 @@ func (s *Store) DailyUptime(nodeID string, days int, tzOffsetMin int) ([]DayUpti
 	// 用分位数当基准，正常的日子就是 100%，真掉线才掉下来。
 	//
 	// 不写死数字（比如 150）：上报间隔是可以配的，写死会算出一堆假的百分比。
-	var total int
-	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM (
-SELECT bucket FROM uptime_buckets WHERE node_id=? AND bucket<=?
-UNION SELECT bucket FROM metrics_5m WHERE node_id=? AND bucket<=?)`, nodeID, time.Now().UnixMilli(), nodeID, time.Now().UnixMilli()).Scan(&total); err != nil {
-		return nil, fmt.Errorf("统计上报失败: %w", err)
-	}
-	if total == 0 {
-		return nil, nil // 这台机器还没上报过
-	}
+	now := time.Now()
+	nowMS := now.UnixMilli()
+	baselineFrom := nowMS - int64(90*24*time.Hour/time.Millisecond)
 	var perBucket int
-	if err := s.db.QueryRow(
-		`SELECT samples FROM (
-SELECT samples FROM uptime_buckets WHERE node_id=? AND bucket<=? UNION ALL
-SELECT samples FROM metrics_5m WHERE node_id=? AND bucket<=? AND bucket NOT IN (SELECT bucket FROM uptime_buckets WHERE node_id=?)
-) ORDER BY samples LIMIT 1 OFFSET ?`,
-		nodeID, time.Now().UnixMilli(), nodeID, time.Now().UnixMilli(), nodeID, total*4/5).Scan(&perBucket); err != nil {
+	err := s.db.QueryRow(`WITH source AS (`+recentUptimeSourceSQL+`)
+SELECT samples FROM (
+  SELECT samples, ROW_NUMBER() OVER (ORDER BY samples) AS rn, COUNT(*) OVER () AS n
+  FROM (SELECT samples FROM source WHERE samples>0 ORDER BY bucket DESC LIMIT 2016)
+) WHERE rn=CAST(n*4/5 AS INTEGER)+1`,
+		nodeID, baselineFrom, nowMS, nodeID, baselineFrom, nowMS).Scan(&perBucket)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, fmt.Errorf("取上报基准失败: %w", err)
 	}
 	if perBucket <= 0 {
 		return nil, nil
 	}
 
-	// 时区偏移用 SQLite 的修饰符传进去（'+480 minutes'）
-	mod := fmt.Sprintf("%+d minutes", tzOffsetMin)
 	loc := time.FixedZone("hub", tzOffsetMin*60)
-	localNow := time.Now().In(loc)
+	localNow := now.In(loc)
 	cutoff := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, -(days - 1)).UnixMilli()
 
-	rows, err := s.db.Query(`
-SELECT date(bucket/1000, 'unixepoch', ?) AS d,
+	rows, err := s.db.Query(`WITH source AS (`+uptimeSourceSQL+`)
+SELECT CAST((bucket+?)/86400000 AS INTEGER) AS d,
        COUNT(*)              AS buckets,
-       COALESCE(SUM(samples), 0) AS samples,
-       MIN(bucket)           AS min_b,
-       MAX(bucket)           AS max_b
-FROM (
-  SELECT node_id,bucket,samples FROM uptime_buckets WHERE node_id=? AND bucket>=? AND bucket<=?
-  UNION
-  SELECT node_id,bucket,samples FROM metrics_5m WHERE node_id=? AND bucket>=? AND bucket<=?
-)
+       COALESCE(SUM(samples), 0) AS samples
+FROM source WHERE samples>0
 GROUP BY d
-ORDER BY d`, mod, nodeID, cutoff, time.Now().UnixMilli(), nodeID, cutoff, time.Now().UnixMilli())
+ORDER BY d`, nodeID, cutoff, nowMS, nodeID, cutoff, nowMS, int64(tzOffsetMin)*60*1000)
 	if err != nil {
 		return nil, fmt.Errorf("查每日在线率失败: %w", err)
 	}
@@ -107,13 +120,12 @@ ORDER BY d`, mod, nodeID, cutoff, time.Now().UnixMilli(), nodeID, cutoff, time.N
 
 	got := map[string]DayUptime{}
 	for rows.Next() {
-		var d string
+		var day int64
 		var buckets, samples int
-		var minB, maxB int64
-		if err := rows.Scan(&d, &buckets, &samples, &minB, &maxB); err != nil {
+		if err := rows.Scan(&day, &buckets, &samples); err != nil {
 			return nil, err
 		}
-		_ = minB
+		d := time.UnixMilli(day * bucket1d).UTC().Format("2006-01-02")
 		got[d] = DayUptime{
 			Date: d, Buckets: buckets, Samples: samples,
 			Pct: dayPct(d, int64(samples), perBucket, tzOffsetMin, since), HasData: samples > 0,
@@ -125,9 +137,8 @@ ORDER BY d`, mod, nodeID, cutoff, time.Now().UnixMilli(), nodeID, cutoff, time.N
 
 	// 补齐没有数据的天 —— 空格子本身也是信息（那天机器是挂的）
 	out := make([]DayUptime, 0, days)
-	now := localNow
 	for i := days - 1; i >= 0; i-- {
-		t := now.AddDate(0, 0, -i)
+		t := localNow.AddDate(0, 0, -i)
 		key := t.Format("2006-01-02")
 		du, ok := got[key]
 		if !ok || !du.HasData {

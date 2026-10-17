@@ -104,8 +104,17 @@ func (b *broker) broadcastAdmin(nodeID, event string, payload any) {
 	for _, ch := range subs {
 		select {
 		case ch <- msg:
-		case <-time.After(time.Second):
-			// A slow admin tab must not delay task processing or other clients.
+		default:
+			// These messages contain complete task-history snapshots. Discard
+			// one older snapshot instead of blocking Agent report processing.
+			select {
+			case <-ch:
+			default:
+			}
+			select {
+			case ch <- msg:
+			default:
+			}
 		}
 	}
 }

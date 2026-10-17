@@ -2788,8 +2788,11 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "rename":
+		var nameUpdate *string
+		var tagsUpdate *[]string
 		if name := strings.TrimSpace(r.FormValue("name")); name != "" {
 			node.Name = name
+			nameUpdate = &node.Name
 		}
 		// ⚠️ **国家 / 地区不在这里改**（管理员要求）。
 		// 它们由 agent 上报 —— agent 从自己所在的网络问 Cloudflare
@@ -2839,6 +2842,8 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 			prof.UpdatedAt = time.Now().UnixMilli()
 			if err := h.store.SaveProfile(prof); err != nil {
 				log.Printf("[hub] 保存到期/费用失败 node=%s: %v", node.ID, err)
+				http.Error(w, "保存到期/费用失败，请重试", http.StatusInternalServerError)
+				return
 			}
 		}
 		// 自定义标签：最多 8 个、每个最多 16 字。
@@ -2846,13 +2851,20 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 		// （比如只改名字）会顺手把标签清空。
 		if _, has := r.Form["tags"]; has {
 			node.Tags = parseTags(r.FormValue("tags"), 8, 16)
+			tagsUpdate = &node.Tags
 		}
-		_ = h.store.UpdateNode(node)
+		if err := h.store.UpdateNodeLabels(node.ID, nameUpdate, tagsUpdate); err != nil {
+			http.Error(w, "保存节点资料失败，请重试", http.StatusInternalServerError)
+			return
+		}
 	case "visibility":
 		switch r.FormValue("visibility") {
 		case "public", "unlisted", "private":
 			node.Visibility = model.Visibility(r.FormValue("visibility"))
-			_ = h.store.UpdateNode(node)
+			if err := h.store.SetNodeVisibility(node.ID, node.Visibility); err != nil {
+				http.Error(w, "保存展示状态失败，请重试", http.StatusInternalServerError)
+				return
+			}
 		}
 	case "toggle":
 		// 一键显示/隐藏：public <-> private。unlisted（不索引但仍可访问）算「显示」，

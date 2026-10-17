@@ -141,3 +141,37 @@ func TestPruneRespectsPerLayerRetention(t *testing.T) {
 		t.Errorf("metrics_1h 保留后剩 %d 条，应为 1（45 天内不该清）", n1h)
 	}
 }
+
+func TestLateReportsRecomputeClosedRollupBuckets(t *testing.T) {
+	s := openTmp(t)
+	if err := s.CreateNode(&model.Node{ID: "replay", Name: "replay"}); err != nil {
+		t.Fatal(err)
+	}
+	base := (nowMS() - 90*60*1000) / bucket1m * bucket1m
+	metric := func(ts int64, cpu float64) *model.Metrics {
+		return &model.Metrics{V: 1, Ts: ts, CPU: model.CPUStat{Usage: cpu}}
+	}
+	if err := s.InsertMetricsBatch("replay", []*model.Metrics{metric(base+1000, 10), metric(base+2000, 30)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AggregateRollups(); err != nil {
+		t.Fatal(err)
+	}
+	late := metric(base+3000, 50)
+	if err := s.InsertMetrics("replay", late); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AggregateRollups(); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"metrics_1m", "metrics_5m", "metrics_1h"} {
+		var samples int
+		var cpu float64
+		if err := s.DB().QueryRow("SELECT samples,cpu_avg FROM "+table+" WHERE node_id='replay'").Scan(&samples, &cpu); err != nil {
+			t.Fatal(err)
+		}
+		if samples != 3 || cpu != 30 {
+			t.Fatalf("%s 漏掉断线补报：samples=%d cpu=%v", table, samples, cpu)
+		}
+	}
+}
