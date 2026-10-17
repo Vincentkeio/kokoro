@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -1076,11 +1077,6 @@ type modComment struct {
 	Score    int
 }
 
-type adminBuyMessage struct {
-	store.BuyIntent
-	NodeName string
-}
-
 type adminData struct {
 	Theme    themeView
 	SiteName string
@@ -1101,7 +1097,22 @@ type adminData struct {
 	Comments []modComment
 	// BuyIntents 是站内消息：访客购买咨询会先保存，再尝试 Telegram / Webhook 推送。
 	// 即使外部渠道未配置或发送失败，管理员仍可在后台查看。
-	BuyIntents []adminBuyMessage
+	SiteMessages        []store.SiteMessage
+	SiteMessagesTotal   int
+	InboxUnread         int
+	InboxError          bool
+	InboxSelectionError bool
+	InboxDeleted        int
+	InboxPage           int
+	InboxPages          int
+	InboxPrevPage       int
+	InboxNextPage       int
+	InboxHasPrev        bool
+	InboxHasNext        bool
+	ExpiryReminderOn    bool
+	ExpiryReminderDays  int
+	ExpiryReminderMsg   string
+	ExpiryReminderBad   bool
 
 	// CommentsByNode 是按小鸡分好组的评论。
 	// 一个平铺的长表格里，"这条评的是哪台机器"要靠单独一列去认，
@@ -1897,6 +1908,11 @@ func (h *Hub) handleNodeNetQ(w http.ResponseWriter, r *http.Request, slug string
 
 // ---- 留言与投票 ----
 
+const (
+	commentContentMax = 100
+	commentContactMax = 20
+)
+
 // handleNodeComment 处理 /n/<slug>/comment 的提交。
 func (h *Hub) handleNodeComment(w http.ResponseWriter, r *http.Request, slug string) {
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
@@ -1923,20 +1939,27 @@ func (h *Hub) handleNodeComment(w http.ResponseWriter, r *http.Request, slug str
 	contact := strings.TrimSpace(r.FormValue("contact"))
 	parentID := strings.TrimSpace(r.FormValue("parent_id"))
 	author = clampRunes(author, 32)
-	contact = clampRunes(contact, 120)
-	content = clampRunes(content, 2000)
 
 	if content == "" {
 		h.commentFail(w, r, slug, "留言内容不能为空")
 		return
 	}
+	if len([]rune(content)) > commentContentMax {
+		h.commentFail(w, r, slug, "留言内容最多 100 个字")
+		return
+	}
+	if len([]rune(contact)) > commentContactMax {
+		h.commentFail(w, r, slug, "联系方式最多 20 个字")
+		return
+	}
+	ipHash := h.rateLimitIPHash(r)
 	if author == "" {
 		author = "匿名访客"
 	}
 
 	voter := h.voterID(w, r)
 	if !h.limiter.allow("cm:"+voter, 15*time.Second) {
-		h.commentFail(w, r, slug, "发得太快了，歇 15 秒再来")
+		h.commentRateLimited(w, r, slug, "发得太快了，歇 15 秒再来")
 		return
 	}
 
@@ -1951,12 +1974,17 @@ func (h *Hub) handleNodeComment(w http.ResponseWriter, r *http.Request, slug str
 		Contact:   contact,
 		Content:   content,
 		Status:    status,
-		IPHash:    h.visitorHash(r),
+		IPHash:    ipHash,
 		CreatedAt: time.Now().UnixMilli(),
 	}
-	if err := h.store.AddComment(c); err != nil {
+	added, err := h.store.AddCommentWithIPRateLimit(c, time.Now().Add(-perNodeWindow).UnixMilli(), perNodeSendMax)
+	if err != nil {
 		log.Printf("[hub] 保存留言失败: %v", err)
 		h.commentFail(w, r, slug, "保存失败，稍后再试")
+		return
+	}
+	if !added {
+		h.commentRateLimited(w, r, slug, "同一 IP 对这台小鸡 5 分钟内最多留言 2 条，请稍后再试")
 		return
 	}
 	_ = h.store.AddAudit("guest", "comment.add", node.ID, author)
@@ -1980,6 +2008,15 @@ func (h *Hub) commentFail(w http.ResponseWriter, r *http.Request, slug, msg stri
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": msg})
 		return
 	}
+	h.renderNodePage(w, r, slug, msg, false)
+}
+
+func (h *Hub) commentRateLimited(w http.ResponseWriter, r *http.Request, slug, msg string) {
+	if wantsJSON(r) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{"ok": false, "error": msg})
+		return
+	}
+	w.WriteHeader(http.StatusTooManyRequests)
 	h.renderNodePage(w, r, slug, msg, false)
 }
 
@@ -2064,6 +2101,13 @@ func (h *Hub) autoApprove() bool {
 func (h *Hub) visitorHash(r *http.Request) string {
 	ip := h.clientIP(r)
 	sum := sha256.Sum256([]byte(ip + "|" + r.UserAgent() + "|kokoro"))
+	return hex.EncodeToString(sum[:])[:24]
+}
+
+// rateLimitIPHash uses only the normalized client IP so changing user agents
+// cannot bypass per-IP posting limits. The raw address is never persisted.
+func (h *Hub) rateLimitIPHash(r *http.Request) string {
+	sum := sha256.Sum256([]byte("kokoro-rate|" + h.clientIP(r)))
 	return hex.EncodeToString(sum[:])[:24]
 }
 
@@ -2437,6 +2481,16 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 		data.NotifyQuietStart = cfg.QuietHoursStart
 		data.NotifyQuietEnd = cfg.QuietHoursEnd
 	}
+	data.ExpiryReminderOn, data.ExpiryReminderDays = h.expiryReminderSettings()
+	if r.URL.Query().Get("expiry_saved") == "1" {
+		data.ExpiryReminderMsg = "到期提醒设置已保存。"
+	}
+	if r.URL.Query().Get("expiry_error") == "days" {
+		data.ExpiryReminderMsg, data.ExpiryReminderBad = "提醒天数请输入 1–365 之间的整数。", true
+	}
+	if r.URL.Query().Get("expiry_error") == "save" {
+		data.ExpiryReminderMsg, data.ExpiryReminderBad = "保存失败，请稍后重试。", true
+	}
 	// 按小鸡分组用的桶。评论一次查回来，边装边分。
 	//
 	// ⚠️ 只在这里声明一次。下面别再写 `grouped := ...` ——
@@ -2484,15 +2538,32 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// 站内购买消息无论外部推送状态都会保存在后台消息区。
-	if bis, err := h.store.ListBuyIntents(30); err == nil {
-		for _, bi := range bis {
-			data.BuyIntents = append(data.BuyIntents, adminBuyMessage{
-				BuyIntent: bi,
-				NodeName:  nameOf[bi.NodeID],
-			})
-		}
+	const inboxPageSize = 10
+	data.InboxPage, _ = strconv.Atoi(r.URL.Query().Get("inbox_page"))
+	if data.InboxPage < 1 {
+		data.InboxPage = 1
 	}
+	if total, err := h.store.CountSiteMessages(); err == nil {
+		data.SiteMessagesTotal = total
+		data.InboxPages = (total + inboxPageSize - 1) / inboxPageSize
+	}
+	if data.InboxPages == 0 {
+		data.InboxPages = 1
+	}
+	if data.InboxPage > data.InboxPages {
+		data.InboxPage = data.InboxPages
+	}
+	data.InboxHasPrev = data.InboxPage > 1
+	data.InboxHasNext = data.InboxPage < data.InboxPages
+	data.InboxPrevPage = data.InboxPage - 1
+	data.InboxNextPage = data.InboxPage + 1
+	if messages, err := h.store.ListSiteMessages(inboxPageSize, (data.InboxPage-1)*inboxPageSize); err == nil {
+		data.SiteMessages = messages
+	}
+	data.InboxUnread, _ = h.store.CountUnreadSiteMessages()
+	data.InboxError = r.URL.Query().Get("inbox_error") == "1"
+	data.InboxSelectionError = r.URL.Query().Get("inbox_error") == "selection"
+	data.InboxDeleted, _ = strconv.Atoi(r.URL.Query().Get("inbox_deleted"))
 
 	// 国家/地区候选：把常用机房所在地排前面，其余按代码顺序兜底
 	if data.CC == nil {
@@ -2631,6 +2702,90 @@ func (h *Hub) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 	// theme_ssrf.go 仍然默认拒绝回环、只放行 --domain 与库里已有的白名单，
 	// 只是不再提供界面去改它。
 	http.Redirect(w, r, "/admin#comments", http.StatusSeeOther)
+}
+
+// handleAdminExpiryReminder saves the reminder switch and its lead time in days.
+func (h *Hub) handleAdminExpiryReminder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admin#alerts", http.StatusSeeOther)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "参数错误", http.StatusBadRequest)
+		return
+	}
+	days, err := strconv.Atoi(strings.TrimSpace(r.FormValue("days")))
+	if err != nil || days < 1 || days > maxExpiryReminderDay {
+		http.Redirect(w, r, "/admin?expiry_error=days#alerts", http.StatusSeeOther)
+		return
+	}
+	on := "0"
+	if r.FormValue("enabled") == "1" {
+		on = "1"
+	}
+	if err := h.store.SetSettings(map[string]string{settingExpiryReminderOn: on, settingExpiryReminderDay: strconv.Itoa(days)}); err != nil {
+		log.Printf("[hub] 保存到期提醒设置失败: %v", err)
+		http.Redirect(w, r, "/admin?expiry_error=save#alerts", http.StatusSeeOther)
+		return
+	}
+	if on == "1" {
+		go h.checkExpiryReminders(context.Background())
+	}
+	http.Redirect(w, r, "/admin?expiry_saved=1#alerts", http.StatusSeeOther)
+}
+
+// handleAdminMessages processes inbox read-state actions.
+func (h *Hub) handleAdminMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "参数错误", http.StatusBadRequest)
+		return
+	}
+	var err error
+	var deleted int64
+	switch r.FormValue("action") {
+	case "read":
+		err = h.store.MarkSiteMessageRead(strings.TrimSpace(r.FormValue("id")))
+	case "read_all":
+		err = h.store.MarkAllSiteMessagesRead()
+	case "delete":
+		if len(r.Form["ids"]) == 0 {
+			http.Redirect(w, r, "/admin?inbox_page="+strconv.Itoa(parsePositivePage(r.FormValue("page")))+"&inbox_error=selection#buy-intents", http.StatusSeeOther)
+			return
+		}
+		deleted, err = h.store.DeleteSiteMessages(r.Form["ids"])
+		if err == nil && deleted == 0 {
+			http.Redirect(w, r, "/admin?inbox_page="+strconv.Itoa(parsePositivePage(r.FormValue("page")))+"&inbox_error=selection#buy-intents", http.StatusSeeOther)
+			return
+		}
+	default:
+		http.Error(w, "参数错误", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		log.Printf("[hub] 更新站内消息已读状态失败: %v", err)
+		http.Redirect(w, r, "/admin?inbox_page="+strconv.Itoa(parsePositivePage(r.FormValue("page")))+"&inbox_error=1#buy-intents", http.StatusSeeOther)
+		return
+	}
+	if r.FormValue("action") == "delete" {
+		http.Redirect(w, r, "/admin?inbox_page="+strconv.Itoa(parsePositivePage(r.FormValue("page")))+"&inbox_deleted="+strconv.FormatInt(deleted, 10)+"#buy-intents", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/admin?inbox_page="+strconv.Itoa(parsePositivePage(r.FormValue("page")))+"#buy-intents", http.StatusSeeOther)
+}
+
+func parsePositivePage(raw string) int {
+	page, err := strconv.Atoi(raw)
+	if err != nil || page < 1 {
+		return 1
+	}
+	return page
 }
 
 // handleAdminTokens 创建/吊销安装令牌。

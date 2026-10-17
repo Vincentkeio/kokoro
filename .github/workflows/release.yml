@@ -28,7 +28,9 @@ jobs:
           go test -count=1 ./...
           go vet ./...
           node --check internal/hub/static/app.js
+          node --check internal/hub/static/globe.js
           node scripts/check-chart-rendering.cjs
+          node scripts/check-dialog-sending.cjs
           bash -n scripts/install-hub.sh scripts/install.sh scripts/kokoro-bench.sh
 
       - name: Build Linux releases

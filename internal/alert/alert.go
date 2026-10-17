@@ -752,30 +752,45 @@ func (m *Manager) Notify(ctx context.Context, msg notify.Message) error {
 // NotifyChannels 按渠道分别发送并返回真实送达状态。
 // 购买消息需要把 Telegram 和 Webhook 的结果分别反馈给访客。
 func (m *Manager) NotifyChannels(ctx context.Context, msg notify.Message) (map[string]string, error) {
+	wanted := func(channel string) bool {
+		if len(msg.Channels) == 0 {
+			return true
+		}
+		for _, selected := range msg.Channels {
+			if selected == channel {
+				return true
+			}
+		}
+		return false
+	}
 	result := map[string]string{
 		notify.ChannelTelegram: "unconfigured",
 		notify.ChannelWebhook:  "unconfigured",
 	}
 	cfg, err := notify.LoadConfig(m.st)
 	if err != nil {
-		result[notify.ChannelTelegram] = "failed"
-		result[notify.ChannelWebhook] = "failed"
+		if wanted(notify.ChannelTelegram) {
+			result[notify.ChannelTelegram] = "failed"
+		}
+		if wanted(notify.ChannelWebhook) {
+			result[notify.ChannelWebhook] = "failed"
+		}
 		return result, fmt.Errorf("读取通知配置失败: %w", err)
 	}
-	if cfg.TelegramOK() {
+	if cfg.TelegramOK() && wanted(notify.ChannelTelegram) {
 		result[notify.ChannelTelegram] = "failed"
 	}
-	if cfg.WebhookOK() {
+	if cfg.WebhookOK() && wanted(notify.ChannelWebhook) {
 		result[notify.ChannelWebhook] = "failed"
 	}
 	if !cfg.AnyChannelOK() {
 		return result, ErrNoNotificationChannelConfigured
 	}
 	if !notify.ShouldNotify(time.Now(), cfg) {
-		if cfg.TelegramOK() {
+		if cfg.TelegramOK() && wanted(notify.ChannelTelegram) {
 			result[notify.ChannelTelegram] = "quiet_hours"
 		}
-		if cfg.WebhookOK() {
+		if cfg.WebhookOK() && wanted(notify.ChannelWebhook) {
 			result[notify.ChannelWebhook] = "quiet_hours"
 		}
 		return result, nil

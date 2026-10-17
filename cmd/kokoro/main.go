@@ -136,8 +136,9 @@ func main() {
 // menuItem 是管理菜单的一项。用表驱动而不是写死编号：菜单项会随本机装了什么
 // （Hub / Agent）增减，硬编码编号很容易错位。
 type menuItem struct {
-	label string
-	run   func(reader *bufio.Reader) int
+	label      string
+	run        func(reader *bufio.Reader) int
+	pauseAfter bool
 }
 
 func menuItems() []menuItem {
@@ -151,11 +152,16 @@ func menuItems() []menuItem {
 	}
 	// 面板与探针的更新、卸载分开，只显示本机实际装了的角色：
 	// 面板主机不会看到"更新/卸载探针"，纯子机也不会看到面板相关项。
+	if hub {
+		items = append(items, menuItem{label: "更新面板（Hub 主程序）", run: updateHub, pauseAfter: true})
+	}
 	if agentInstalled {
-		items = append(items, menuItem{label: "更新探针程序（Agent）", run: func(*bufio.Reader) int { updateAgent(); return 0 }})
+		items = append(items, menuItem{label: "更新探针程序（Agent）", run: updateAgent, pauseAfter: true})
 	}
 	if hub {
-		items = append(items, menuItem{label: "更新面板（Hub 主程序）", run: updateHub})
+		items = append(items, menuItem{label: "更新安装脚本", run: updateHubInstaller, pauseAfter: true})
+	}
+	if hub {
 		items = append(items, menuItem{label: "重置唯一管理员账户", run: resetAdminFromMenu})
 	}
 	items = append(items, menuItem{label: "查看最近日志", run: func(*bufio.Reader) int { showLogs(); return 0 }})
@@ -198,7 +204,13 @@ func runMenu() int {
 			fmt.Println("无效选项，请选择菜单中的编号。")
 			continue
 		}
-		if rc := items[index-1].run(reader); rc != 0 {
+		item := items[index-1]
+		rc := item.run(reader)
+		if item.pauseAfter {
+			fmt.Print("\n按回车返回菜单...")
+			_, _ = reader.ReadString('\n')
+		}
+		if rc != 0 {
 			return 1
 		}
 	}
@@ -261,14 +273,36 @@ func restartServices() {
 	}
 }
 
-func updateAgent() {
+func updateAgent(reader *bufio.Reader) int {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	source := newGitHubHubSource(&http.Client{Timeout: 60 * time.Second})
+	releases, err := source.Releases(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "检查 Agent 更新失败：%v\n", err)
+		return 1
+	}
+	latest, err := (&hubUpdater{}).chooseRelease(releases)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "检查 Agent 更新失败：%v\n", err)
+		return 1
+	}
+	if compareKokoroVersion(latest.Tag, Version) <= 0 {
+		fmt.Println("当前探针程序已是最新版本，没有可用更新。")
+		return 0
+	}
+	if !confirmUpdate(reader, os.Stdout) {
+		fmt.Println("已取消。")
+		return 0
+	}
+
 	installer := "/usr/local/lib/kokoro/install.sh"
 	if _, err := os.Stat(installer); err != nil {
 		fmt.Println("未找到探针安装脚本。请在节点上重新运行 Hub 提供的安装命令。")
 		if unitInstalled("kokoro-hub") {
 			fmt.Println("本机是面板主机；更新 Hub 主程序请用菜单里的「更新面板」。")
 		}
-		return
+		return 1
 	}
 	if cfg, err := agent.LoadConfig(""); err != nil {
 		fmt.Printf("无法读取 Hub 地址，保留现有安装脚本：%v\n", err)
@@ -277,11 +311,15 @@ func updateAgent() {
 	} else {
 		fmt.Println("已从 Hub 更新本地 install.sh")
 	}
-	cmd := exec.Command("sh", installer, "--upgrade")
+	fmt.Println("正在更新探针程序。")
+	cmd := exec.Command("sh", installer, "--upgrade", "--github")
+	cmd.Env = envWithOverride(os.Environ(), "GH_TAG", latest.Tag)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("更新探针失败：%v\n", err)
+		return 1
 	}
+	return 0
 }
 
 // updateHub 更新 Hub 主程序本体。与 updateAgent 完全分开：这里只动
@@ -298,6 +336,171 @@ func updateHub(reader *bufio.Reader) int {
 		return 1
 	}
 	return 0
+}
+
+// updateHubInstaller refreshes the installer distributed by Hub for future
+// Agent installs and upgrades. It does not update the Hub or Agent binaries.
+func updateHubInstaller(reader *bufio.Reader) int {
+	if !unitInstalled("kokoro-hub") {
+		fmt.Println("未检测到 Kokoro 面板服务。")
+		return 0
+	}
+	if !runningAsRoot() {
+		fmt.Println("更新安装脚本需要 root 权限，请用 sudo 运行 kokoro。")
+		return 1
+	}
+	_, dataDir := installedHubPaths()
+	distDir := filepath.Join(dataDir, "dist")
+	if info, err := os.Stat(distDir); err != nil || !info.IsDir() {
+		fmt.Printf("未找到 Hub 脚本分发目录 %s。\n", distDir)
+		return 1
+	}
+
+	updater := newHubUpdater("", Version, reader, os.Stdout)
+	ctx := context.Background()
+	releases, err := updater.source.Releases(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "获取 GitHub 发布列表失败：%v\n", err)
+		return 1
+	}
+	rel, err := updater.chooseRelease(releases)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "检查安装脚本更新失败：%v\n", err)
+		return 1
+	}
+
+	assetName := "install.sh"
+	scriptPath := filepath.Join(distDir, assetName)
+	currentScript, err := os.ReadFile(scriptPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "读取当前安装脚本失败：%v\n", err)
+		return 1
+	}
+	currentTag := installerReleaseTag(currentScript)
+	if currentTag != "" && currentTag != "latest" && compareKokoroVersion(rel.Tag, currentTag) <= 0 {
+		fmt.Println("Hub 分发的安装脚本已是最新版本，没有可用更新。")
+		return 0
+	}
+	if !confirmUpdate(reader, os.Stdout) {
+		fmt.Println("已取消。")
+		return 0
+	}
+	assetURL, checksumURL, err := hubAssetURLs(rel, assetName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "获取安装脚本地址失败：%v\n", err)
+		return 1
+	}
+	script, err := updater.source.Download(ctx, assetURL, maxInstallerSize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "下载安装脚本失败：%v\n", err)
+		return 1
+	}
+	checksum, err := updater.source.Download(ctx, checksumURL, 4096)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "下载安装脚本校验文件失败：%v\n", err)
+		return 1
+	}
+	if err := verifyHubScriptArtifact(rel, assetName, script, checksum); err != nil {
+		fmt.Fprintf(os.Stderr, "安装脚本校验失败：%v\n", err)
+		return 1
+	}
+
+	checksumPath := scriptPath + ".sha256"
+	if err := writeAtomicFile(scriptPath, script, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "保存安装脚本失败：%v\n", err)
+		return 1
+	}
+	if err := writeAtomicFile(checksumPath, checksum, 0644); err != nil {
+		_ = writeAtomicFile(scriptPath, currentScript, 0644)
+		fmt.Fprintf(os.Stderr, "保存校验文件失败，已还原原安装脚本：%v\n", err)
+		return 1
+	}
+	fmt.Fprintln(os.Stdout, "Hub 分发的安装脚本更新完成。")
+	return 0
+}
+
+func installerReleaseTag(script []byte) string {
+	const prefix = `GH_TAG="${GH_TAG:-`
+	for _, line := range strings.Split(string(script), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		tag := strings.TrimSuffix(strings.TrimPrefix(line, prefix), `}"`)
+		return strings.TrimSpace(tag)
+	}
+	return ""
+}
+
+func envWithOverride(env []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if !strings.HasPrefix(entry, prefix) {
+			out = append(out, entry)
+		}
+	}
+	return append(out, prefix+value)
+}
+
+func confirmUpdate(reader *bufio.Reader, out io.Writer) bool {
+	if out == nil {
+		out = os.Stdout
+	}
+	_, _ = fmt.Fprint(out, "检测到可用更新，是否立即更新？输入 y 确认，其他输入取消：")
+	if reader == nil {
+		reader = bufio.NewReader(os.Stdin)
+	}
+	answer := strings.TrimSpace(promptLine(reader, ""))
+	return strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes")
+}
+
+func verifyHubScriptArtifact(rel hubRelease, assetName string, script, checksum []byte) error {
+	if len(script) == 0 || !strings.HasPrefix(string(script), "#!/bin/sh\n") {
+		return fmt.Errorf("%s 格式无效", assetName)
+	}
+	for _, asset := range rel.Assets {
+		if asset.Name == assetName && asset.Size > 0 && int64(len(script)) != asset.Size {
+			return fmt.Errorf("%s 大小与发布清单不符", assetName)
+		}
+	}
+	fields := strings.Fields(string(checksum))
+	if len(fields) == 0 || len(fields[0]) != sha256.Size*2 {
+		return fmt.Errorf("%s.sha256 格式无效", assetName)
+	}
+	if _, err := hex.DecodeString(fields[0]); err != nil {
+		return fmt.Errorf("%s.sha256 格式无效：%w", assetName, err)
+	}
+	actual := sha256.Sum256(script)
+	if !strings.EqualFold(fields[0], hex.EncodeToString(actual[:])) {
+		return fmt.Errorf("%s SHA-256 校验失败", assetName)
+	}
+	return nil
+}
+
+func writeAtomicFile(path string, data []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".kokoro-script-*.new")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(mode); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 const maxInstallerSize = 2 << 20

@@ -42,7 +42,7 @@ var schemaSQL string
 // 只加 2 不加 1 的后果：新装的库缺列，跑起来报
 // "table xxx has no column named yyy" —— 而且**本地测试会先红**
 // （测试用的都是全新库）。踩过一次。
-const schemaVersion = 19
+const schemaVersion = 23
 
 // rollup 各层的窗口长度（毫秒）。级联方向：raw → 1m → 5m → 1h → 1d。
 const (
@@ -368,6 +368,41 @@ WHERE h.bucket >= CAST(strftime('%s','now') AS INTEGER)*1000 - 30*86400000
                   WHERE m.node_id=h.node_id AND m.bucket=h.bucket + slots.n*300000);
 DELETE FROM node_tasks WHERE node_id NOT IN (SELECT id FROM nodes);
 DELETE FROM uptime_buckets WHERE node_id NOT IN (SELECT id FROM nodes);`},
+	{version: 20, sql: `CREATE TABLE IF NOT EXISTS site_messages (
+    id         TEXT    PRIMARY KEY,
+    dedupe_key TEXT    NOT NULL UNIQUE,
+    kind       TEXT    NOT NULL DEFAULT '',
+    node_id    TEXT    NOT NULL DEFAULT '',
+    node_name  TEXT    NOT NULL DEFAULT '',
+    title      TEXT    NOT NULL DEFAULT '',
+    body       TEXT    NOT NULL DEFAULT '',
+    delivery   TEXT    NOT NULL DEFAULT '',
+    read_at    INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_site_messages_time ON site_messages (created_at DESC);
+INSERT OR IGNORE INTO site_messages
+(id, dedupe_key, kind, node_id, node_name, title, body, delivery, created_at)
+SELECT 'sm_' || b.id, 'buy:' || b.id, 'buy', b.node_id, COALESCE(n.name, ''),
+       '有人想购买', '联系方式：' || b.contact || CASE WHEN TRIM(b.note)='' THEN '' ELSE char(10) || '备注：' || b.note END,
+       CASE WHEN b.notified<>0 THEN '站内已保存 · 外部通知至少一路送达' ELSE '站内已保存 · 外发失败或未配置' END,
+       b.created_at
+FROM buy_intents b LEFT JOIN nodes n ON n.id=b.node_id;`},
+	{version: 21, sql: `DROP INDEX IF EXISTS idx_site_messages_time;
+CREATE INDEX IF NOT EXISTS idx_site_messages_page ON site_messages (created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_site_messages_unread ON site_messages (read_at);`},
+	{version: 22, sql: `CREATE INDEX IF NOT EXISTS idx_buy_ip_node_time ON buy_intents (ip_hash, node_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_ip_node_time ON comments (ip_hash, node_id, created_at DESC);`},
+	{version: 23, sql: `CREATE TABLE IF NOT EXISTS expiry_reminder_deliveries (
+    dedupe_key TEXT PRIMARY KEY,
+    telegram_status TEXT NOT NULL DEFAULT '',
+    webhook_status TEXT NOT NULL DEFAULT ''
+);
+INSERT OR IGNORE INTO expiry_reminder_deliveries (dedupe_key, telegram_status, webhook_status)
+SELECT dedupe_key,
+ CASE WHEN instr(delivery, 'Telegram 已发送')>0 THEN 'sent' ELSE '' END,
+ CASE WHEN instr(delivery, 'Webhook 已发送')>0 THEN 'sent' ELSE '' END
+FROM site_messages WHERE kind='expiry';`},
 }
 
 // prepare 预编译高频写入语句。
@@ -1384,6 +1419,33 @@ VALUES (?,?,?,?,?,?,?,?,?,?)`,
 	return nil
 }
 
+// AddCommentWithIPRateLimit atomically checks the per-IP, per-node quota and inserts.
+func (s *Store) AddCommentWithIPRateLimit(c *model.Comment, since int64, max int) (bool, error) {
+	if c == nil {
+		return false, errors.New("comment 为空")
+	}
+	if c.ID == "" {
+		c.ID = newID("cm_")
+	}
+	if c.CreatedAt == 0 {
+		c.CreatedAt = nowMS()
+	}
+	if c.Status == "" {
+		c.Status = model.CommentPending
+	}
+	res, err := s.db.Exec(`INSERT INTO comments
+(id, node_id, parent_id, author, contact, content, status, ip_hash, created_at, pinned)
+SELECT ?,?,?,?,?,?,?,?, ?,?
+WHERE (SELECT COUNT(*) FROM comments WHERE ip_hash=? AND node_id=? AND created_at>=?) < ?`,
+		c.ID, c.NodeID, c.ParentID, c.Author, c.Contact, c.Content, string(c.Status), c.IPHash,
+		c.CreatedAt, boolInt(c.Pinned), c.IPHash, c.NodeID, since, max)
+	if err != nil {
+		return false, fmt.Errorf("新增评论失败: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 // PinComment 置顶 / 取消置顶。
 //
 // 只改 pinned，不动 status —— 置顶和审核是两回事，
@@ -1841,6 +1903,21 @@ ON CONFLICT (key) DO UPDATE SET value = excluded.value`, key, value)
 		return fmt.Errorf("写入配置失败: %w", err)
 	}
 	return nil
+}
+
+// SetSettings commits related settings as one change.
+func (s *Store) SetSettings(values map[string]string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for key, value := range values {
+		if _, err := tx.Exec(`INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // AddAudit 追加一条审计日志，ts 自动填充为当前时间。

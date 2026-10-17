@@ -10,6 +10,8 @@ Kokoro 是一个用于管理多台 VPS 的主控面板与轻量探针。Hub 部�
 - 首页总览显示服务器总数、在线/离线与**点亮地区数**；点阵地球把有节点的**国家/地区整片点亮**。
 - 通过任务队列下发硬件跑分、IP 质量与解锁、网络测速及三网回程检测。
 - 查看任务进度、历史结果和原始输出。
+- 到期提醒默认提前 7 天，支持 Telegram / Webhook 推送；站内消息保存购买留言与到期提醒备份，支持已读、分页和批量删除。
+- 购买留言与评论每台节点、每个 IP 在 5 分钟内最多 2 条；正文最多 100 字，联系方式最多 20 字。
 - 指标分层降采样保存，磁盘占用与采集频率解耦（见下一节）。
 - 按目标容量增加节点 SWAP；不支持减少 SWAP。
 - Agent 只接受预先定义的结构化指令，不执行 Hub 下发的任意 Shell 命令或脚本。
@@ -40,9 +42,9 @@ curl -fsSL https://raw.githubusercontent.com/Vincentkeio/kokoro/main/scripts/ins
 - 检测到 Nginx（包括常见的宝塔配置目录）时，保留 Nginx 现有网站，只为 Kokoro 添加独立站点；Caddy 在本地备用端口申请和续期证书，续期后自动重载 Nginx。
 - 若 80/443 被其他程序占用、无法识别安全的 Nginx 配置目录、域名已配置，或发现需要人工合并的自定义 Caddy 配置，安装器会停止以避免覆盖现有站点。它不会停止或接管 Nginx，也不会自动修改其他站点配置。
 
-安装目录为 `/opt/kokoro`，数据目录为 `/var/lib/kokoro`。安装完成后运行 `kokoro` 打开管理菜单；可用 `systemctl status kokoro-hub` 查看服务状态，用 `journalctl -u kokoro-hub -f` 查看实时日志。Nginx 模式下也可检查 `nginx` 和 `caddy` 服务。菜单里面板与探针的更新、卸载是分开的，且只显示本机实际装了的角色：「更新面板（Hub 主程序）」从 GitHub Release 取已发布版本（含 Preview），按架构下载并校验 SHA-256，原子替换 Hub 二进制后重启服务，健康检查失败自动回滚旧版本；「更新探针程序」只更新 Agent。管理菜单中的「卸载面板」会询问是否**连数据一起删除**：选择彻底删除时会先关闭 Kokoro 托管的 SWAP 并清理 `/etc/fstab` 里的对应挂载行，再删数据目录（默认只卸载面板、保留数据）；「卸载 Agent」只卸载子机探针，不会动面板及其数据。
+安装目录为 `/opt/kokoro`，数据目录为 `/var/lib/kokoro`。安装完成后运行 `kokoro` 打开管理菜单；可用 `systemctl status kokoro-hub` 查看服务状态，用 `journalctl -u kokoro-hub -f` 查看实时日志。Nginx 模式下也可检查 `nginx` 和 `caddy` 服务。菜单里面板与探针的更新、卸载是分开的，且只显示本机实际装了的角色。三个更新选项都会自动检测当前角色是否有可用更新：没有更新时直接提示；有更新时询问是否立即更新，不让用户选择版本。「更新面板（Hub 主程序）」从 GitHub Release 获取制品并校验 SHA-256，替换 Hub 二进制后重启服务，健康检查失败自动还原旧程序和更新前数据库；「更新探针程序」只更新 Agent；「更新安装脚本」单独更新 Hub 提供给后续节点安装和升级的 `install.sh`，不替换 Hub 或 Agent 二进制。管理菜单中的「卸载面板」会询问是否**连数据一起删除**：选择彻底删除时会先关闭 Kokoro 托管的 SWAP 并清理 `/etc/fstab` 里的对应挂载行，再删数据目录（默认只卸载面板、保留数据）；「卸载 Agent」只卸载子机探针，不会动面板及其数据。
 
-安装器从 GitHub Release 下载 Hub、Linux amd64/arm64 Agent、Agent 安装脚本和固定测试脚本，并校验 SHA-256。目标主机不需要 Go 或编译工具；建议预留约 100 MB 临时空间和运行空间。Release 资产版本由 [`scripts/install-hub.sh`](scripts/install-hub.sh) 中的 `RELEASE_TAG` 指定，安装脚本与 Release 资产应配套发布。
+安装器从 GitHub Release 下载 Hub、Linux amd64/arm64 Agent、Agent 安装脚本和固定测试脚本，并校验 SHA-256。目标主机不需要 Go 或编译工具；建议预留约 100 MB 临时空间和运行空间。可用 `scripts/build-release.ps1 -Version v版本号` 构建候选制品；确认下载包已公开后，再更新 [`scripts/install-hub.sh`](scripts/install-hub.sh) 中的 `RELEASE_TAG`，避免安装入口指向尚不存在的制品。
 
 ### Agent 子机
 

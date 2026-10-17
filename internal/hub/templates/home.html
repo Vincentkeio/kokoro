@@ -201,18 +201,78 @@
           <span><i class="i-off"></i>离线</span>
           {{if .Globe.HasHub}}<span><i class="i-cur"></i>主机</span>{{end}}
         </div>
-
-
       </div>
       <div class="globe-mode-switch" role="group" aria-label="节点标注方式">
         <button type="button" data-globe-mode="labels" aria-pressed="true">连线标注</button>
         <button type="button" data-globe-mode="list" aria-pressed="false">右侧列表</button>
       </div>
       <div class="globe-body" data-globe-view="labels">
+        <svg class="globe-grid-flow" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="globe-grid-tail-h" x1="0" y1="0" x2="100%" y2="0">
+<stop offset="0" stop-color="#4e97de" stop-opacity="0"/>
+              <stop offset="20%" stop-color="#4e97de" stop-opacity=".04"/>
+              <stop offset="38%" stop-color="#4e97de" stop-opacity=".22"/>
+              <stop offset="50%" stop-color="#fafdff" stop-opacity=".54"/>
+              <stop offset="62%" stop-color="#4e97de" stop-opacity=".22"/>
+              <stop offset="80%" stop-color="#4e97de" stop-opacity=".04"/>
+              <stop offset="100%" stop-color="#4e97de" stop-opacity="0"/>
+</linearGradient>
+            <linearGradient id="globe-grid-tail-v" x1="0" y1="0" x2="0" y2="100%">
+<stop offset="0" stop-color="#4e97de" stop-opacity="0"/>
+              <stop offset="20%" stop-color="#4e97de" stop-opacity=".04"/>
+              <stop offset="38%" stop-color="#4e97de" stop-opacity=".22"/>
+              <stop offset="50%" stop-color="#fafdff" stop-opacity=".54"/>
+              <stop offset="62%" stop-color="#4e97de" stop-opacity=".22"/>
+              <stop offset="80%" stop-color="#4e97de" stop-opacity=".04"/>
+              <stop offset="100%" stop-color="#4e97de" stop-opacity="0"/>
+</linearGradient>
+            <g id="globe-grid-streak-h">
+              <ellipse cx="0" cy="0" rx="24" ry=".28" fill="url(#globe-grid-tail-h)"/>
+              <ellipse cx="100" cy="0" rx="24" ry=".28" fill="url(#globe-grid-tail-h)"/>
+              <ellipse cx="200" cy="0" rx="24" ry=".28" fill="url(#globe-grid-tail-h)"/>
+            </g>
+            <g id="globe-grid-streak-v">
+              <ellipse cx="0" cy="0" rx=".28" ry="24" fill="url(#globe-grid-tail-v)"/>
+              <ellipse cx="0" cy="100" rx=".28" ry="24" fill="url(#globe-grid-tail-v)"/>
+              <ellipse cx="0" cy="200" rx=".28" ry="24" fill="url(#globe-grid-tail-v)"/>
+            </g>
+          </defs>
+          <g transform="translate(0 6.25)" style="--flow-phase:-0s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 12.5)" style="--flow-phase:-0.16s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 18.75)" style="--flow-phase:-0.32s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 25)" style="--flow-phase:-0.48s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 31.25)" style="--flow-phase:-0.64s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 37.5)" style="--flow-phase:-0.8s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 43.75)" style="--flow-phase:-0.96s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 50)" style="--flow-phase:-1.12s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 56.25)" style="--flow-phase:-1.28s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 62.5)" style="--flow-phase:-1.44s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 68.75)" style="--flow-phase:-1.6s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 75)" style="--flow-phase:-1.76s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 81.25)" style="--flow-phase:-1.92s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 87.5)" style="--flow-phase:-2.08s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(0 93.75)" style="--flow-phase:-2.24s"><use class="globe-flow-streak" href="#globe-grid-streak-h"/></g>
+          <g transform="translate(6.25 0)" style="--flow-phase:-2.4s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(12.5 0)" style="--flow-phase:-2.56s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(18.75 0)" style="--flow-phase:-2.72s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(25 0)" style="--flow-phase:-2.88s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(31.25 0)" style="--flow-phase:-3.04s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(37.5 0)" style="--flow-phase:-3.2s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(43.75 0)" style="--flow-phase:-3.36s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(50 0)" style="--flow-phase:-3.52s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(56.25 0)" style="--flow-phase:-3.68s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(62.5 0)" style="--flow-phase:-3.84s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(68.75 0)" style="--flow-phase:-4s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(75 0)" style="--flow-phase:-4.16s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(81.25 0)" style="--flow-phase:-4.32s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(87.5 0)" style="--flow-phase:-4.48s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+          <g transform="translate(93.75 0)" style="--flow-phase:-4.64s"><use class="globe-flow-streak is-vertical" href="#globe-grid-streak-v"/></g>
+        </svg>
         <div class="globe" id="globe" data-land="{{.GlobeLandURL}}" aria-label="节点分布地球"></div>
         <div class="globe-node-list" role="list" aria-label="节点地区列表" tabindex="0">
           {{range .Globe.Places}}<div class="globe-node-entry" role="listitem" data-node-key="{{.Key}}">
-            <span class="flag">{{flag .Country}}</span><span class="globe-city">{{.City}}<small>{{.Name}}</small></span><span class="globe-node-status{{if .Online}} is-online{{end}}">{{if .Online}}在线{{else}}离线{{end}}</span>
+            <span class="globe-node-light{{if .Online}} is-online{{else}} is-offline{{end}}" aria-hidden="true"></span><span class="flag">{{flag .Country}}</span><span class="globe-city">{{.City}}<small>{{.Name}}</small></span><span class="globe-node-status{{if .Online}} is-online{{end}}">{{if .Online}}在线{{else}}离线{{end}}</span>
           </div>{{end}}
         </div>
       </div>
@@ -526,11 +586,11 @@
       <form id="buy-form" class="col">
         <input type="hidden" name="slug" id="buy-slug">
         <label for="buy-contact">联系方式<span class="req">*</span>
-          <input id="buy-contact" name="contact" maxlength="120" required
-                 placeholder="微信 / QQ / 邮箱 / 手机号，任选">
+          <input id="buy-contact" name="contact" maxlength="20" required
+                 placeholder="微信 / QQ / 邮箱 / 手机号，最多 20 字">
         </label>
         <label for="buy-note">想说点什么（可选）
-          <textarea id="buy-note" name="note" maxlength="200" rows="3" placeholder="例如：想要月付，主要跑…"></textarea>
+          <textarea id="buy-note" name="note" maxlength="100" rows="3" placeholder="最多 100 字，例如：想要月付，主要跑…"></textarea>
         </label>
         <p class="hint err" id="buy-err" hidden></p>
       </form>
@@ -557,7 +617,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=147"></script>
+<script src="/static/app.js?v=152"></script>
 </body>
 </html>
 {{end}}

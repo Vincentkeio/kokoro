@@ -46,6 +46,7 @@
     <button type="button" class="atab" data-goto="profile">名片</button>
     <button type="button" class="atab" data-goto="alerts">告警</button>
     <button type="button" class="atab" data-goto="themes">主题</button>
+    <button type="button" class="atab" data-goto="inbox">站内消息{{if .InboxUnread}}<span class="abadge">{{.InboxUnread}}</span>{{end}}</button>
     <button type="button" class="atab" data-goto="sys">系统</button>
   </nav>
 
@@ -413,6 +414,16 @@
         <span class="hint" id="notify-quiet-msg" aria-live="polite"></span>
       </form>
     </div>
+    <div class="notify-channel">
+      <h4 class="sub">小鸡到期提醒</h4>
+      <p class="hint">只检查已设置到期日的小鸡。达到提醒时间后，保存到站内消息，并通过已启用的 Telegram 或 Webhook 通知。</p>
+      <form class="row" method="post" action="/admin/expiry-reminder">
+        <label class="chk"><input type="checkbox" name="enabled" value="1" {{if .ExpiryReminderOn}}checked{{end}}> 开启到期提醒</label>
+        <label>到期前<input name="days" type="number" min="1" max="365" step="1" value="{{.ExpiryReminderDays}}" required style="width:6rem"> 天提醒</label>
+        <button class="btn" type="submit">保存到期提醒</button>
+        {{if .ExpiryReminderMsg}}<span class="{{if .ExpiryReminderBad}}bad{{else}}ok{{end}}" role="status">{{.ExpiryReminderMsg}}</span>{{end}}
+      </form>
+    </div>
     <p class="hint">测试只发送到对应渠道，使用已保存的配置，不受免打扰时段影响。告警规则每 15 秒检查一次。</p>
 
     <h4 class="sub">告警规则</h4>
@@ -571,29 +582,50 @@
     <p class="empty">还没有评论。</p>
     {{end}}
 
-    {{/* 站内消息：购买咨询无论外部推送状态都会保存在这里。 */}}
-    <details class="adv" id="buy-intents" data-atab="comments" style="margin-top:var(--s4)">
-      <summary>站内消息 · 购买咨询（{{len .BuyIntents}}）</summary>
-      {{if .BuyIntents}}
-      <table class="tbl">
-        <thead><tr><th>时间</th><th>机器</th><th>联系方式</th><th>备注</th><th>保存与推送</th></tr></thead>
+</section>
+
+  <section class="panel" id="buy-intents" data-atab="inbox">
+    <div class="inbox-heading">
+      <h3>站内消息{{if .SiteMessagesTotal}} <small>{{.SiteMessagesTotal}} 条</small>{{end}}{{if .InboxUnread}} <small class="inbox-unread-count">{{.InboxUnread}} 条未读</small>{{end}}</h3>
+      <div class="inbox-actions">
+        {{if .SiteMessages}}<form id="inbox-delete-form" method="post" action="/admin/messages" onsubmit="return confirm('确认删除选中的站内消息？此操作不可撤销。')"><input type="hidden" name="action" value="delete"><input type="hidden" name="page" value="{{.InboxPage}}"><button class="btn danger" type="submit" disabled data-inbox-delete-button>删除所选</button></form>{{end}}
+        {{if .InboxUnread}}<form method="post" action="/admin/messages"><input type="hidden" name="action" value="read_all"><input type="hidden" name="page" value="{{.InboxPage}}"><button class="btn" type="submit">全部标为已读</button></form>{{end}}
+      </div>
+    </div>
+    {{if .InboxError}}<p class="bad" role="status">更新或删除消息失败，请重试。</p>{{end}}
+    {{if .InboxSelectionError}}<p class="hint" role="status">请先勾选要删除的消息。</p>{{end}}
+    {{if .InboxDeleted}}<p class="ok" role="status">已删除 {{.InboxDeleted}} 条消息。</p>{{end}}
+    <p class="hint" style="margin-top:0">这里汇总“我想买它”的留言备份和小鸡到期提醒；两类消息都会尝试发送到已启用的通知渠道。</p>
+    {{if .SiteMessages}}
+    <div class="tbl-wrap">
+      <table class="tbl inbox-table">
+        <thead><tr><th class="inbox-select-cell"><input type="checkbox" data-inbox-select-all aria-label="全选当前页"></th><th>时间</th><th>类型</th><th>小鸡</th><th>内容</th><th>通知结果</th><th>状态</th></tr></thead>
         <tbody>
-        {{range .BuyIntents}}
-        <tr>
+        {{range .SiteMessages}}
+        <tr class="{{if eq .ReadAt 0}}inbox-row-unread{{end}}">
+          <td class="inbox-select-cell"><input type="checkbox" name="ids" value="{{.ID}}" form="inbox-delete-form" data-inbox-select-item aria-label="选择消息：{{.Title}}"></td>
           <td class="nowrap">{{tsShort .CreatedAt}}</td>
+          <td>{{if eq .Kind "buy"}}购买意向{{else if eq .Kind "expiry"}}到期提醒{{else}}系统{{end}}</td>
           <td>{{if .NodeName}}{{.NodeName}}{{else}}<span class="muted">节点已删除</span>{{end}}</td>
-          <td><code>{{.Contact}}</code></td>
-          <td>{{if .Note}}{{.Note}}{{else}}<span class="muted">—</span>{{end}}</td>
-          <td>{{if .Notified}}<span class="ok">已保存 · 外部通知至少一路送达</span>{{else}}<span class="warn">已保存 · 未外发</span>{{end}}</td>
+          <td><strong>{{.Title}}</strong><div class="inbox-body">{{.Body}}</div></td>
+          <td>{{if .Delivery}}{{.Delivery}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td>{{if eq .ReadAt 0}}<form method="post" action="/admin/messages"><input type="hidden" name="action" value="read"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="page" value="{{$.InboxPage}}"><button class="btn inbox-read-button" type="submit">标为已读</button></form>{{else}}<span class="inbox-read-label">已读</span>{{end}}</td>
         </tr>
         {{end}}
         </tbody>
       </table>
-      {{else}}
-      <p class="empty">暂无站内消息。</p>
-      {{end}}
-    </details>
-</section>
+    </div>
+    {{if gt .InboxPages 1}}
+    <nav class="inbox-pagination" aria-label="站内消息分页">
+      {{if .InboxHasPrev}}<a class="btn" href="/admin?inbox_page={{.InboxPrevPage}}#buy-intents">上一页</a>{{else}}<span class="btn disabled" aria-disabled="true">上一页</span>{{end}}
+      <span>第 {{.InboxPage}} / {{.InboxPages}} 页</span>
+      {{if .InboxHasNext}}<a class="btn" href="/admin?inbox_page={{.InboxNextPage}}#buy-intents">下一页</a>{{else}}<span class="btn disabled" aria-disabled="true">下一页</span>{{end}}
+    </nav>
+    {{end}}
+    {{else}}
+    <p class="empty">暂无站内消息。新的购买意向和到期提醒会显示在这里。</p>
+    {{end}}
+  </section>
 
   <section class="panel" id="account" data-atab="sys">
     <h3>唯一管理员账户</h3>
@@ -642,7 +674,7 @@
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=147"></script>
+<script src="/static/app.js?v=152"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

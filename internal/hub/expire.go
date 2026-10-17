@@ -49,7 +49,8 @@ func expireTag(raw string) (text, level string) {
 	// 按**天**比，不比小时 —— "今天到期"和"明天到期"差了整整一天，
 	// 用 time.Until 会因为当前是几点而给出 0 或 1，看起来像随机数。
 	today := time.Now()
-	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.Local)
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
+	day = time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC)
 	days := int(day.Sub(today).Hours() / 24)
 
 	switch {

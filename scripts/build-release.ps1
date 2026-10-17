@@ -1,19 +1,19 @@
 param(
-    [string]$Version = 'v0.1.3-preview.7',
+    [string]$Version = '',
     [string]$GoPath = 'go',
     [string]$OutputDirectory = 'dist\release'
 )
 
 $ErrorActionPreference = 'Stop'
-if ($Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$') {
-    throw "Invalid release version: $Version"
-}
-
 $installerPath = Join-Path $PSScriptRoot 'install-hub.sh'
 $installer = Get-Content -LiteralPath $installerPath -Raw
 $tagMatch = [regex]::Match($installer, 'RELEASE_TAG="([^"]+)"')
-if (-not $tagMatch.Success -or $tagMatch.Groups[1].Value -ne $Version) {
-    throw "scripts/install-hub.sh RELEASE_TAG must be set to $Version before building release assets"
+if ([string]::IsNullOrWhiteSpace($Version) -and $tagMatch.Success) { $Version = $tagMatch.Groups[1].Value }
+if ($Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$') {
+    throw "Invalid release version: $Version"
+}
+if (-not $tagMatch.Success) {
+    throw "Could not find RELEASE_TAG in scripts/install-hub.sh"
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path

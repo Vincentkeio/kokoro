@@ -5,7 +5,7 @@
      脚本顺序有讲究：globe.js 必须**先**执行完，下面的初始化才能拿到
      window.KokoroGlobe。所以不能用 defer —— 内联脚本在解析时就跑，
      而 defer 的脚本要等解析完，反而会晚一步。 */}}
-<script src="/static/globe.js?v=80"></script>
+<script src="/static/globe.js?v=82"></script>
 <script>
 (function () {
   'use strict';
@@ -95,7 +95,7 @@
         // retain their flow color unless they explicitly provide an area palette.
         litDay:   colorVar(el, '--kokoro-globe-lit-day', colorVar(el, '--kokoro-globe-flow', '#dfbd74')),
         litNight: colorVar(el, '--kokoro-globe-lit-night', colorVar(el, '--kokoro-globe-flow', '#dfbd74')),
-        hub:   colorVar(el, '--kokoro-globe-route', '#2f6feb'),
+        hub:   colorVar(document.body, '--kokoro-globe-hub', colorVar(el, '--kokoro-globe-route', '#2f6feb')),
         ok:    colorVar(el, '--kokoro-globe-node-online', '#1a7f37'),
         off:   colorVar(el, '--kokoro-globe-node-offline', '#8b949e'),
         rim:   colorVar(el, '--globe-rim', 'rgba(47,111,235,.20)')

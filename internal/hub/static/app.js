@@ -229,6 +229,8 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     if (nodeID) {
       var entry = document.querySelector('.globe-node-entry[data-node-key="' + CSS.escape(nodeID) + '"] .globe-node-status');
       if (entry) { entry.textContent = on ? '在线' : '离线'; entry.classList.toggle('is-online',!!on); }
+      var light = document.querySelector('.globe-node-entry[data-node-key="' + CSS.escape(nodeID) + '"] .globe-node-light');
+      if (light) { light.classList.toggle('is-online',!!on); light.classList.toggle('is-offline',!on); }
       var globe = window.kokoroGlobe;
       if (globe) {
         var changed = false;
@@ -1373,6 +1375,7 @@ function renderResChart(svg, pts) {
   if (!scrim || !panels.art.el) return;
 
   var st = { slug: '', kind: 'art', page: 1, expanded: false, cur: null };
+  var commentSent = false, commentSending = false, commentSession = 0;
   var requestID = 0, returnFocus = null, closeTimer = null;
   var drawerCache = new Map(), prefetchTimer = null;
   function dataURL(slug, kind, page) {
@@ -1410,6 +1413,8 @@ function renderResChart(svg, pts) {
   }
 
   function open(slug, kind) {
+    commentSession++;
+    commentSending = false;
     if (closeTimer) clearTimeout(closeTimer);
     scrim.classList.remove('closing');
     returnFocus = document.activeElement;
@@ -1424,6 +1429,13 @@ function renderResChart(svg, pts) {
     // 留言表单只在评论弹窗出现；文章弹窗没有表单
     var cf = document.getElementById('d-cmt-form');
     if (cf) {
+      if (st.kind === 'cmt') {
+        if (commentSent) cf.reset();
+        commentSent = false;
+        Array.prototype.forEach.call(cf.elements, function (field) { field.disabled = false; });
+        var sendButton = cf.querySelector('button[type="submit"]');
+        if (sendButton) { sendButton.hidden = false; sendButton.disabled = false; }
+      }
       cf.hidden = st.kind !== 'cmt';
       var cm = document.getElementById('d-cmt-msg');
       if (cm) { cm.textContent = ''; cm.className = 'hint'; }
@@ -1437,6 +1449,7 @@ function renderResChart(svg, pts) {
 
   function close() {
     if (!st.cur) return;
+    commentSession++;
     requestID++;
     var el = st.cur.el;
     el.classList.add('closing');
@@ -1562,6 +1575,9 @@ function renderResChart(svg, pts) {
   var cf = document.getElementById('d-cmt-form');
   if (cf) cf.addEventListener('submit', function (ev) {
     ev.preventDefault();
+    if (commentSent || commentSending || !st.cur || st.kind !== 'cmt') return;
+    var submittedSlug = st.slug, submittedSession = commentSession;
+    commentSending = true;
     var msg = document.getElementById('d-cmt-msg');
     var btn = cf.querySelector('button[type="submit"]');
     var body = new URLSearchParams();
@@ -1571,7 +1587,7 @@ function renderResChart(svg, pts) {
     body.set('json', '1');
     if (btn) btn.disabled = true;
     if (msg) { msg.textContent = '发送中…'; msg.className = 'hint'; }
-    fetch('/n/' + encodeURIComponent(st.slug) + '/comment', {
+    fetch('/n/' + encodeURIComponent(submittedSlug) + '/comment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
       body: body.toString(),
@@ -1579,14 +1595,21 @@ function renderResChart(svg, pts) {
     }).then(function (r) {
       return r.json().catch(function () { return { ok: false, error: '返回不是 JSON' }; });
     }).then(function (d) {
+      if (d && d.ok) {
+        var commentPrefix = '/n/' + encodeURIComponent(submittedSlug) + '/comments.json';
+        drawerCache.forEach(function (_, key) { if (key.indexOf(commentPrefix) === 0) drawerCache.delete(key); });
+      }
+      if (submittedSession !== commentSession) return;
+      commentSending = false;
       if (btn) btn.disabled = false;
       if (!d || !d.ok) {
         if (msg) { msg.textContent = '失败：' + ((d && d.error) || '未知错误'); msg.className = 'hint bad'; }
         return;
       }
+      commentSent = true;
+      Array.prototype.forEach.call(cf.elements, function (field) { field.disabled = true; });
+      if (btn) { btn.hidden = true; btn.disabled = true; }
       cf.reset();
-      var commentPrefix = '/n/' + encodeURIComponent(st.slug) + '/comments.json';
-      drawerCache.forEach(function (_, key) { if (key.indexOf(commentPrefix) === 0) drawerCache.delete(key); });
       if (msg) {
         msg.textContent = d.pending ? '已提交，站长审核后显示' : '已发布';
         msg.className = 'hint ok';
@@ -1595,6 +1618,8 @@ function renderResChart(svg, pts) {
       st.expanded = false;
       load();  // 刷新列表（已发布的会立刻出现）
     }).catch(function () {
+      if (submittedSession !== commentSession) return;
+      commentSending = false;
       if (btn) btn.disabled = false;
       if (msg) { msg.textContent = '发送失败，稍后再试'; msg.className = 'hint bad'; }
     });
@@ -1997,6 +2022,28 @@ function renderResChart(svg, pts) {
   syncButtons();
 })();
 
+/* ---- 站内消息：当前页全选 / 取消全选 ---- */
+(function () {
+  var panel = document.getElementById('buy-intents');
+  if (!panel) return;
+  var master = panel.querySelector('[data-inbox-select-all]');
+  var items = Array.prototype.slice.call(panel.querySelectorAll('[data-inbox-select-item]'));
+  var deleteButton = panel.querySelector('[data-inbox-delete-button]');
+  if (!master || !items.length) return;
+  function syncMaster() {
+    var selected = items.filter(function (item) { return item.checked; }).length;
+    master.checked = selected > 0 && selected === items.length;
+    master.indeterminate = selected > 0 && selected < items.length;
+    if (deleteButton) deleteButton.disabled = selected === 0;
+  }
+  master.addEventListener('change', function () {
+    items.forEach(function (item) { item.checked = master.checked; });
+    syncMaster();
+  });
+  items.forEach(function (item) { item.addEventListener('change', syncMaster); });
+  syncMaster();
+})();
+
 /* ---- 到期日：固定 yyyy/mm/dd 显示与原生日历 ----
    原生 date 输入框的占位格式跟系统区域设置走，lang 属性无法可靠覆盖；
    所以用文本框显示固定格式，保留一个透明的原生日期控件供日历按钮调用。
@@ -2318,8 +2365,10 @@ function renderResChart(svg, pts) {
   var form = document.getElementById('buy-form');
   var intro = document.getElementById('buy-intro');
   var result = document.getElementById('buy-result');
+  var buySession = 0;
 
   function open(s, name) {
+    buySession++;
     slug.value = s;
     contact.value = '';
     note.value = '';
@@ -2338,7 +2387,7 @@ function renderResChart(svg, pts) {
     setTimeout(function () { contact.focus(); }, 30);
   }
 
-  function closeBuy() { scrim.hidden = true; }
+  function closeBuy() { buySession++; scrim.hidden = true; }
 
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-buy]');
@@ -2353,6 +2402,8 @@ function renderResChart(svg, pts) {
   });
 
   btn.addEventListener('click', function () {
+    if (btn.disabled || btn.hidden) return;
+    var submittedSession = buySession;
     var c = (contact.value || '').trim();
     if (!c) {
       err.textContent = '请填一下联系方式';
@@ -2382,6 +2433,7 @@ function renderResChart(svg, pts) {
         });
       })
       .then(function (res) {
+        if (submittedSession !== buySession) return;
         btn.disabled = false;
         btn.textContent = old;
         if (!res.ok) {
@@ -2411,6 +2463,7 @@ function renderResChart(svg, pts) {
           note.disabled = true;
           btn.disabled = true;
           btn.textContent = '已保存';
+          btn.hidden = true;
           return;
         }
         // 至少一个渠道送达；仍明确展示另一个渠道状态，并保留可重复打开的表单结构。
@@ -2421,6 +2474,7 @@ function renderResChart(svg, pts) {
         btn.hidden = true;
       })
       .catch(function () {
+        if (submittedSession !== buySession) return;
         btn.disabled = false;
         btn.textContent = old;
         err.textContent = '网络异常，请稍后再试';

@@ -25,12 +25,12 @@ import (
 
 const (
 	// buyMaxPerHour 同一个来源一小时最多留几条。
-	buyMaxPerHour = 3
-	// buyContactMax 联系方式的字数上限。
-	// 挡住"把整篇文章粘进来"这种——那既不是联系方式，也会让 TG 消息没法看。
-	buyContactMax = 120
-	// buyNoteMax 备注上限。
-	buyNoteMax = 200
+	buyMaxPerHour  = 3
+	perNodeSendMax = 2
+	perNodeWindow  = 5 * time.Minute
+	// 联系方式与留言的字数上限。
+	buyContactMax = 20
+	buyNoteMax    = 100
 )
 
 // handleBuy 处理 POST /api/v1/buy。
@@ -79,11 +79,7 @@ func (h *Hub) handleBuy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ---- 限流 ----
-	ipHash := h.visitorHash(r)
-	if ipHash != "" && h.store.CountBuyRecent(ipHash, time.Now().Add(-time.Hour).UnixMilli()) >= buyMaxPerHour {
-		writeErr(w, http.StatusTooManyRequests, "留得太频繁了，请稍后再试")
-		return
-	}
+	ipHash := h.rateLimitIPHash(r)
 
 	// ---- ① 先落库 ----
 	bi := &store.BuyIntent{
@@ -92,11 +88,27 @@ func (h *Hub) handleBuy(w http.ResponseWriter, r *http.Request) {
 		Note:    note,
 		IPHash:  ipHash,
 	}
-	if err := h.store.AddBuyIntent(bi); err != nil {
+	buyBody := "联系方式：" + contact
+	if note != "" {
+		buyBody += "\n备注：" + note
+	}
+	backup := &store.SiteMessage{
+		Kind: "buy", NodeID: n.ID, NodeName: n.Name,
+		Title: "有人想购买", Body: buyBody, Delivery: "站内已保存",
+	}
+	allowed, err := h.store.AddBuyIntentWithRateLimits(bi,
+		time.Now().Add(-time.Hour).UnixMilli(), buyMaxPerHour,
+		time.Now().Add(-perNodeWindow).UnixMilli(), perNodeSendMax, backup)
+	if err != nil {
 		log.Printf("[hub] 保存购买意向失败: %v", err)
 		writeErr(w, http.StatusInternalServerError, "购买意向暂时未能保存，你可以去评论区留言联系站长")
 		return
 	}
+	if !allowed {
+		writeErr(w, http.StatusTooManyRequests, "发送过于频繁：同一 IP 每台小鸡 5 分钟最多 2 条，所有小鸡合计每小时最多 3 条，请稍后再试")
+		return
+	}
+	buyMessageKey := "buy:" + bi.ID
 	_ = h.store.AddAudit("visitor", "buy.intent", n.ID, contact)
 
 	// ---- ② 分渠道推送，逐项告诉访客实际送达情况 ----
@@ -142,6 +154,7 @@ func (h *Hub) handleBuy(w http.ResponseWriter, r *http.Request) {
 			h.store.MarkBuyNotified(bi.ID)
 		}
 	}
+	_ = h.store.UpdateSiteMessageDelivery(buyMessageKey, siteDeliverySummary(delivery))
 
 	notifyStatus := "failed"
 	if delivery[notify.ChannelTelegram] == "sent" || delivery[notify.ChannelWebhook] == "sent" {

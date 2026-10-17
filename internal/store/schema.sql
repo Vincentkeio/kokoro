@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS comments (
 
 CREATE INDEX IF NOT EXISTS idx_comments_node_time ON comments (node_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_comments_node_page ON comments (node_id, pinned DESC, created_at ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_comments_ip_node_time ON comments (ip_hash, node_id, created_at DESC);
 
 -- ---------- 点赞 / 点踩 ----------
 
@@ -463,3 +464,27 @@ CREATE TABLE IF NOT EXISTS buy_intents (
 );
 CREATE INDEX IF NOT EXISTS idx_buy_node_time ON buy_intents (node_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_buy_ip ON buy_intents (ip_hash, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_buy_ip_node_time ON buy_intents (ip_hash, node_id, created_at DESC);
+
+-- ---------- 站内消息 ----------
+CREATE TABLE IF NOT EXISTS site_messages (
+    id         TEXT    PRIMARY KEY,
+    dedupe_key TEXT    NOT NULL UNIQUE,
+    kind       TEXT    NOT NULL DEFAULT '',
+    node_id    TEXT    NOT NULL DEFAULT '',
+    node_name  TEXT    NOT NULL DEFAULT '',
+    title      TEXT    NOT NULL DEFAULT '',
+    body       TEXT    NOT NULL DEFAULT '',
+    delivery   TEXT    NOT NULL DEFAULT '',
+    read_at    INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_site_messages_page ON site_messages (created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_site_messages_unread ON site_messages (read_at);
+
+-- 投递记录独立于可删除的收件箱，避免删除消息导致重复提醒。
+CREATE TABLE IF NOT EXISTS expiry_reminder_deliveries (
+    dedupe_key TEXT PRIMARY KEY,
+    telegram_status TEXT NOT NULL DEFAULT '',
+    webhook_status TEXT NOT NULL DEFAULT ''
+);

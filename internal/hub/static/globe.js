@@ -616,10 +616,15 @@
     }
 
     // 滚出视口或切到别的标签页时停掉 rAF，别白烧 CPU
+    function pauseBackdrop() {
+      var body = self.host.closest('.globe-body');
+      if (body) body.classList.toggle('is-motion-paused', document.hidden || !self.visible);
+    }
     if (global.IntersectionObserver) {
       this._io = new IntersectionObserver(function (es) {
         for (var i = 0; i < es.length; i++) {
           self.visible = es[i].isIntersecting;
+          pauseBackdrop();
           if (self.visible) self._start();
           else if (self._raf) { global.cancelAnimationFrame(self._raf); self._raf = 0; }
         }
@@ -627,10 +632,12 @@
       this._io.observe(this.host);
     }
     this._onVis = function () {
+      pauseBackdrop();
       if (!document.hidden) self._start();
       else if (self._raf) { global.cancelAnimationFrame(self._raf); self._raf = 0; }
     };
     document.addEventListener('visibilitychange', this._onVis);
+    pauseBackdrop();
   };
 
   KokoroGlobe.prototype._resize = function () {
@@ -985,11 +992,20 @@
         var label=self.nodeLabels[key];
         if (!label) {
           label=document.createElement('div'); label.className='globe-node-label';
+          var status=document.createElement('span'); status.className='globe-node-light';
+          status.setAttribute('aria-hidden','true'); label.appendChild(status);
           var original=document.querySelector('.globe-node-entry[data-node-key="'+CSS.escape(key)+'"] .flag');
           if (original) label.appendChild(original.cloneNode(true));
           var text=document.createElement('span'); text.textContent=place.city||place.sub||place.name;
           label.appendChild(text); label.title=place.name+' · '+text.textContent;
           self.labelLayer.appendChild(label); self.nodeLabels[key]=label;
+        }
+        var onlineState = place.online ? '1' : '0';
+        if (label.dataset.online !== onlineState) {
+          label.dataset.online = onlineState;
+          label.classList.toggle('is-online', !!place.online);
+          label.classList.toggle('is-offline', !place.online);
+          label.setAttribute('aria-label', (place.online ? '在线' : '离线') + ' · ' + (place.name || place.city || '节点'));
         }
         var previous=index ? points[index-1].y : 8-gap;
         var y=clamp(p.y-10,previous+gap,self.h-22-(points.length-index-1)*gap);

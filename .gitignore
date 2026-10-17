@@ -32,6 +32,8 @@ config.toml
 .idea/
 .DS_Store
 Thumbs.db
+__pycache__/
+*.py[cod]
 
 # 本机凭据（update-agents.sh 会 source；严禁入库）
 scripts/agents.local.sh

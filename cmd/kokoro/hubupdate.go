@@ -25,8 +25,8 @@ import (
 // 原子替换 Hub 二进制后重启服务，健康检查失败则回滚。
 //
 // 语义对齐部署端 scripts/deploy-zgo-remote.sh：备份二进制 → 替换 → 重启 →
-// 轮询 is-active 与 127.0.0.1:8799 健康端点 → 失败回滚旧二进制。数据库
-// （/var/lib/kokoro）一律不动，迁移由 Hub 启动时自行执行。
+// 轮询 is-active 与 127.0.0.1:8799 健康端点 → 失败还原旧二进制和数据库。
+// 数据库在停服后备份，迁移由新 Hub 启动时执行。
 
 const (
 	hubRepoName    = "Vincentkeio/kokoro"
@@ -40,7 +40,6 @@ const (
 	maxHubReleaseBytes = 1 << 20
 
 	hubReleasePageSize = 20
-	hubReleaseChoices  = 5
 	hubBackupsToKeep   = 3
 
 	hubHealthAttempts = 10
@@ -70,6 +69,7 @@ type hubReleaseSource interface {
 
 // hubService 抽象 systemd 服务控制与健康探测，测试可用桩替换。
 type hubService interface {
+	Stop(ctx context.Context) error
 	Restart(ctx context.Context) error
 	Active(ctx context.Context) (bool, error)
 	Healthy(ctx context.Context) error
@@ -151,6 +151,14 @@ type systemdHubService struct {
 	client    *http.Client
 }
 
+func (s systemdHubService) Stop(ctx context.Context) error {
+	out, err := exec.CommandContext(ctx, "systemctl", "stop", s.unit).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("停止 %s 失败: %w (%s)", s.unit, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 func (s systemdHubService) Restart(ctx context.Context) error {
 	out, err := exec.CommandContext(ctx, "systemctl", "restart", s.unit).CombinedOutput()
 	if err != nil {
@@ -201,6 +209,7 @@ func (s systemdHubService) Healthy(ctx context.Context) error {
 // hubUpdater 串起一次面板更新。字段可注入，便于测试。
 type hubUpdater struct {
 	binaryPath     string
+	databasePath   string
 	currentVersion string
 	arch           string
 	source         hubReleaseSource
@@ -208,10 +217,8 @@ type hubUpdater struct {
 	in             *bufio.Reader
 	out            io.Writer
 
-	// assumeYes 为非交互模式（不提示、直接采用默认版本）。
+	// assumeYes 为非交互模式，发现更新后不再询问。
 	assumeYes bool
-	// allowDowngrade 允许非交互模式选择低于当前的版本；默认拒绝。
-	allowDowngrade bool
 
 	precheck       func() error
 	healthAttempts int
@@ -249,24 +256,17 @@ func (u *hubUpdater) Run(ctx context.Context) error {
 		return err
 	}
 
-	downgrade := compareKokoroVersion(rel.Tag, u.currentVersion) < 0
-	fmt.Fprintf(u.out, "当前版本：%s\n目标版本：%s\n", u.currentVersion, rel.Tag)
-	fmt.Fprintln(u.out, "更新只替换 Hub 程序并重启服务；数据库迁移由 Hub 启动时自行执行，")
-	fmt.Fprintln(u.out, "数据目录 /var/lib/kokoro 不会被改动。迁移或启动失败会自动回滚旧程序。")
-	if u.assumeYes {
-		if downgrade && !u.allowDowngrade {
-			return fmt.Errorf("目标版本 %s 低于当前运行的 %s，已拒绝自动降级", rel.Tag, u.currentVersion)
-		}
-	} else {
-		label := "确认更新面板？输入 yes 继续："
-		if downgrade {
-			label = "注意：目标版本低于当前版本，属于降级。输入 yes 确认降级："
-		}
-		if promptLine(u.in, label) != "yes" {
-			fmt.Fprintln(u.out, "已取消。")
-			return nil
-		}
+	if compareKokoroVersion(rel.Tag, u.currentVersion) <= 0 {
+		fmt.Fprintln(u.out, "当前面板已是最新版本，没有可用更新。")
+		return nil
 	}
+	if !u.assumeYes && !confirmUpdate(u.in, u.out) {
+		fmt.Fprintln(u.out, "已取消。")
+		return nil
+	}
+	fmt.Fprintln(u.out, "正在更新面板；更新失败时会自动还原旧程序。")
+	fmt.Fprintln(u.out, "更新只替换 Hub 程序并重启服务；数据库迁移由 Hub 启动时自行执行，")
+	fmt.Fprintln(u.out, "更新前会备份数据库；迁移或启动失败会一并还原数据库和旧程序。")
 
 	assetName := hubAssetPrefix + u.arch
 	binURL, sumURL, err := hubAssetURLs(rel, assetName)
@@ -285,8 +285,26 @@ func (u *hubUpdater) Run(ctx context.Context) error {
 		return err
 	}
 
+	var dbBackup string
+	if u.databasePath != "" {
+		if err := u.service.Stop(ctx); err != nil {
+			return err
+		}
+		dbBackup, err = backupHubDatabase(u.databasePath, u.now())
+		if err != nil {
+			recoveryCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			restartErr := u.service.Restart(recoveryCtx)
+			return errors.Join(fmt.Errorf("备份数据库失败，未替换程序: %w", err), restartErr)
+		}
+	}
 	backup, err := replaceHubBinary(u.binaryPath, binary, u.now())
 	if err != nil {
+		if dbBackup != "" {
+			recoveryCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			err = errors.Join(err, u.service.Restart(recoveryCtx))
+		}
 		return fmt.Errorf("替换 Hub 程序失败：%w", err)
 	}
 	fmt.Fprintf(u.out, "已替换 %s（回滚备份 %s）\n", u.binaryPath, backup)
@@ -294,56 +312,46 @@ func (u *hubUpdater) Run(ctx context.Context) error {
 
 	if err := u.restartAndCheck(ctx); err != nil {
 		fmt.Fprintf(u.out, "健康检查未通过（%v），正在回滚……\n", err)
+		recoveryCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if dbBackup != "" {
+			if rerr := u.service.Stop(recoveryCtx); rerr != nil {
+				return fmt.Errorf("回滚前停止新程序失败，数据库备份保留在 %s: %w", dbBackup, rerr)
+			}
+		}
 		if rerr := restoreHubBinary(u.binaryPath, backup); rerr != nil {
 			return fmt.Errorf("回滚失败：%v；原错误：%w；旧程序备份保留在 %s", rerr, err, backup)
 		}
-		if rerr := u.service.Restart(ctx); rerr != nil {
+		if dbBackup != "" {
+			if rerr := restoreHubDatabase(u.databasePath, dbBackup); rerr != nil {
+				return fmt.Errorf("数据库回滚失败，备份保留在 %s: %w", dbBackup, rerr)
+			}
+		}
+		if rerr := u.service.Restart(recoveryCtx); rerr != nil {
 			return fmt.Errorf("已还原旧程序但重启失败：%v；旧程序备份保留在 %s", rerr, backup)
 		}
 		return fmt.Errorf("更新失败，已回滚到 %s：%w", u.currentVersion, err)
 	}
 
 	pruneHubBackups(u.binaryPath, hubBackupsToKeep)
-	fmt.Fprintf(u.out, "面板已更新到 %s\n", rel.Tag)
+	if dbBackup != "" {
+		pruneHubDatabaseBackups(u.databasePath, hubBackupsToKeep)
+	}
+	fmt.Fprintln(u.out, "面板更新完成。")
 	return nil
 }
 
-// chooseRelease 让人选目标版本：默认最新已发布版本（含 Preview，GitHub 按时间倒序）。
-// 非交互模式直接取默认项。
+// chooseRelease compares version numbers; an older release edited or republished
+// later must not conceal a newer Preview in GitHub's listing order.
 func (u *hubUpdater) chooseRelease(releases []hubRelease) (hubRelease, error) {
 	if len(releases) == 0 {
 		return hubRelease{}, errors.New("GitHub 上没有可用的已发布版本")
 	}
-	shown := releases
-	if len(shown) > hubReleaseChoices {
-		shown = shown[:hubReleaseChoices]
-	}
-	chosen := shown[0]
-	if u.assumeYes {
-		return chosen, nil
-	}
-	fmt.Fprintln(u.out, "GitHub 上的最近发布：")
-	for i, rel := range shown {
-		var marks []string
-		if rel.Prerelease {
-			marks = append(marks, "预览")
+	chosen := releases[0]
+	for _, rel := range releases[1:] {
+		if compareKokoroVersion(rel.Tag, chosen.Tag) > 0 {
+			chosen = rel
 		}
-		if rel.Tag == u.currentVersion {
-			marks = append(marks, "当前运行")
-		}
-		suffix := ""
-		if len(marks) > 0 {
-			suffix = "（" + strings.Join(marks, "、") + "）"
-		}
-		fmt.Fprintf(u.out, "  %d) %s%s\n", i+1, rel.Tag, suffix)
-	}
-	line := strings.TrimSpace(promptLine(u.in, fmt.Sprintf("选择要更新到的版本（回车默认 1 = %s）：", shown[0].Tag)))
-	if line != "" {
-		n, err := strconv.Atoi(line)
-		if err != nil || n < 1 || n > len(shown) {
-			return hubRelease{}, fmt.Errorf("无效的版本选择：%q", line)
-		}
-		chosen = shown[n-1]
 	}
 	return chosen, nil
 }
@@ -559,11 +567,96 @@ func atomicWriteFile(target string, data []byte, mode os.FileMode, uid, gid int,
 }
 
 func copyFile(src, dst string, mode os.FileMode, uid, gid int, hasOwner bool) error {
-	data, err := os.ReadFile(src)
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	return atomicWriteFile(dst, data, mode, uid, gid, hasOwner)
+	defer in.Close()
+	out, err := os.CreateTemp(filepath.Dir(dst), ".kokoro-copy-*.new")
+	if err != nil {
+		return err
+	}
+	tmp := out.Name()
+	defer os.Remove(tmp)
+	defer out.Close()
+	if err := out.Chmod(mode); err != nil {
+		return err
+	}
+	if hasOwner {
+		if err := chownPath(tmp, uid, gid); err != nil {
+			return err
+		}
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, dst)
+}
+
+// Called only while the service is stopped. Include SQLite sidecars when an
+// unclean earlier shutdown left a WAL; never load a potentially large DB in RAM.
+func backupHubDatabase(path string, now time.Time) (string, error) {
+	if _, err := os.Stat(path); err != nil {
+		return "", err
+	}
+	dir := filepath.Join(filepath.Dir(path), "backups")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	backup := filepath.Join(dir, "hub-update-"+now.Format("20060102-150405.000000000")+".db")
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		info, err := os.Stat(path + suffix)
+		if os.IsNotExist(err) && suffix != "" {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		uid, gid, owned := fileOwnership(info)
+		if err := copyFile(path+suffix, backup+suffix, 0600, uid, gid, owned); err != nil {
+			return "", err
+		}
+	}
+	return backup, nil
+}
+
+func restoreHubDatabase(path, backup string) error {
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		info, err := os.Stat(backup + suffix)
+		if os.IsNotExist(err) && suffix != "" {
+			if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		uid, gid, owned := fileOwnership(info)
+		if err := copyFile(backup+suffix, path+suffix, info.Mode().Perm(), uid, gid, owned); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func pruneHubDatabaseBackups(path string, keep int) {
+	paths, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "backups", "hub-update-*.db"))
+	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
+	if keep < 0 || len(paths) <= keep {
+		return
+	}
+	for _, backup := range paths[keep:] {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Remove(backup + suffix)
+		}
+	}
 }
 
 // pruneHubBackups 只保留最近的若干份回滚备份，别让程序目录越堆越乱。
@@ -645,8 +738,10 @@ func comparePreRelease(a, b string) int {
 
 // newHubUpdater 组装一次真实更新所需的依赖。
 func newHubUpdater(binaryPath, currentVersion string, in *bufio.Reader, out io.Writer) *hubUpdater {
+	_, dataDir := installedHubPaths()
 	return &hubUpdater{
 		binaryPath:     binaryPath,
+		databasePath:   filepath.Join(dataDir, "kokoro.db"),
 		currentVersion: currentVersion,
 		arch:           runtime.GOARCH,
 		source:         newGitHubHubSource(&http.Client{Timeout: 60 * time.Second}),

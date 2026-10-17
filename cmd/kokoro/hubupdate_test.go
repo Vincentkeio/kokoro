@@ -68,9 +68,18 @@ type stubHubService struct {
 	active     bool
 	healthErr  error
 	restarts   int
+	onRestart  func(int) error
 }
 
-func (s *stubHubService) Restart(context.Context) error { s.restarts++; return s.restartErr }
+func (s *stubHubService) Stop(context.Context) error { return nil }
+
+func (s *stubHubService) Restart(context.Context) error {
+	s.restarts++
+	if s.onRestart != nil {
+		return s.onRestart(s.restarts)
+	}
+	return s.restartErr
+}
 func (s *stubHubService) Active(context.Context) (bool, error) {
 	return s.active, nil
 }
@@ -133,6 +142,7 @@ func TestHubAssetURLsReportsMissingAssets(t *testing.T) {
 
 func TestChooseReleaseDefaultsToNewestPublished(t *testing.T) {
 	releases := []hubRelease{
+		{Tag: "v0.1.3-preview.5", Prerelease: true},
 		{Tag: "v0.1.3-preview.7", Prerelease: true},
 		{Tag: "v0.1.2"},
 	}
@@ -303,7 +313,7 @@ func TestHubUpdateRejectsBadChecksumWithoutTouchingBinary(t *testing.T) {
 	}
 }
 
-func TestHubUpdateRefusesAutomaticDowngrade(t *testing.T) {
+func TestHubUpdateReportsNoUpdateWhenLatestIsOlder(t *testing.T) {
 	dir := t.TempDir()
 	binaryPath := filepath.Join(dir, "kokoro")
 	if err := os.WriteFile(binaryPath, []byte("old"), 0o755); err != nil {
@@ -311,14 +321,21 @@ func TestHubUpdateRefusesAutomaticDowngrade(t *testing.T) {
 	}
 	rel := hubRelease{Tag: "v0.1.2"}
 	src := &stubHubSource{releases: []hubRelease{rel}}
+	var output bytes.Buffer
 	u := &hubUpdater{
 		binaryPath: binaryPath, currentVersion: "v0.1.3-preview.7", arch: "amd64",
-		source: src, service: &stubHubService{active: true}, assumeYes: true, out: io.Discard,
+		source: src, service: &stubHubService{active: true}, assumeYes: true, out: &output,
 		precheck: func() error { return nil },
 	}
-	err := u.Run(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "降级") {
-		t.Fatalf("非交互模式不应自动降级，得到 %v", err)
+	if err := u.Run(context.Background()); err != nil {
+		t.Fatalf("较旧的最新发布版应作为无更新处理，得到 %v", err)
+	}
+	if !strings.Contains(output.String(), "没有可用更新") {
+		t.Fatalf("应提示没有可用更新，得到 %q", output.String())
+	}
+	got, err := os.ReadFile(binaryPath)
+	if err != nil || string(got) != "old" {
+		t.Fatalf("没有更新时程序应保持不变，内容=%q err=%v", got, err)
 	}
 }
 

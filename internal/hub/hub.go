@@ -48,11 +48,12 @@ type Hub struct {
 	// 都走它，保证压缩行为在两条路径上一致。
 	handler http.Handler
 
-	broker        *broker
-	limiter       *limiter
-	loginThrottle *loginThrottle
-	tokenMu       sync.Mutex
-	alerts        *alert.Manager
+	broker           *broker
+	limiter          *limiter
+	loginThrottle    *loginThrottle
+	tokenMu          sync.Mutex
+	expiryReminderMu sync.Mutex
+	alerts           *alert.Manager
 
 	// themes 是主题注册表（内置 + 导入），theme 缓存当前主题的渲染产物。
 	// 后台切主题只改内存 + settings 表，不需要重启。
@@ -276,6 +277,8 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/admin/tokens", h.handleAdminTokens)
 	h.mux.HandleFunc("/admin/comments", h.handleAdminComments)
 	h.mux.HandleFunc("/admin/settings", h.handleAdminSettings)
+	h.adminOnly("/admin/expiry-reminder", h.handleAdminExpiryReminder)
+	h.adminOnly("/admin/messages", h.handleAdminMessages)
 	h.mux.HandleFunc("/admin/profile", h.handleAdminProfile)
 	h.mux.HandleFunc("/admin/account", h.handleAdminAccount)
 	h.mux.HandleFunc("/admin/logout", h.handleAdminLogout)
@@ -378,6 +381,8 @@ func (h *Hub) Run(ctx context.Context) error {
 	if h.alerts != nil {
 		go h.alerts.Start(ctx)
 	}
+	// 到期提醒独立于指标告警，按小时检查一次；具体开关和天数从后台读取。
+	h.startExpiryReminderLoop(ctx)
 
 	ln, err := net.Listen("tcp", h.cfg.Listen)
 	if err != nil {

@@ -22,10 +22,10 @@
     <form class="dcmt-form" id="d-cmt-form" hidden>
       <div class="row">
         <input name="author" placeholder="昵称（可留空）" maxlength="32">
-        <input name="contact" placeholder="联系方式，可选 —— 只有站长看得到" maxlength="120">
+        <input name="contact" placeholder="联系方式，可选，最多 20 字 —— 只有站长看得到" maxlength="20">
       </div>
-      <textarea name="content" rows="3" maxlength="2000"
-                placeholder="说点什么… 想收 / 出这台机器也可以直接写在这里"></textarea>
+      <textarea name="content" rows="3" maxlength="100"
+                placeholder="说点什么（最多 100 字）… 想收 / 出这台机器也可以直接写在这里"></textarea>
       <div class="row">
         <button class="btn small" type="submit">发出留言</button>
         <span class="hint" id="d-cmt-msg"></span>
