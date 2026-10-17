@@ -69,7 +69,7 @@ func TestSmoke(t *testing.T) {
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(cfgPath, []byte("# 测试配置\nhub = \""+srv.URL+"\"\ninterval_ms = 300\n\n[extra]\nfoo = 1\n"), 0o600); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("# 测试配置\nhub = \""+srv.URL+"\"\nnode_name = \"香港 Node A\"\ninterval_ms = 300\n\n[extra]\nfoo = 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(ConfigEnv, cfgPath)
@@ -93,6 +93,9 @@ func TestSmoke(t *testing.T) {
 	defer mu.Unlock()
 	if gotRegister.InstallToken != "it_test" || gotRegister.AgentVersion != Version {
 		t.Fatalf("注册请求异常：%+v", gotRegister)
+	}
+	if gotRegister.NodeName != "香港 Node A" || gotRegister.Hostname == gotRegister.NodeName {
+		t.Fatalf("配置中的节点名没有独立传给 Hub：%+v", gotRegister)
 	}
 	if len(reports) < 2 {
 		t.Fatalf("上报次数不足：%d", len(reports))

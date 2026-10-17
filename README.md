@@ -2,7 +2,7 @@
 
 Kokoro 是一个用于管理多台 VPS 的主控面板与轻量探针。Hub 部署在主机上，负责节点管理、任务下发和结果展示；Agent 安装在子机上，定期上报状态并执行 Hub 下发的固定任务。
 
-> **版本状态：Alpha 基准版。** 当前发布为 [v0.1.3-preview.25（Alpha）](https://github.com/Vincentkeio/kokoro/releases/tag/v0.1.3-preview.25)，适合在可恢复的测试环境中试用并反馈问题。功能、配置和接口仍可能调整；重要数据请先备份。
+> **版本状态：Alpha 基准版。** 当前发布为 [v0.1.3-preview.26（Alpha）](https://github.com/Vincentkeio/kokoro/releases/tag/v0.1.3-preview.26)，适合在可恢复的测试环境中试用并反馈问题。功能、配置和接口仍可能调整；重要数据请先备份。
 
 ## 功能
 

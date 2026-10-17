@@ -90,6 +90,26 @@ func (h *Hub) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "注册信息格式无效")
 		return
 	}
+	installation, err := h.peekInstallToken(req.InstallToken)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	name := strings.TrimSpace(req.NodeName)
+	if name == "" {
+		name = installation.NodeName
+	}
+	if name == "" {
+		name = installation.Label
+	}
+	name, err = normalizedInstallName(name)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if name == "" {
+		name = req.Hostname
+	}
 	if err := h.consumeInstallToken(req.InstallToken); err != nil {
 		writeErr(w, http.StatusUnauthorized, err.Error())
 		return
@@ -104,7 +124,7 @@ func (h *Hub) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	node := &model.Node{
 		ID:         newID("nd_"),
-		Name:       req.Hostname,
+		Name:       name,
 		Slug:       defaultSlug(req.Hostname),
 		TokenHash:  hashToken(nodeToken),
 		Visibility: model.VisibilityPublic,
@@ -150,6 +170,9 @@ func (h *Hub) handleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func validRegisterRequest(req model.RegisterRequest) bool {
+	if _, err := normalizedInstallName(req.NodeName); err != nil {
+		return false
+	}
 	within := func(s string, max int) bool {
 		return len([]rune(s)) <= max && !strings.ContainsAny(s, "\x00\r\n")
 	}

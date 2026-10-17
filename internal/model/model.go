@@ -185,6 +185,7 @@ type Article struct {
 
 type RegisterRequest struct {
 	InstallToken string `json:"install_token"`
+	NodeName     string `json:"node_name,omitempty"`
 	Hostname     string `json:"hostname"`
 	OS           string `json:"os"`
 	Kernel       string `json:"kernel"`

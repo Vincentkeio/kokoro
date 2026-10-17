@@ -31,6 +31,7 @@
 ```json
 {
   "install_token": "it_XXXXXXXX",
+  "node_name": "东京节点 A",
   "hostname": "zt6501937868",
   "os": "debian",
   "kernel": "6.12.96",
@@ -43,6 +44,8 @@
   "disk_total": 15000000000
 }
 ```
+
+`node_name` 为可选显示名称，最多 128 个字符。未提供时使用安装令牌预设的节点名或备注，均未设置时使用 `hostname`。`hostname` 始终保留真实主机名。
 
 响应：
 

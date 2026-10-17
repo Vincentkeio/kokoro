@@ -440,7 +440,7 @@ body[data-k-tag="text"] .tag::before { content: "#"; opacity: .5; }
 }
 .kpi small { display: block; color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px); }
 
-.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s3); margin-top: var(--s3); }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: var(--s3); margin-top: var(--s3); }
 /* 历史趋势标题与范围切换器同一行，控制样式与三网分省时间选择器一致。 */
 .chart-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -460,12 +460,13 @@ body[data-k-tag="text"] .tag::before { content: "#"; opacity: .5; }
   border-color: var(--accent); font-weight: 600;
 }
 .chart {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 8px;
   background: var(--sunken);
   border: var(--kokoro-border-width, 1px) solid var(--line);
   border-radius: var(--r); padding: 10px 12px;
   min-width: 0;
 }
-.chart-label { display: block; color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px); margin-bottom: 4px; }
+.chart-label { display: block; grid-column: 1 / -1; color: var(--muted); font-size: var(--kokoro-font-size-xs, 12px); margin-bottom: 4px; }
 .spark { width: 100%; height: var(--k-chart-h, 200px); display: block; }
 .spark path.area {
   fill: var(--accent);
@@ -491,19 +492,25 @@ body[data-k-tag="text"] .tag::before { content: "#"; opacity: .5; }
 .chart .axis { fill: var(--kokoro-chart-axis, #8c959f); font-size: 10px; }
 /* 详情页趋势图刻度轨道：数值用 HTML 排（SVG 文字会被 preserveAspectRatio="none" 拉伸变形），
    top 百分比与 app.js 里网格线的坐标公式一致（pad 2 / h 60）。 */
-.chart-plot { display: flex; align-items: stretch; gap: 6px; margin-top: 2px; }
-.chart-plot .spark { flex: 1 1 auto; width: auto; min-width: 0; }
+.chart-plot { display: contents; }
+.chart-plot .spark { grid-column: 2; grid-row: 2; width: 100%; min-width: 0; }
 .chart-yaxis {
-  position: relative; flex: 0 0 auto; width: 3.4em;
+  position: relative; grid-column: 1; grid-row: 2;
+  display: grid; grid-template: 100% / max-content;
   font-size: 10px; line-height: 1;
   color: var(--kokoro-chart-axis, var(--muted));
 }
-.chart-yaxis span { position: absolute; right: 0; transform: translateY(-50%); white-space: nowrap; }
+.chart-yaxis span { grid-area: 1 / 1; position: relative; justify-self: end; align-self: start; transform: translateY(-50%); white-space: nowrap; }
 .chart-xaxis {
+  grid-column: 2; min-width: 0;
+  container: detail-time-axis / inline-size;
   display: flex; justify-content: space-between; gap: 6px;
-  margin-top: 4px; padding-left: calc(3.4em + 6px);
+  margin-top: 4px;
   font-size: 10px; line-height: 1; white-space: nowrap;
   color: var(--kokoro-chart-axis, var(--muted));
+}
+@container detail-time-axis (max-width: 160px) {
+  .chart-xaxis span:nth-child(2) { display: none; }
 }
 
 /* ---- 正文（服务端渲染的 Markdown） ---- */

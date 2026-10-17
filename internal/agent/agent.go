@@ -631,8 +631,12 @@ func (a *Agent) applyReport(resp *model.ReportResponse) {
 // buildRegisterRequest 组装注册请求，本机信息 best-effort 采集，取不到就留空。
 func (a *Agent) buildRegisterRequest(installToken string) *model.RegisterRequest {
 	info := hostInfo()
+	a.mu.Lock()
+	name := strings.TrimSpace(a.cfg.NodeName)
+	a.mu.Unlock()
 	return &model.RegisterRequest{
 		InstallToken: installToken,
+		NodeName:     name,
 		Hostname:     info.hostname,
 		OS:           info.os,
 		Kernel:       info.kernel,
