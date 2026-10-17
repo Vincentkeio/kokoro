@@ -416,6 +416,10 @@ func (h *Hub) handleThemeSwitch(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[theme] 保存主题失败: %v", err)
 	}
 	h.setActiveTheme(id)
+	// 顺手清掉**自己浏览器**上的访客主题偏好：站长刚把站点默认切成这套，
+	// 若还留着他之前 /pick/<别的主题> 的 cookie，页面会继续显示旧主题 ——
+	// 表现成"后台点了启用，前台却没变"。清掉立刻看到新默认，别的访客不受影响。
+	h.clearVisitorTheme(w)
 	_ = h.store.AddAudit("admin", "theme.enable", id, "")
 	// 只允许站内跳转，防止开放重定向。
 	if back := r.FormValue("back"); safeBackURL(back) {

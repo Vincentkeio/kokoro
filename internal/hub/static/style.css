@@ -2807,7 +2807,7 @@ details.adv .hint { line-height: 1.7; }
 
 /* ---- Simple · 简洁 ----
    冷雾灰底、石墨文字与低饱和蓝色，强调信息结构，不使用绿色调。 */
-body[data-k-theme="kokoro.simple"] { background-color:#f1f3f6; background-image:var(--kokoro-bg-image,none); }
+body[data-k-theme="kokoro.simple"] { background-color:#f1f3f6; }
 body[data-k-theme="kokoro.simple"] .top { border-bottom-color: #dce1e9; box-shadow: 0 1px 0 rgba(38,50,70,.025); }
 body[data-k-theme="kokoro.simple"] .wrap { max-width: var(--maxw); }
 body[data-k-theme="kokoro.simple"] .panel, body[data-k-theme="kokoro.simple"] .map-card, body[data-k-theme="kokoro.simple"] .card { box-shadow: 0 2px 10px rgba(38,50,70,.035); }
@@ -2997,11 +2997,14 @@ body[data-k-bar="striped"] .bar { height:8px; border-radius:1px; }
 body[data-k-bar="striped"] .bar i { border-radius:1px; background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.32) 0 2px,transparent 2px 6px); }
 body[data-k-bar="dotted"] .bar { height:8px; border-radius:0; -webkit-mask-image:radial-gradient(circle at 4px 50%,#000 3px,transparent 3.2px); mask-image:radial-gradient(circle at 4px 50%,#000 3px,transparent 3.2px); -webkit-mask-size:10px 100%; mask-size:10px 100%; }
 
-/* 壁纸本身属于主题：柔和蒙层保证标题与图表在亮暗区域都清晰。 */
+/* 简洁：淡灰渐变作柔光底，没设壁纸时就是它。
+   ⚠️ 这里**必须**消费 --kokoro-bg-image 那一组变量：早先这行把 background-image
+   写死成渐变，注入的站点壁纸被整个盖掉，表现成"设了壁纸，前台还是空白" ——
+   其它主题都引用了这组变量，所以只有简洁主题换不了壁纸。 */
 body[data-k-theme="kokoro.simple"] {
-  background-image: linear-gradient(145deg, #f5f6f8 0%, #edf0f4 100%);
-  background-size: cover; background-position: center;
-  background-repeat: no-repeat; background-attachment: fixed;
+  background-image: var(--kokoro-bg-image, linear-gradient(145deg, #f5f6f8 0%, #edf0f4 100%));
+  background-size: var(--kokoro-bg-size, cover); background-position: center;
+  background-repeat: var(--kokoro-bg-repeat, no-repeat); background-attachment: var(--kokoro-bg-attachment, fixed);
 }
 body[data-k-theme="kokoro.cute"] {
   background-image: linear-gradient(rgba(255,249,246,.74), rgba(255,249,246,.74)),

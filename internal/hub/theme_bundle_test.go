@@ -616,6 +616,31 @@ func TestWallpaperIsKeyedByTheme(t *testing.T) {
 	}
 }
 
+// TestThemeSwitchClearsVisitorCookie 后台启用主题必须把**自己浏览器**上的
+// 访客主题偏好清掉：站长之前用前端切换器试过别的主题，那个 cookie 会继续
+// 盖住站点默认，表现成"后台点了启用，前台还是原来的主题"。
+func TestThemeSwitchClearsVisitorCookie(t *testing.T) {
+	h, st := newThemeTestHub(t)
+	req := httptest.NewRequest(http.MethodPost, "/theme/"+theme.DefaultID, nil)
+	req.AddCookie(loginCookie(t, h, st))
+	req.AddCookie(&http.Cookie{Name: theme.ThemeCookie, Value: "kokoro.mist"})
+	rec := httptest.NewRecorder()
+	h.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("切换站点主题应 303，实际 %d", rec.Code)
+	}
+	cleared := false
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == theme.ThemeCookie && (c.MaxAge < 0 || c.Value == "") {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Error("启用主题时应清掉访客主题 cookie，否则站长自己看不到变化")
+	}
+}
+
 // ---- 极简 zip 写入辅助 ----
 
 // zipEntries 按给定条目造一个 zip 字节流。键是条目名，值是内容。
