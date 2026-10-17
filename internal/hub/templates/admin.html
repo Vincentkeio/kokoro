@@ -189,8 +189,8 @@
               <input name="name" value="{{.Name}}" title="小鸡名称" aria-label="节点名称">
             </label>
             <label class="fld node-tags-entry">
-              <span>固定标签</span>
-              <input name="tags" value="{{joinTags .Tags}}" placeholder="逗号分隔" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 8 个" aria-label="固定标签">
+              <span>自定义标签</span>
+              <input name="tags" value="{{joinTags .Tags}}" placeholder="逗号分隔" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 4 个" aria-label="自定义标签">
             </label>
             {{/* 续费与到期都是节点资料，在这里单独维护，不放进文章内容。 */}}
             {{$price := ""}}{{with index $.Profiles .ID}}{{$price = .Price}}{{end}}

@@ -1432,6 +1432,11 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		h.populateTaskCard(&c)
 		c.Specs = nodeSpecs(n, m)
 		c.Uptime = h.loadUptime(n.ID)
+		// 卡片标签行只有一行：老节点可能存了超过上限的标签，
+		// 显示时也截一刀，别让历史数据把固定槽挤掉。
+		if len(c.Node.Tags) > maxNodeTags {
+			c.Node.Tags = c.Node.Tags[:maxNodeTags]
+		}
 		// 到期倒计时的标签。没填到期日就空着，不显示
 		// （没填 ≠ 永久，站长可能只是还没填）。
 		if pr := profiles[n.ID]; pr != nil {
@@ -2107,6 +2112,10 @@ func validVoterID(v string) bool {
 //
 // 去重按大小写不敏感——前端展示保留原样，但不允许 "VPS" 和 "vps" 同时出现，
 // 那在卡片上看着就像重复了。
+// maxNodeTags 是卡片上显示的自定义标签数量上限。标签行不换行，
+// 塞太多就会把续费/到期两个固定槽挤出可视区，而到期天数正是站长最要看的信息。
+const maxNodeTags = 4
+
 func parseTags(raw string, maxN, maxLen int) []string {
 	if maxN <= 0 {
 		maxN = 8
@@ -2846,11 +2855,11 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		// 自定义标签：最多 8 个、每个最多 16 字。
+		// 自定义标签：最多 maxNodeTags 个、每个最多 16 字。
 		// 只在表单真的带了 tags 字段时才覆盖——否则别处的 rename 调用
 		// （比如只改名字）会顺手把标签清空。
 		if _, has := r.Form["tags"]; has {
-			node.Tags = parseTags(r.FormValue("tags"), 8, 16)
+			node.Tags = parseTags(r.FormValue("tags"), maxNodeTags, 16)
 			tagsUpdate = &node.Tags
 		}
 		if err := h.store.UpdateNodeLabels(node.ID, nameUpdate, tagsUpdate); err != nil {

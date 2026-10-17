@@ -1160,7 +1160,14 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 .status.on i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
 .card.off { opacity: .62; }
 
-.tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--s2); }
+.tags { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; margin-bottom: var(--s2); overflow: hidden; }
+/* 标签行分两段：自定义标签区可伸缩（空间不够先压它，标签再收窄成省略号），
+   固定标签区（续费/到期）不可压缩、永远留在行尾 —— 否则标签一多就把
+   「还有几天到期」挤没，而那恰好是站长最要看的一项。 */
+.tags .tag-list { display: flex; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; overflow: hidden; }
+.tags .tag-list .tag { flex: 0 1 auto; min-width: 0; max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tags .fixed-tags { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex: 0 0 auto; min-width: max-content; margin-left: auto; }
+.tags .fixed-tags .tag { flex: 0 0 auto; text-align: center; white-space: nowrap; }
 
 .gauges { display: flex; flex-direction: column; gap: 6px; }
 .gauges .g {
@@ -2869,10 +2876,10 @@ body[data-k-theme] .tags {
   display: flex; align-items: center; gap: 8px; height: 30px; min-height: 30px;
   margin: 8px 0 2px; overflow: hidden; white-space: nowrap;
 }
-body[data-k-theme] .tag-list { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
-body[data-k-theme] .tag-list .tag { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
-body[data-k-theme] .fixed-tags { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex: none; margin-left: auto; }
-body[data-k-theme] .fixed-tags .tag { flex: none; text-align: center; white-space: nowrap; }
+body[data-k-theme] .tag-list { display: flex; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; overflow: hidden; }
+body[data-k-theme] .tag-list .tag { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; min-width: 0; }
+body[data-k-theme] .fixed-tags { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex: 0 0 auto; min-width: max-content; margin-left: auto; }
+body[data-k-theme] .fixed-tags .tag { flex: 0 0 auto; text-align: center; white-space: nowrap; }
 body[data-k-theme] .fixed-tags .tag::before { content: none !important; }
 /* 固定资料标签始终保留标签外观，即使主题把普通标签设成纯文字。 */
 body[data-k-theme] .card .fixed-tags .tag.renewal-slot,
