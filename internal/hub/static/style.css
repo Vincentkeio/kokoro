@@ -4159,7 +4159,13 @@ body[data-k-theme="kokoro.mist"] .task-pop .tp-head { background:#edf4f7; box-sh
 body[data-k-theme="kokoro.mist"] .dlg-scrim { background:rgba(24,46,58,.38); backdrop-filter:blur(5px); }
 body[data-k-theme="kokoro.mist"] .tp-fields dt { color:#496572; }
 body[data-k-theme="kokoro.mist"] .tp-fields dd { color:#203c49; }
-body[data-k-theme="kokoro.mist"] .globe-node-label { background:#f3f9fb; border-color:#b5cbd4; }
+body[data-k-theme="kokoro.mist"] .globe-node-label {
+  background:rgba(248,252,253,.68);
+  border-color:rgba(112,146,157,.38);
+  backdrop-filter:blur(20px) saturate(130%);
+  -webkit-backdrop-filter:blur(20px) saturate(130%);
+  box-shadow:0 3px 12px rgba(50,78,89,.12),inset 0 1px 0 rgba(255,255,255,.72);
+}
 body[data-k-theme="kokoro.mist"] .route-cn2 { color:#795f32; background:#f3ecdf; border-color:#d5c4a5; }
 body[data-k-theme="kokoro.mist"] .route-9929 { color:#69647e; background:#eceaf2; border-color:#c5c1d2; }
 body[data-k-theme="kokoro.mist"] .route-cmin2 { color:#4b746a; background:#e5efeb; border-color:#b0c8c0; }
@@ -4659,14 +4665,14 @@ body[data-k-theme] .art-dlg::backdrop { background:var(--overlay-scrim); }
 /* Mist overlays keep the frosted-glass look without letting page content
    compete with the text inside the floating surface. */
 body[data-k-theme="kokoro.mist"] :is(.task-pop,.dlg,.art-dlg,.skin-menu) {
-  background:rgba(247,251,252,.93);
+  background:rgba(247,251,252,.78);
   border-color:rgba(113,143,153,.42);
   box-shadow:0 16px 40px rgba(31,62,77,.18),inset 0 1px 0 rgba(255,255,255,.82);
-  backdrop-filter:blur(20px) saturate(125%);
-  -webkit-backdrop-filter:blur(20px) saturate(125%);
+  backdrop-filter:blur(32px) saturate(135%);
+  -webkit-backdrop-filter:blur(32px) saturate(135%);
 }
 body[data-k-theme="kokoro.mist"] .task-pop .tp-head {
-  background:rgba(234,243,246,.88);
+  background:rgba(234,243,246,.76);
   border-color:rgba(113,143,153,.28);
 }
 body[data-k-theme="kokoro.mist"] .dlg-scrim {
@@ -4702,8 +4708,6 @@ body[data-k-theme="kokoro.mist"] .home-group-filter.is-active {
   background:rgba(117,149,141,.22);
   border-color:rgba(77,115,128,.45);
 }
-body[data-k-theme="kokoro.mist"] .home-list-toolbar { margin-bottom:0; }
-body[data-k-theme="kokoro.mist"] .home-node-grid { padding-top:var(--s6); }
 body[data-k-theme="kokoro.mist"] .card :is(
   .task-summary,.netcard,.netqrows,.spark-empty,.specs > div.full
 ) {
@@ -4723,3 +4727,7 @@ body[data-k-theme="kokoro.mist"] .card .spark-range-form select {
   backdrop-filter:blur(16px) saturate(120%);
   -webkit-backdrop-filter:blur(16px) saturate(120%);
 }
+
+/* 分类栏和卡片之间只保留网格自身的行距，避免默认内边距叠加后出现大空档。
+   放在各主题规则之后，确保所有主题的首页节点列表使用同一间距。 */
+body[data-k-theme] .home-node-grid { padding-top:0; }

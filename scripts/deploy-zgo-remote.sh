@@ -93,7 +93,7 @@ if [ "$healthy" -ne 1 ]; then
   exit 1
 fi
 
-if ! grep -q 'style.css?v=198' /tmp/kokoro-preview-home.html; then
+if ! grep -q 'style.css?v=200' /tmp/kokoro-preview-home.html; then
   echo 'ERROR: home page did not serve the expected CSS version' >&2
   rollback
   exit 1
@@ -101,7 +101,7 @@ fi
 
 echo "hub=$(systemctl is-active kokoro-hub) version=$(/opt/kokoro/kokoro version 2>&1 | head -n1)"
 echo "sha256=$(sha256sum /opt/kokoro/kokoro | cut -d' ' -f1)"
-echo "home_http=200 css=198 db_backup=$db_backup"
+echo "home_http=200 css=200 db_backup=$db_backup"
 ls -1t /opt/kokoro/kokoro.bak-* 2>/dev/null | tail -n +4 | xargs -r rm -f
 ls -1t "$backup_dir"/kokoro-preview-*.db 2>/dev/null | tail -n +4 | xargs -r rm -f
 rm -rf "$dist_backup"

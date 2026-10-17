@@ -1042,16 +1042,16 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
   setInterval(tick, 1000);
 })();
 
-/* Result popovers use the browser's top layer to escape card stacking contexts.
-   Place the opening pointer inside the popover so it can be read and scrolled. */
+/* Render result popovers in a detached body-level surface. Keeping a popover
+   inside a card that itself uses backdrop-filter makes some browsers repaint
+   every overlapping glass card continuously while the top layer is visible. */
 (function () {
   var active = null;
   var dismissed = null;
   function close() {
     if (!active) return;
     var pop = active.pop;
-    if (active.native) { try { pop.hidePopover(); } catch (_) {} }
-    else pop.remove();
+    pop.remove();
     active = null;
   }
   function dismiss() {
@@ -1068,16 +1068,16 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     close();
     var source = host.querySelector('.task-pop');
     if (!source) return;
-    var native = typeof source.showPopover === 'function';
-    var pop = native ? source : source.cloneNode(true);
-    if (native) pop.showPopover();
-    else { pop.removeAttribute('popover'); pop.classList.add('is-open'); document.body.appendChild(pop); }
+    var pop = source.cloneNode(true);
+    pop.removeAttribute('popover');
+    pop.classList.add('is-open');
+    document.body.appendChild(pop);
     pop.style.left = '12px'; pop.style.top = '12px';
     var rect = pop.getBoundingClientRect();
     var left = Math.max(12, Math.min(x - 60, window.innerWidth - rect.width - 12));
     var top = Math.max(12, Math.min(y - 24, window.innerHeight - rect.height - 12));
     pop.style.left = left + 'px'; pop.style.top = top + 'px';
-    active = {host:host, pop:pop, native:native};
+    active = {host:host, pop:pop};
   }
   document.addEventListener('pointerover', function (event) {
     if (event.pointerType === 'touch') return;
