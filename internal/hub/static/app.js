@@ -551,8 +551,16 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       if(points.length<2) return;
       var box=svg.viewBox.baseVal, w=box.width,h=box.height, html='';
       if(type==='bar') {
-        var bw=w/points.length;
-        points.forEach(function(p,i){var y=Math.max(0,Math.min(h,p[1]));html+='<rect class="spark-bar" x="'+(i*bw+1).toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+Math.max(.5,bw-2).toFixed(2)+'" height="'+Math.max(.5,h-y).toFixed(2)+'"/>';});
+        // Keep each bar at the sample's real time coordinate. Spreading by
+        // array index made sparse nodes look as if they had data across the
+        // whole selected range (for example, a day with only recent samples).
+        var steps=[];
+        for(var i=1;i<points.length;i++){var dx=points[i][0]-points[i-1][0];if(dx>0)steps.push(dx);}
+        steps.sort(function(a,b){return a-b;});
+        var nominalStep=w/144;
+        var sampleStep=steps.length?steps[Math.floor(steps.length/2)]:nominalStep;
+        var bw=Math.max(.5,Math.min(nominalStep,sampleStep*.82));
+        points.forEach(function(p){var y=Math.max(0,Math.min(h,p[1]));var x=Math.max(0,Math.min(w-bw,p[0]-bw/2));html+='<rect class="spark-bar" x="'+x.toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+bw.toFixed(2)+'" height="'+Math.max(.5,h-y).toFixed(2)+'"/>';});
       } else if(type==='dot') {
         points.forEach(function(p){html+='<ellipse class="spark-dot" cx="'+p[0]+'" cy="'+p[1]+'"/>';});
       } else {
