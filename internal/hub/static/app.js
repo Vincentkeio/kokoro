@@ -1508,6 +1508,29 @@ function renderResChart(svg, pts) {
     a.href = href;
     a.textContent = st.kind === 'art' ? (d.total ? '编辑文章' : '写文章') : '管理评论';
     cur.admin.appendChild(a);
+    if (st.kind === 'art' && d.total > 0 && d.delete_node) {
+      var form = document.createElement('form');
+      form.method = 'post';
+      form.action = '/admin/nodes';
+      [['action', 'delete_article'], ['id', d.delete_node]].forEach(function (field) {
+        var input = document.createElement('input');
+        input.type = 'hidden'; input.name = field[0]; input.value = field[1];
+        form.appendChild(input);
+      });
+      var remove = document.createElement('button');
+      remove.type = 'submit'; remove.className = 'btn small danger';
+      remove.textContent = '删除文章';
+      form.appendChild(remove);
+      form.addEventListener('submit', function (event) {
+        if (!window.confirm('确认删除这篇文章？此操作不可撤销。')) {
+          event.preventDefault();
+          return;
+        }
+        remove.disabled = true;
+        remove.textContent = '删除中…';
+      });
+      cur.admin.appendChild(form);
+    }
   }
 
   function renderArticles(cur, d) {

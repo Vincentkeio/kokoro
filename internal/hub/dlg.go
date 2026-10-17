@@ -55,8 +55,9 @@ type dlgResp struct {
 	Articles []drawerArticle `json:"articles,omitempty"`
 	Comments []drawerComment `json:"comments,omitempty"`
 	// EditURL / ManageURL 只有管理员才带，前端直接拿来当链接。
-	EditURL   string `json:"edit_url,omitempty"`
-	ManageURL string `json:"manage_url,omitempty"`
+	EditURL    string `json:"edit_url,omitempty"`
+	ManageURL  string `json:"manage_url,omitempty"`
+	DeleteNode string `json:"delete_node,omitempty"`
 }
 
 // handleNodeArticles 处理 /n/<slug>/articles.json?page=N
@@ -85,6 +86,9 @@ func (h *Hub) handleNodeArticles(w http.ResponseWriter, r *http.Request, slug st
 	resp := dlgResp{OK: true, Total: len(arts), Page: 1, Pages: 1, IsAdmin: admin}
 	if admin {
 		resp.EditURL = "/admin/post?node=" + node.ID
+		if len(arts) > 0 {
+			resp.DeleteNode = node.ID
+		}
 	}
 	if len(arts) > 0 {
 		a := arts[0]
