@@ -235,7 +235,7 @@ func (p *prober) probeHost(ctx context.Context, t Target, host string, count int
 	// TCP 降级。
 	samples, fails, derr := tcpPing(ctx, ip, count, timeout)
 	if derr != nil {
-		return Result{Target: t, Error: icmpUnavailable + ": " + derr.Error()}
+		return Result{Target: t, LossPct: 100, Error: icmpUnavailable + ": " + derr.Error()}
 	}
 	mean, jitter, loss := stat(samples, fails+len(samples))
 	return Result{

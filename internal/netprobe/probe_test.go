@@ -3,6 +3,7 @@ package netprobe
 import (
 	"context"
 	"encoding/binary"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -144,20 +145,41 @@ func TestProbeLocalhost(t *testing.T) {
 
 // TestProbeUnreachable 验证不可达目标不会 panic，且丢包率为 100%。
 func TestProbeUnreachable(t *testing.T) {
-	p, _ := New()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ports := tcpPorts
+	tcpPorts = []int{port}
+	t.Cleanup(func() { tcpPorts = ports })
+	p := &prober{mode: ModeTCP}
 	res := p.Probe(context.Background(), []Target{
-		{Province: "测试", ISP: "test", Name: "保留地址", Host: "192.0.2.1"},
+		{Province: "测试", ISP: "test", Name: "已关闭的本地端口", Host: "127.0.0.1"},
 	}, 1, 200*time.Millisecond)
 	if len(res) != 1 {
 		t.Fatalf("结果数量应为 1")
 	}
 	if res[0].OK {
-		t.Fatalf("192.0.2.1 不应可达")
+		t.Fatalf("已关闭的本地端口不应可达")
 	}
 	if res[0].LossPct != 100 {
 		t.Fatalf("丢包率应为 100，实际 %v", res[0].LossPct)
 	}
 	t.Logf("不可达目标 Error: %s", res[0].Error)
+}
+
+func TestCancelledProbeDoesNotClaimPacketLoss(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	p := &prober{mode: ModeTCP}
+	result := p.Probe(ctx, []Target{{Host: "127.0.0.1"}}, 1, 200*time.Millisecond)
+	if len(result) != 1 || result[0].OK || result[0].LossPct != 0 || result[0].Error == "" {
+		t.Fatalf("取消的探测不应被计为目标丢包：%+v", result)
+	}
 }
 
 // globalAnycastHosts 是**已知的全球任播**公共 DNS。

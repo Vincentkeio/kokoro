@@ -78,6 +78,10 @@ func dialHub(t *testing.T, h *Hub) string {
 //     同样掩盖问题。真实浏览器和 curl 在发完 body 后是继续读响应的，
 //     不会先半关闭。
 func rawPost(t *testing.T, addr, path, body string) (statusLine, respBody string) {
+	return rawPostWithUploadPolicy(t, addr, path, body, false)
+}
+
+func rawPostWithUploadPolicy(t *testing.T, addr, path, body string, allowEarlyClose bool) (statusLine, respBody string) {
 	t.Helper()
 	host := strings.TrimPrefix(addr, "http://")
 	conn, err := net.DialTimeout("tcp", host, 5*time.Second)
@@ -97,6 +101,9 @@ func rawPost(t *testing.T, addr, path, body string) (statusLine, respBody string
 		t.Fatalf("写请求头失败: %v", err)
 	}
 	if _, err := io.WriteString(conn, body); err != nil {
+		if allowEarlyClose {
+			return "", ""
+		}
 		t.Fatalf("写请求体失败: %v", err)
 	}
 
@@ -173,7 +180,7 @@ func TestDrainBodyLeavesOversizedBodyAlone(t *testing.T) {
 	h, _ := newTestHub(t)
 	addr := dialHub(t, h)
 
-	status, _ := rawPost(t, addr, "/admin/themes/delete", "id="+strings.Repeat("A", 3<<20))
+	status, _ := rawPostWithUploadPolicy(t, addr, "/admin/themes/delete", "id="+strings.Repeat("A", 3<<20), true)
 	t.Logf("3MB body 下状态行=%q（空表示连接被重置，符合预期）", status)
 }
 
