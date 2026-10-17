@@ -3801,6 +3801,42 @@ body[data-k-theme="jiwo.blackgold"] .card .buyrow .buy {
   box-shadow: inset 0 1px rgba(255, 249, 222, .78), inset 0 -1px rgba(70, 48, 12, .36);
 }
 
+/* Blackgold controls use gold on dark surfaces and ink on filled surfaces. */
+body[data-k-theme="jiwo.blackgold"] .btn:not(.ghost):not(.danger):not(:disabled) {
+  color:var(--kokoro-color-primary-fg,#17130b);
+}
+body[data-k-theme="jiwo.blackgold"] .btn.danger:not(:disabled) {
+  color:var(--kokoro-color-text-inverse,#17130b);
+}
+body[data-k-theme="jiwo.blackgold"] .top .skin-cur { color:inherit; }
+body[data-k-theme="jiwo.blackgold"] .btn.ghost:not(:disabled) {
+  color:var(--accent); background:transparent; border-color:var(--line); box-shadow:none;
+  transition:color var(--t-fast) var(--ease),background var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease);
+}
+body[data-k-theme="jiwo.blackgold"] .btn.ghost:hover:not(:disabled) {
+  color:var(--kokoro-color-primary-hover,var(--accent)); border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 10%,transparent); filter:none;
+}
+body[data-k-theme="jiwo.blackgold"] .btn.ghost:active:not(:disabled) {
+  color:var(--kokoro-color-primary-hover,var(--accent));
+  background:color-mix(in srgb,var(--accent) 18%,transparent); border-color:var(--accent);
+}
+body[data-k-theme="jiwo.blackgold"] .card .actbar .btnlike:not(.dim):not(:disabled),
+body[data-k-theme="jiwo.blackgold"] .range-btn,
+body[data-k-theme="jiwo.blackgold"] .globe-mode-switch button {
+  color:var(--accent);
+}
+body[data-k-theme="jiwo.blackgold"] .card .actbar .btnlike:hover:not(.dim):not(:disabled),
+body[data-k-theme="jiwo.blackgold"] .range-btn:hover,
+body[data-k-theme="jiwo.blackgold"] .range-btn:focus-visible,
+body[data-k-theme="jiwo.blackgold"] .globe-mode-switch button:hover,
+body[data-k-theme="jiwo.blackgold"] .globe-mode-switch button[aria-pressed="true"] {
+  color:var(--kokoro-color-primary-hover,var(--accent));
+}
+body[data-k-theme="jiwo.blackgold"] .btn:focus-visible {
+  outline:var(--ring) solid var(--ring-c); outline-offset:3px;
+}
+
 /* 资源色始终表示 CPU / 内存 / 磁盘；占用档位用纹理和数值颜色表示，
    避免主题系列色恰好与警告色相同，让同一根 BAR 同时传达两类信息。 */
 body[data-k-theme] .card .gauges .bar i.lv-warn {
