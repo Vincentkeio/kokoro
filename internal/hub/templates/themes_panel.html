@@ -130,7 +130,8 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
   <section class="panel" data-atab="themes">
     <h3>壁纸</h3>
     <p class="th-intro" style="margin-bottom:12px">
-      内置主题使用各自的配套壁纸；这里的站点壁纸设置保留给导入的自定义主题。
+      壁纸<b>按主题分开存</b>，这里设的是当前启用主题{{if .Wallpaper.ThemeName}}「{{.Wallpaper.ThemeName}}」{{end}}的壁纸。
+      停用后会回落到该主题自带的背景图；换到别的主题再换回来，原来的设置还在。
     </p>
 
     {{if .Wallpaper.Err}}<p class="th-msg err">{{.Wallpaper.Err}}</p>{{end}}
@@ -145,6 +146,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
         <form method="post" action="/admin/wallpaper"
               enctype="multipart/form-data" class="th-form">
           <input type="hidden" name="action" value="upload">
+          <input type="hidden" name="theme" value="{{.Wallpaper.ThemeID}}">
           <input type="file" name="wallpaper"
                  accept="image/png,image/jpeg,image/webp,image/gif">
           <div><button class="btn" type="submit">上传并启用</button></div>
@@ -159,6 +161,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
         </p>
         <form method="post" action="/admin/wallpaper" class="th-form">
           <input type="hidden" name="action" value="url">
+          <input type="hidden" name="theme" value="{{.Wallpaper.ThemeID}}">
           <input name="wallpaper_url" value="{{.Wallpaper.URL}}"
                  placeholder="https://example.com/bg.jpg">
           <div><button class="btn" type="submit">用这个地址</button></div>
@@ -177,7 +180,8 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
         </p>
         <form method="post" action="/admin/wallpaper">
           <input type="hidden" name="action" value="clear">
-          <button class="btn ghost small" type="submit">去掉壁纸</button>
+          <input type="hidden" name="theme" value="{{.Wallpaper.ThemeID}}">
+          <button class="btn ghost small" type="submit">停用（恢复主题自带壁纸）</button>
         </form>
       </div>
     </div>

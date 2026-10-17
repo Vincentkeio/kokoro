@@ -62,7 +62,9 @@ func (h *Hub) fillThemePanel(d *adminData, r *http.Request) {
 		}
 	}
 	d.TokenNames = theme.AllowedTokenNames()
-	d.Wallpaper = h.wallpaperFor(strings.TrimSpace(r.URL.Query().Get("wperr")))
+	// 壁纸面板跟着**当前启用主题**走：显示和保存的都是这个主题那一套，
+	// 换主题就换一套，换回来还是原来那张。
+	d.Wallpaper = h.wallpaperFor(d.ActiveID, strings.TrimSpace(r.URL.Query().Get("wperr")))
 	// 三网分省探测范围：跟主题同一个填充入口，免得"进后台漏填"。
 	d.NetQProvinces = h.netqProvinces()
 	sel := make(map[string]bool, len(d.NetQProvinces))

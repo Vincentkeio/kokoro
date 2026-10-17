@@ -245,7 +245,10 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/i/", h.handleInstallScript)
 	h.mux.HandleFunc("/avatar", h.handleAvatar)
 	// 站点壁纸：上传的那份落在数据目录，不在 embed 里，所以也要单独开路由。
+	// 壁纸按主题存，所以地址里带上主题：/wallpaper/<主题ID>。
+	// 旧的 /wallpaper（不带主题）也保留，按当前站点主题处理，兜住改版前缓存的页面。
 	h.mux.HandleFunc("/wallpaper", h.handleWallpaper)
+	h.mux.HandleFunc("/wallpaper/", h.handleWallpaper)
 	// 文章配图：/img/<哈希>。<name> 只允许「32 位十六进制 + 已知后缀」，
 	// 见 handleImage 里的形状校验 —— 不接受用户给的文件名。
 	h.mux.HandleFunc("/img/", h.handleImage)

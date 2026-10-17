@@ -127,14 +127,12 @@ func TestImportJSONFileRejectsInvalidManifest(t *testing.T) {
 	}
 }
 
+// TestPackagedWallpaperUsesThemeAsset 主题包自带的图与站点壁纸是两回事：
+// 前者由主题 token 提供（包里的 /_theme-assets/），后者由站长**按主题**设。
+// 这条盯的是「主题包自己的图没被弄丢」，而不是谁盖谁 ——
+// 站长给这个主题设了壁纸就会盖上去，那是预期行为。
 func TestPackagedWallpaperUsesThemeAsset(t *testing.T) {
 	h, st := newThemeTestHub(t)
-	if err := st.SetSetting(settingWallpaperKind, "url"); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.SetSetting(settingWallpaperURL, "https://cdn.example.com/site.jpg"); err != nil {
-		t.Fatal(err)
-	}
 	m, err := theme.Parse([]byte(`{"id":"acme.wallpaper","name":"壁纸包","version":"1.0.0","tokens":{"--kokoro-bg-image":"url(/_theme-assets/bg.png)"}}`))
 	if err != nil {
 		t.Fatal(err)
@@ -148,15 +146,33 @@ func TestPackagedWallpaperUsesThemeAsset(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	// 没给这个主题设站点壁纸 → 不注入，页面用包里那张图。
 	if v := h.buildThemeView(req, m); v.WallpaperCSS != "" {
-		t.Fatal("主题包自带壁纸不应被站点后备壁纸覆盖")
+		t.Fatalf("没设站点壁纸时不该注入: %s", v.WallpaperCSS)
 	}
+	if v := h.buildThemeView(req, m); !strings.Contains(string(v.Tokens), "url(/_theme-assets/acme.wallpaper/bg.png)") {
+		t.Fatalf("主题包自己的 bg-image 丢了: %s", v.Tokens)
+	}
+
+	// 给这个主题设了站点壁纸 → 注入并盖上去，这是预期行为。
+	if err := st.SetSetting(wallpaperSettingKey(settingWallpaperKind, "acme.wallpaper"), "url"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSetting(wallpaperSettingKey(settingWallpaperURL, "acme.wallpaper"), "https://cdn.example.com/site.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	if v := h.buildThemeView(req, m); !strings.Contains(string(v.WallpaperCSS), "cdn.example.com") {
+		t.Fatalf("给该主题设了壁纸就该注入: %s", v.WallpaperCSS)
+	}
+
+	// 另一个没设壁纸的自定义主题：不该被影响（壁纸按主题存）。
 	bare, err := theme.Parse([]byte(`{"id":"acme.bare","name":"无壁纸","version":"1.0.0","tokens":{"--kokoro-color-bg":"#111"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := h.buildThemeView(req, bare); v.WallpaperCSS == "" {
-		t.Fatal("未自带壁纸的自定义主题应继续使用站点后备壁纸")
+	if v := h.buildThemeView(req, bare); v.WallpaperCSS != "" {
+		t.Fatalf("没给 acme.bare 设壁纸，不该注入: %s", v.WallpaperCSS)
 	}
 }
 
@@ -205,11 +221,12 @@ func TestPackagedWallpaperSurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 	st := newStoreOn(t, dir)
 	h := newHubOn(t, st, dir)
-	// 站点壁纸必须真的存在，否则"没被覆盖"这件事根本测不出来。
-	if err := st.SetSetting(settingWallpaperKind, "url"); err != nil {
+	// 壁纸按主题存，所以给这个导入主题单独设一张。站点壁纸**必须真的存在**，
+	// 否则"主题包自己那张图还在不在"这件事根本测不出来。
+	if err := st.SetSetting(wallpaperSettingKey(settingWallpaperKind, "acme.wall-restart"), "url"); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetSetting(settingWallpaperURL, "https://cdn.example.com/site.jpg"); err != nil {
+	if err := st.SetSetting(wallpaperSettingKey(settingWallpaperURL, "acme.wall-restart"), "https://cdn.example.com/site.jpg"); err != nil {
 		t.Fatal(err)
 	}
 	pkg := theme.Manifest{
@@ -234,9 +251,12 @@ func TestPackagedWallpaperSurvivesRestart(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	// 重启前：正确，不注入站点壁纸。
-	if v := h.buildThemeView(req, h.themes.Get("acme.wall-restart")); v.WallpaperCSS != "" {
-		t.Fatal("导入后主题包壁纸就被站点后备壁纸覆盖了")
+	// 站点壁纸是通用设置，会盖在主题自带背景图之上；所以这里要盯的不是"谁盖谁"，
+	// 而是**主题包自己那张图还在不在** —— 包元数据/资源一丢，主题就只剩站点壁纸，
+	// 表现成"换了个背景"，极难和"主题坏了"区分。
+	view := h.buildThemeView(req, h.themes.Get("acme.wall-restart"))
+	if !strings.Contains(string(view.Tokens), "url(/_theme-assets/acme.wall-restart/wg.png)") {
+		t.Fatalf("导入后主题包自己的 bg-image 丢了: %s", view.Tokens)
 	}
 
 	h2 := newHubOn(t, st, dir)
@@ -245,10 +265,10 @@ func TestPackagedWallpaperSurvivesRestart(t *testing.T) {
 		t.Fatal("重启后自定义主题消失")
 	}
 	if m.Package == nil {
-		t.Fatal("重启后 m.Package 未还原 —— 自带壁纸会被站点壁纸顶掉")
+		t.Fatal("重启后 m.Package 未还原 —— 主题包自己的图会跟着丢")
 	}
-	if v := h2.buildThemeView(req, m); v.WallpaperCSS != "" {
-		t.Fatalf("重启后站点后备壁纸覆盖了主题包壁纸: %s", v.WallpaperCSS)
+	if v := h2.buildThemeView(req, m); !strings.Contains(string(v.Tokens), "url(/_theme-assets/acme.wall-restart/wg.png)") {
+		t.Fatalf("重启后主题包自己的 bg-image 丢了: %s", v.Tokens)
 	}
 	// 资源也要跟着回来，否则 url() 指向一个 404，背景一样是空的。
 	asset, ok := h2.themeAssets.get("acme.wall-restart", "assets/wg.png")
@@ -269,11 +289,11 @@ func TestImportActiveThemeRebuildsRenderCache(t *testing.T) {
 	st := newStoreOn(t, dir)
 	h := newHubOn(t, st, dir)
 	cookies := loginAsAdmin(t, h)
-	// 站点壁纸先开着，才能看出「主题包壁纸 + 站点后备」到底谁在生效。
-	if err := st.SetSetting(settingWallpaperKind, "url"); err != nil {
+	// 站点壁纸先开着（给这个主题），才能看出「主题包自带图 + 站点壁纸」两者都在。
+	if err := st.SetSetting(wallpaperSettingKey(settingWallpaperKind, "acme.reimport"), "url"); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetSetting(settingWallpaperURL, "https://cdn.example.com/site.jpg"); err != nil {
+	if err := st.SetSetting(wallpaperSettingKey(settingWallpaperURL, "acme.reimport"), "https://cdn.example.com/site.jpg"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -324,8 +344,10 @@ func TestImportActiveThemeRebuildsRenderCache(t *testing.T) {
 	if !strings.Contains(string(view.Tokens), "url(/_theme-assets/acme.reimport/wg.png)") {
 		t.Fatalf("导入当前生效主题后 tokens 未刷新: %s", view.Tokens)
 	}
-	if view.WallpaperCSS != "" {
-		t.Fatal("新版包自带壁纸，不应注入站点后备壁纸")
+	// 站点壁纸是通用设置：设了就会注入（盖在主题自带背景之上）。
+	// "主题包自己的图还在不在"由上面 tokens 那条断言守着。
+	if view.WallpaperCSS == "" {
+		t.Error("站点壁纸应当注入，这里却缺席了")
 	}
 	// 资源也要立刻可访问，否则 url() 指向 404。
 	reqAsset := httptest.NewRequest(http.MethodGet, "/_theme-assets/acme.reimport/wg.png", nil)
@@ -558,41 +580,39 @@ func TestDeleteThemeRemovesFromStore(t *testing.T) {
 	}
 }
 
-// TestBuiltinThemeWallpaperFollowsItsToken 盯的是「内置主题该不该拿站点壁纸」。
-//
-// 判据必须来自主题自己的 --kokoro-bg-image，而不是写死的主题 ID 名单：
-// kokoro.simple 的 token 是 none（它并不自带壁纸），却被那份名单当成自带，
-// 于是站点壁纸被抑制、主题自己又没有图 —— 后台设了壁纸，一切到简洁主题背景全空。
-func TestBuiltinThemeWallpaperFollowsItsToken(t *testing.T) {
+// TestWallpaperIsKeyedByTheme 盯的是「壁纸按主题存」这条规则：
+// 只有**给这个主题设过**壁纸时才注入，没设时返回空串 —— 页面就去用主题自带的背景图。
+// 内置主题一视同仁，不再有"按主题 ID 白名单判断谁自带壁纸"那套：
+// 那套和主题 token 脱钩过一次，把简洁主题的背景整个搞成空白。
+func TestWallpaperIsKeyedByTheme(t *testing.T) {
 	dir := t.TempDir()
 	st := newStoreOn(t, dir)
 	h := newHubOn(t, st, dir)
-	if err := st.SetSetting(settingWallpaperKind, "url"); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.SetSetting(settingWallpaperURL, "https://cdn.example.com/site.jpg"); err != nil {
-		t.Fatal(err)
-	}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	// 自带壁纸的三个内置主题：站点壁纸要让位，不该注入。
-	for _, id := range []string{"kokoro.paper", "kokoro.mist", "kokoro.midnight"} {
+	// 谁都没设：一个都不该注入。
+	for _, id := range []string{"kokoro.paper", "kokoro.mist", "kokoro.midnight", "kokoro.simple"} {
 		m := h.themes.Get(id)
 		if m == nil {
 			t.Fatalf("内置主题 %s 未注册", id)
 		}
 		if v := h.buildThemeView(req, m); v.WallpaperCSS != "" {
-			t.Errorf("%s 自带壁纸，站点壁纸不该注入: %s", id, v.WallpaperCSS)
+			t.Errorf("%s 没设壁纸，不该注入: %s", id, v.WallpaperCSS)
 		}
 	}
 
-	// 简洁主题的 token 是 none —— 它不该被算成自带壁纸，站点壁纸必须注入。
-	m := h.themes.Get("kokoro.simple")
-	if m == nil {
-		t.Fatal("内置简洁主题未注册")
+	// 只给简洁主题设一张：只有它注入，别的主题照旧。
+	if err := st.SetSetting(wallpaperSettingKey(settingWallpaperKind, "kokoro.simple"), "url"); err != nil {
+		t.Fatal(err)
 	}
-	if v := h.buildThemeView(req, m); v.WallpaperCSS == "" {
-		t.Error("简洁主题没拿到站点壁纸 —— 背景会是空的")
+	if err := st.SetSetting(wallpaperSettingKey(settingWallpaperURL, "kokoro.simple"), "https://cdn.example.com/site.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	if v := h.buildThemeView(req, h.themes.Get("kokoro.simple")); !strings.Contains(string(v.WallpaperCSS), "cdn.example.com") {
+		t.Errorf("简洁主题应注入它自己的站点壁纸: %s", v.WallpaperCSS)
+	}
+	if v := h.buildThemeView(req, h.themes.Get("kokoro.mist")); v.WallpaperCSS != "" {
+		t.Errorf("别的主题不该被影响: %s", v.WallpaperCSS)
 	}
 }
 

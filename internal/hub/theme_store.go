@@ -111,10 +111,9 @@ func (h *Hub) loadStoredThemes() {
 		m.Source = "custom"
 		// 包元数据必须从 themes.meta 快照还原。exportManifest 刻意不序列化
 		// Package（它是"这份主题带没带包"的凭证，不是渲染输入），而
-		// buildThemeView 的 themeProvidesOwnWallpaper 正是靠它判断「要不要让站点
-		// 壁纸退位」。漏了这一步，重启后 m.Package 恒为 nil，站点后备壁纸
-		// 会被注入到 #kokoro-tokens 之后——后定义的赢——主题包自己的背景图
-		// 静默消失，且不报任何错。
+		// /_theme-assets/ 路由和主题包自带的背景图都要靠它。
+		// 漏了这一步，重启后 m.Package 恒为 nil，主题包自己的图与资源
+		// （包括它导出的）会一起消失，且不报任何错。
 		if len(t.Meta) > 0 && m.Package == nil {
 			var pkg theme.Package
 			if err := json.Unmarshal(t.Meta, &pkg); err != nil {
