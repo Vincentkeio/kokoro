@@ -85,11 +85,11 @@ func TestRunningTaskKeepsCompletedNumbersInCard(t *testing.T) {
 	}
 }
 
-func TestCompactCardRouteKeepsUncertainty(t *testing.T) {
+func TestCompactCardRoutePrefersKnownObservations(t *testing.T) {
 	line := "北京 路径 ASN 不足，未识别 / 上海 163 骨干（AS4134） / 深圳 163 骨干（AS4134）"
 	got := compactCardRoute(line)
-	if got != "未识别 / 163 骨干" {
-		t.Fatalf("compact route hides uncertainty or duplicates: %q", got)
+	if got != "163 骨干" {
+		t.Fatalf("compact route should keep known backbones once: %q", got)
 	}
 	if got := compactCardRoute("CN2 GIA（AS4809）"); got != "CN2 GIA（AS4809）" {
 		t.Fatal("single route was rewritten")

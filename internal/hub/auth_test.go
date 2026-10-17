@@ -152,7 +152,9 @@ func TestLoginFlow(t *testing.T) {
 	req.AddCookie(sess)
 	w = httptest.NewRecorder()
 	h.handleAdmin(w, req)
-	if body := w.Body.String(); !strings.Contains(body, "管理员账号") {
+	// 认后台里"唯一管理员账户"这块（后台改版后的文案）：能读到它
+	// 说明渲染的是后台页本身，而不是又被踢回登录页。
+	if body := w.Body.String(); !strings.Contains(body, "唯一管理员账户") {
 		t.Errorf("带会话应进入后台，实际内容片段: %.160s", body)
 	}
 

@@ -469,8 +469,21 @@ func (h *Hub) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "缺少安装令牌")
 		return
 	}
-	if _, err := h.peekInstallToken(token); err != nil {
+	installation, err := h.peekInstallToken(token)
+	if err != nil {
 		writeErr(w, http.StatusUnauthorized, "安装令牌无效或已用完")
+		return
+	}
+	name := installation.NodeName
+	if name == "" {
+		name = installation.Label
+	}
+	if values, present := r.URL.Query()["name"]; present && len(values) > 0 {
+		name = values[0]
+	}
+	name, err = normalizedInstallName(name)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -504,6 +517,7 @@ func (h *Hub) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 set -e
 KOKORO_HUB="%s"
 KOKORO_TOKEN="%s"
+KOKORO_NODE_NAME=%s
 echo "==> Kokoro 安装: $KOKORO_HUB"
 TMP=$(mktemp -d 2>/dev/null) || { echo "无法创建临时目录，请先安装 mktemp。" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
@@ -522,8 +536,9 @@ else
   echo "需要 curl 或 wget 才能下载安装脚本。" >&2
   exit 1
 fi
+if [ -n "$KOKORO_NODE_NAME" ]; then set -- --name "$KOKORO_NODE_NAME" "$@"; fi
 sh "$TMP/install.sh" --hub "$KOKORO_HUB" --token "$KOKORO_TOKEN" "$@"
-`, hubURL, token)
+`, hubURL, token, shellLiteral(name))
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", "inline; filename=kokoro-install.sh")
@@ -533,6 +548,7 @@ sh "$TMP/install.sh" --hub "$KOKORO_HUB" --token "$KOKORO_TOKEN" "$@"
 // ---- 安装令牌管理 ----
 
 type installToken struct {
+	NodeName  string `json:"node_name,omitempty"`
 	Token     string `json:"token"`
 	Label     string `json:"label"`
 	CreatedAt int64  `json:"created_at"`
@@ -587,12 +603,21 @@ func (h *Hub) consumeInstallToken(tok string) error {
 }
 
 // CreateInstallToken 新建一个安装令牌（后台与首次启动都会用到）。
-func (h *Hub) CreateInstallToken(label string, ttl time.Duration, maxUses int) (*installToken, error) {
+func (h *Hub) CreateInstallToken(label string, ttl time.Duration, maxUses int, presetName ...string) (*installToken, error) {
+	name := ""
+	if len(presetName) > 0 {
+		var err error
+		name, err = normalizedInstallName(presetName[0])
+		if err != nil {
+			return nil, err
+		}
+	}
 	token, err := newToken("it_")
 	if err != nil {
 		return nil, err
 	}
 	t := &installToken{
+		NodeName:  name,
 		Token:     token,
 		Label:     label,
 		CreatedAt: time.Now().UnixMilli(),

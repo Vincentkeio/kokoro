@@ -80,7 +80,7 @@ func TestCardShowsThreeISPLatency(t *testing.T) {
 			if _, err := st.DB().Exec(
 				`INSERT INTO net_quality (node_id, ts, mode, province, isp, city, host, ok, latency, jitter, loss)
 				 VALUES (?,?,?,?,?,?,?,1,?,0,0)`,
-				n.ID, base-r.agoMin*60*1000, "icmp", "北京", row.isp, "北京", "1.2.3.4", r.ms); err != nil {
+				n.ID, base-r.agoMin*60*1000, "icmp", "上海", row.isp, "上海", "1.2.3.4", r.ms); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -140,7 +140,7 @@ func TestNetQOnlyLatestRound(t *testing.T) {
 		if _, err := st.DB().Exec(
 			`INSERT INTO net_quality (node_id, ts, mode, province, isp, city, host, ok, latency, jitter, loss)
 			 VALUES (?,?,?,?,?,?,?,1,?,0,0)`,
-			n.ID, ts, "icmp", "北京", "telecom", "北京", "1.2.3.4", ms); err != nil {
+			n.ID, ts, "icmp", "上海", "telecom", "上海", "1.2.3.4", ms); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -165,7 +165,7 @@ func TestNetQIgnoresFailedProbes(t *testing.T) {
 		if _, err := st.DB().Exec(
 			`INSERT INTO net_quality (node_id, ts, mode, province, isp, city, host, ok, latency, jitter, loss)
 			 VALUES (?,?,?,?,?,?,?,?,?,0,100)`,
-			n.ID, ts, "icmp", "北京", "telecom", "北京", "1.2.3.4", ok, 100.0); err != nil {
+			n.ID, ts, "icmp", "上海", "telecom", "上海", "1.2.3.4", ok, 100.0); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -187,12 +187,12 @@ func TestNetQHistoryForWave(t *testing.T) {
 		if _, err := st.DB().Exec(
 			`INSERT INTO net_quality (node_id, ts, mode, province, isp, city, host, ok, latency, jitter, loss)
 			 VALUES (?,?,?,?,?,?,?,?,?,0,?)`,
-			n.ID, ts, "icmp", "北京", isp, "北京", "1.2.3.4", ok, lat, loss); err != nil {
+			n.ID, ts, "icmp", "上海", isp, "上海", "1.2.3.4", ok, lat, loss); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	// 三轮 telecom：两个省各一个点，验证"轮内平均"与"丢包按全部点"
+	// 三轮 telecom：上海两个目标各一个点，验证"轮内平均"与"丢包按全部点"
 	for i, ms := range []float64{100, 200, 300} {
 		ts := now - int64(2-i)*30*60*1000
 		ins(ts, "telecom", 1, ms, 10)    // 通，丢包 10%
@@ -220,7 +220,7 @@ func TestNetQHistoryForWave(t *testing.T) {
 	}
 	for i, want := range []float64{150, 250, 350} {
 		if l.Hist[i] != want {
-			t.Errorf("第 %d 轮 = %.0f，应为 %.0f（轮内两省平均）", i, l.Hist[i], want)
+			t.Errorf("第 %d 轮 = %.0f，应为 %.0f（轮内上海目标平均）", i, l.Hist[i], want)
 		}
 	}
 	// 最近一轮 = 350（注意不是全断那轮的 999）
@@ -246,7 +246,7 @@ func TestNetQHistoryCapped(t *testing.T) {
 		if _, err := st.DB().Exec(
 			`INSERT INTO net_quality (node_id, ts, mode, province, isp, city, host, ok, latency, jitter, loss)
 			 VALUES (?,?,?,?,?,?,?,1,?,0,0)`,
-			n.ID, now-int64(29-i)*5*60*1000, "icmp", "北京", "unicom", "北京", "1.2.3.4", float64(i)); err != nil {
+			n.ID, now-int64(29-i)*5*60*1000, "icmp", "上海", "unicom", "上海", "1.2.3.4", float64(i)); err != nil {
 			t.Fatal(err)
 		}
 	}

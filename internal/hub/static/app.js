@@ -16,7 +16,9 @@ function kokoroChartPath(points, type, smooth) {
   }
   return d;
 }
-function kokoroSmoothCharts() { return document.body.getAttribute('data-k-chart-smooth')!=='0'; }
+// Every connected trace uses a cubic curve. Discrete theme types (bars, dots,
+// steps) have their own rendering paths and never reach this curve helper.
+function kokoroSmoothCharts() { return true; }
 function fitKokoroChartMarkers(svg) {
   if(!svg || !svg.viewBox || !svg.viewBox.baseVal) return;
   var box=svg.viewBox.baseVal,rect=svg.getBoundingClientRect();
@@ -70,53 +72,90 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
 
   // Fit every card text region to its allocated width, including live values.
   var cardTextSelector='.card-head h2, .meta, .status, .tag, .specs dt, .specs dd .spec-value, .gauges .gl, .gauges em, .spark-cap span, .net-num > span, .net-num .lat em, .uptime-head, .uptime-head h4, .uptime-pct, .uptime-sub, .uptime-empty span, .uptime-empty b, .task-line, .task-result-label, .task-result-value, .netcard .nl, .netcard .nv, .nqr .nm, .nqr .ms, .nqr .ls, .card-actions .btn, .card-actions .act, .vote-actions .act, .netq-empty span, .netq-empty b';
-  function fitSwapValues() {
-    document.querySelectorAll('.card').forEach(function(card){
-      var textRegions=card.querySelectorAll(cardTextSelector);
-      textRegions.forEach(function(el){el.style.fontSize='';});
-      textRegions.forEach(function(el) {
-      var size=parseFloat(getComputedStyle(el).fontSize);
-      // Fixed-size OS icons do not shrink with the text; remeasure each step.
-      for(var i=0;i<3 && el.clientWidth && el.scrollWidth>el.clientWidth;i++) {
-        size*=Math.max(0,el.clientWidth-1)/el.scrollWidth;
-        el.style.fontSize=size.toFixed(2)+'px';
+  function fitTextRegions(textRegions) {
+    textRegions.forEach(function(el){el.style.fontSize='';});
+    var sizes = textRegions.map(function(el) {
+      var width=el.clientWidth, contentWidth=el.scrollWidth;
+      if(width && contentWidth>width) {
+        var size=parseFloat(getComputedStyle(el).fontSize);
+        return Math.max(9,size*Math.max(0,width-1)/contentWidth).toFixed(2)+'px';
       }
-    });});
+      return '';
+    });
+    textRegions.forEach(function(el, i) {
+      if (sizes[i]) el.style.fontSize = sizes[i];
+    });
+  }
+  function fitCardText(card) {
+    if(!card || !card.isConnected) return;
+    fitTextRegions(Array.from(card.querySelectorAll(cardTextSelector)));
+  }
+  function fitSwapValues() {
+    document.querySelectorAll('.card').forEach(fitCardText);
   }
   fitSwapValues(); window.addEventListener('resize',fitSwapValues);
   if(document.fonts && document.fonts.ready) document.fonts.ready.then(fitSwapValues);
+
+  // 只重算尺寸或内容变化的那张卡，并把同一帧内的变化合并起来。
+  // 之前每张卡里的每个 ResizeObserver / MutationObserver 都会扫描整页所有卡，
+  // 卡片多时形成近似 N² 的布局测量，换主题和 SSE 更新时尤其明显。
+  var pendingCardFits=new Set(), pendingTextFits=new Set(), cardFitFrame=0;
+  function queueCardTextFit(card, region) {
+    if(!card || !card.isConnected) return;
+    if (region) pendingTextFits.add(region); else pendingCardFits.add(card);
+    if(cardFitFrame) return;
+    cardFitFrame=requestAnimationFrame(function(){
+      cardFitFrame=0;
+      pendingCardFits.forEach(function (item) {
+        item.querySelectorAll(cardTextSelector).forEach(function (el) { pendingTextFits.add(el); });
+      });
+      var regions=Array.from(pendingTextFits).filter(function (el) { return el.isConnected; });
+      pendingCardFits.clear();
+      pendingTextFits.clear();
+      fitTextRegions(regions);
+    });
+  }
   if(window.ResizeObserver) {
-    var swapObserver=new ResizeObserver(fitSwapValues);
-    document.querySelectorAll('.card, .card-column, .card .nqr, .card .netcard').forEach(function(el){swapObserver.observe(el);});
+    var swapObserver=new ResizeObserver(function(entries){
+      entries.forEach(function(entry){queueCardTextFit(entry.target);});
+    });
+    document.querySelectorAll('.card').forEach(function(card){swapObserver.observe(card);});
   }
-  // SSE replaces provincial rows and changes text without a window resize.
-  var cardFitQueued=false;
-  function queueCardTextFit(){
-    if(cardFitQueued)return;
-    cardFitQueued=true;
-    requestAnimationFrame(function(){cardFitQueued=false;fitSwapValues();});
-  }
+  // SSE 更新卡片内容时，仅复测对应卡片。
   if(window.MutationObserver){
-    var cardTextObserver=new MutationObserver(queueCardTextFit);
-    document.querySelectorAll('.card').forEach(function(card){cardTextObserver.observe(card,{childList:true,characterData:true,subtree:true});});
+    document.querySelectorAll('.card').forEach(function(card){
+      var cardTextObserver=new MutationObserver(function(records){
+        records.forEach(function (record) {
+          var target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+          var region = target && target.closest(cardTextSelector);
+          queueCardTextFit(card, region && card.contains(region) ? region : null);
+        });
+      });
+      cardTextObserver.observe(card,{childList:true,characterData:true,subtree:true});
+    });
   }
 
   // Fit benchmark summaries to their available width without allowing a second line.
   var benchSums = Array.prototype.slice.call(document.querySelectorAll('.bench-sum'));
   if (benchSums.length) {
-    function fitBenchSums() {
-      benchSums.forEach(function (el) {
-        el.style.fontSize = '12px';
-        if (el.clientWidth && el.scrollWidth > el.clientWidth) {
-          var fitted = Math.max(9, 12 * el.clientWidth / el.scrollWidth);
-          el.style.fontSize = fitted.toFixed(2) + 'px';
-        }
-      });
+    function fitBenchSum(el) {
+      el.style.fontSize = '12px';
+      var width=el.clientWidth, contentWidth=el.scrollWidth;
+      if (width && contentWidth > width) {
+        el.style.fontSize = Math.max(9,12*width/contentWidth).toFixed(2) + 'px';
+      }
     }
+    function fitBenchSums() { benchSums.forEach(fitBenchSum); }
     fitBenchSums();
     window.addEventListener('resize', fitBenchSums);
     if (window.ResizeObserver) {
-      var benchResize = new ResizeObserver(fitBenchSums);
+      var benchResize = new ResizeObserver(function(entries){
+        entries.forEach(function(entry){
+          var items=entry.target.querySelectorAll('.bench-sum');
+          if(entry.target.matches('.bench-sum')) fitBenchSum(entry.target);
+          else Array.prototype.forEach.call(items,fitBenchSum);
+        });
+      });
       benchSums.forEach(function (el) { benchResize.observe(el.parentElement); });
     }
   }
@@ -159,18 +198,19 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
 
   function setText(root, field, value) {
     var el = root.querySelector('[data-field="' + field + '"]');
-    if (el) el.textContent = value;
+    if (el && el.textContent !== value) el.textContent = value;
   }
   function setWidth(root, field, value) {
     var el = root.querySelector('[data-field="' + field + '"]');
-    if (el) el.style.width = Math.max(0, Math.min(100, value)) + '%';
+    var width = Math.max(0, Math.min(100, value)) + '%';
+    if (el && el.style.width !== width) el.style.width = width;
   }
   function setUsageLevel(root, field, value) {
     var level = value >= 85 ? 'bad' : value >= 65 ? 'warn' : 'ok';
     var bar = root.querySelector('[data-field="' + field + '-bar"]');
     var label = root.querySelector('[data-field="' + field + '"]');
     [bar, label].forEach(function (el) {
-      if (!el) return;
+      if (!el || el.classList.contains('lv-' + level)) return;
       el.classList.remove('lv-ok', 'lv-warn', 'lv-bad');
       el.classList.add('lv-' + level);
     });
@@ -185,6 +225,18 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     // 标签变红却还写着"在线"，比不更新更让人困惑。
     var t = el.querySelector('[data-field="dottext"]');
     if (t) t.textContent = on ? '在线' : '离线';
+    var nodeID = root.getAttribute('data-node');
+    if (nodeID) {
+      var entry = document.querySelector('.globe-node-entry[data-node-key="' + CSS.escape(nodeID) + '"] .globe-node-status');
+      if (entry) { entry.textContent = on ? '在线' : '离线'; entry.classList.toggle('is-online',!!on); }
+      var globe = window.kokoroGlobe;
+      if (globe) {
+        var changed = false;
+        globe.places.forEach(function(place){ if (place.key === nodeID && place.online !== !!on) { place.online=!!on; changed=true; } });
+        if (changed) globe.setPlaces({places:globe.places});
+      }
+    }
+    if (!on) updateIPConnectivity(root, null, false);
     if (wasOn !== !!on) {
       var onlineEl = document.querySelector('[data-field="online"]');
       if (onlineEl) {
@@ -192,12 +244,16 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
         if (!isFinite(count)) count = 0;
         onlineEl.textContent = String(Math.max(0, count + (on ? 1 : -1)));
       }
+      var offlineEl = document.querySelector('[data-field="offline"]');
+      if (offlineEl) offlineEl.textContent = String(Math.max(0, (parseInt(offlineEl.textContent,10)||0) + (on ? -1 : 1)));
     }
   }
 
   // 把一份指标应用到页面上的对应节点区块
   function applyNode(el, m) {
     if (!m) return;
+    var status = el.querySelector('[data-field="dot"]');
+    updateIPConnectivity(el, m.connectivity, !status || status.classList.contains('on'));
     var cpu = m.cpu ? m.cpu.usage : 0;
     var mem = m.mem ? pct(m.mem.used, m.mem.total) : 0;
     var disk = m.disk ? pct(m.disk.used, m.disk.total) : 0;
@@ -221,6 +277,19 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     }
   }
 
+  function updateIPConnectivity(root, probe, online) {
+    root.querySelectorAll('[data-ip-family]').forEach(function(indicator){
+      var fresh = probe && probe.checked_at > 0 && Date.now()-probe.checked_at < 180000;
+      var ok = fresh && probe[indicator.dataset.ipFamily.toLowerCase()];
+      var state = online && fresh ? (ok ? 'online' : 'unreachable') : 'unknown';
+      var className = 'ip-indicator is-' + state;
+      if (indicator.className !== className) indicator.className = className;
+      var text = !online ? '离线' : !probe ? '未探测' : !fresh ? '待更新' : ok ? '连通' : '无响应';
+      var label = indicator.querySelector('span');
+      if (label.textContent !== text) label.textContent = text;
+    });
+  }
+
   function applySnapshot(data) {
     var blocks = document.querySelectorAll('[data-node]');
     for (var i = 0; i < blocks.length; i++) {
@@ -229,48 +298,85 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     }
   }
 
-  // ---- 迷你曲线 ----
-  function drawSpark(svg, values) {
+  // ---- 详情页历史趋势图 ----
+  // 详情页曲线是“读数”用途：永远画面积填充 + 网格刻度，主题只影响配色与平滑。
+  // （首页卡片的小图不从这里走，仍按主题的图表类型渲染。）
+  function niceCeil(v) {
+    if (!(v > 0)) return 1;
+    var base = Math.pow(10, Math.floor(Math.log10(v)));
+    var steps = [1, 2, 4, 8];
+    for (var i = 0; i < steps.length; i++) {
+      if (steps[i] * base >= v) return steps[i] * base;
+    }
+    return 10 * base;
+  }
+
+  function fmtAxisValue(v, unit) {
+    if (unit === 'pct') return Math.round(v) + '';
+    return fmtSize(v);
+  }
+
+  // __POINTS__ 的 t 是 Unix 毫秒（服务端直接塞 store 的 ts），历史上有别处
+  // 按秒传过 —— 用 1e12 归一化，两种都能画对。spanSec 是秒。
+  function fmtTimeLabel(ts, spanSec) {
+    var ms = ts > 1e12 ? ts : ts * 1000;
+    var d = new Date(ms);
+    function two(n) { return (n < 10 ? '0' : '') + n; }
+    if (spanSec <= 48 * 3600) return two(d.getHours()) + ':' + two(d.getMinutes());
+    return two(d.getMonth() + 1) + '-' + two(d.getDate());
+  }
+
+  function drawSpark(svg, values, unit) {
     if (!svg || !values || values.length < 2) return;
     var w = 300, h = 60, pad = 2;
-    var max = 0;
-    for (var i = 0; i < values.length; i++) if (values[i] > max) max = values[i];
-    if (max <= 0) max = 1;
+    var dataMax = 0;
+    for (var i = 0; i < values.length; i++) if (values[i] > dataMax) dataMax = values[i];
+    // CPU 固定 0-100 刻度；其余序列向上取整到 1/2/4/8×10^k，保证四等分刻度都是干净数字。
+    var scaleMax = unit === 'pct' ? 100 : niceCeil(dataMax);
     var step = (w - pad * 2) / (values.length - 1);
-    var line = '', area = '', curvePoints = [];
-    var type = (document.body && document.body.getAttribute('data-k-chart-type')) || 'area';
+    var curvePoints = [];
     for (var j = 0; j < values.length; j++) {
-      var x = (pad + j * step).toFixed(2);
-      var y = (h - pad - (values[j] / max) * (h - pad * 2)).toFixed(2);
-      curvePoints.push([Number(x),Number(y)]);
-      if (type === 'step') line += (j === 0 ? 'M' + x + ' ' + y : ' H' + x + ' V' + y) + ' ';
-      else line += (j === 0 ? 'M' : 'L') + x + ' ' + y + ' ';
+      var v = Math.min(values[j], scaleMax);
+      curvePoints.push([pad + j * step, h - pad - (v / scaleMax) * (h - pad * 2)]);
     }
-    line = kokoroChartPath(curvePoints,type,kokoroSmoothCharts());
-    area = line + 'L' + (w - pad) + ' ' + h + ' L' + pad + ' ' + h + ' Z';
-    if (type === 'bar') {
-      var bw = (w - pad * 2) / values.length, bars = '';
-      for (var k = 0; k < values.length; k++) {
-        var bh = Math.max(values[k] > 0 ? 1 : 0, (values[k] / max) * (h - pad * 2));
-        bars += '<rect class="spark-bar" x="' + (pad + k * bw).toFixed(2) + '" y="' + (h - pad - bh).toFixed(2) + '" width="' + Math.max(1, bw - 1).toFixed(2) + '" height="' + bh.toFixed(2) + '"></rect>';
+    var line = kokoroChartPath(curvePoints, 'line', kokoroSmoothCharts());
+    var area = line + ' L' + (w - pad) + ' ' + h + ' L' + pad + ' ' + h + ' Z';
+    var inner = '';
+    for (var g = 0; g <= 4; g++) {
+      var gy = pad + (h - pad * 2) * g / 4;
+      inner += '<line class="grid" x1="0" y1="' + gy.toFixed(2) + '" x2="' + w + '" y2="' + gy.toFixed(2) + '" vector-effect="non-scaling-stroke"></line>';
+    }
+    inner += '<path class="area" d="' + area + '"></path><path class="line" d="' + line + '"></path>';
+    svg.innerHTML = inner;
+    drawChartAxes(svg, scaleMax, unit);
+  }
+
+  // 刻度文字放在 SVG 外的 HTML 轨道里：图表是 preserveAspectRatio="none" 拉伸渲染，
+  // SVG 内文字会跟着变形。轨道里的 top 百分比必须与上面 w/h/pad 常量保持同一公式。
+  function drawChartAxes(svg, scaleMax, unit) {
+    var chart = svg.closest('.chart');
+    if (!chart) return;
+    var rail = chart.querySelector('[data-yaxis]');
+    if (rail) {
+      var html = '';
+      for (var k = 0; k <= 4; k++) {
+        var top = (2 + 56 * k / 4) / 60 * 100;
+        html += '<span style="top:' + top.toFixed(2) + '%">' + fmtAxisValue(scaleMax * (4 - k) / 4, unit) + '</span>';
       }
-      svg.innerHTML = bars;
-    } else if (type === 'dot') {
-      var dots = '';
-      for (var m = 0; m < values.length; m++) {
-        var dx = (pad + m * step).toFixed(2);
-        var dy = (h - pad - (values[m] / max) * (h - pad * 2)).toFixed(2);
-        dots += '<circle class="spark-dot" cx="' + dx + '" cy="' + dy + '" r="2.5"></circle>';
-      }
-      svg.innerHTML = dots;
-    } else {
-      svg.innerHTML = (type === 'area' ? '<path class="area" d="' + area + '"></path>' : '') +
-        '<path class="line" d="' + line + '"></path>';
-      if (type === 'area' && document.body.getAttribute('data-k-theme') === 'kokoro.cute') {
-        var markerEvery=Math.max(1,Math.ceil(curvePoints.length/12)),markers='';
-        curvePoints.forEach(function(p,index){if(index%markerEvery===0||index===curvePoints.length-1)markers+='<ellipse class="spark-marker" data-screen-radius="1.7" cx="'+p[0]+'" cy="'+p[1]+'" rx="1.7" ry="1.7"/>';});
-        svg.innerHTML+=markers;
-      }
+      rail.innerHTML = html;
+    }
+    var xAxis = chart.querySelector('[data-xaxis]');
+    var pts = window.__POINTS__ || [];
+    if (xAxis && pts.length >= 2) {
+      var t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+      var tm = pts[Math.floor((pts.length - 1) / 2)].t;
+      // 单位看绝对时间戳（毫秒 ≈1.79e12，秒 ≈1.79e9），不能看差值 —
+      // 一小时的跨度和阈值差着六个数量级，差值判不出单位。
+      var raw = Math.max(0, t1 - t0);
+      var span = t1 > 1e12 ? raw / 1000 : raw; // 统一成秒
+      xAxis.innerHTML = '<span>' + fmtTimeLabel(t0, span) + '</span>' +
+        '<span>' + fmtTimeLabel(tm, span) + '</span>' +
+        '<span>' + fmtTimeLabel(t1, span) + '</span>';
     }
   }
 
@@ -286,7 +392,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
         if (kind === 'up') return p.up || 0;
         return p.down || 0;
       });
-      drawSpark(svgs[i], vals);
+      drawSpark(svgs[i], vals, kind === 'cpu' ? 'pct' : 'bytes');
     }
   }
 
@@ -448,16 +554,11 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
         var bw=w/points.length;
         points.forEach(function(p,i){var y=Math.max(0,Math.min(h,p[1]));html+='<rect class="spark-bar" x="'+(i*bw+1).toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+Math.max(.5,bw-2).toFixed(2)+'" height="'+Math.max(.5,h-y).toFixed(2)+'"/>';});
       } else if(type==='dot') {
-        html+='<path class="dot-guide" d="'+kokoroChartPath(points,'line',false)+'"/>';
         points.forEach(function(p){html+='<ellipse class="spark-dot" cx="'+p[0]+'" cy="'+p[1]+'"/>';});
       } else {
         var line=kokoroChartPath(points,type,kokoroSmoothCharts());
         if(type==='area') html+='<path class="sp-area" d="'+line+' L'+points[points.length-1][0]+' '+h+' L'+points[0][0]+' '+h+' Z"/>';
         html+='<path class="sp-line" d="'+line+'"/>';
-        if(type==='area' && document.body.getAttribute('data-k-theme')==='kokoro.cute') {
-          var markerEvery=Math.max(1,Math.ceil(points.length/12));
-          points.forEach(function(p,index){if(index%markerEvery===0||index===points.length-1)html+='<ellipse class="spark-marker" data-screen-radius="1.7" cx="'+p[0]+'" cy="'+p[1]+'" rx="1.7" ry="1.7"/>';});
-        }
       }
       svg.dataset.kRendered=type;
       svg.innerHTML=html;
@@ -480,26 +581,12 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
   styleServerSparks(document);
   if(window.MutationObserver) new MutationObserver(function(records){records.forEach(function(rec){Array.prototype.forEach.call(rec.addedNodes,function(node){if(node.nodeType===1)styleServerSparks(node);});});}).observe(document.body,{childList:true,subtree:true});
 
-  // Fit timezone, date and time together, preserving the same font size.
-  var clocks=Array.prototype.slice.call(document.querySelectorAll('.overview-clock'));
-  function fitClocks() {
-    clocks.forEach(function(clock){
-      var parts=Array.prototype.slice.call(clock.querySelectorAll('.tz,.d,.t'));
-      parts.forEach(function(p){p.style.fontSize='';});
-      var size=parseFloat(getComputedStyle(parts[0]).fontSize), cs=getComputedStyle(clock);
-      var width=clock.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
-      var gap=parseFloat(cs.columnGap)||0;
-      var sizes=parts.map(function(p){return p.scrollWidth;});
-      var stacked=window.matchMedia('(max-width:720px)').matches;
-      var needed=stacked?Math.max(sizes[0],sizes[1])+sizes[2]:sizes[0]+sizes[1]+sizes[2];
-      var fixedGap=stacked?gap:2*gap;
-      var fitted=Math.min(size,size*Math.max(0,width-fixedGap-2)/Math.max(1,needed));
-      parts.forEach(function(p){p.style.fontSize=fitted.toFixed(2)+'px';});
-    });
-  }
-  fitClocks(); window.requestAnimationFrame(fitClocks); window.addEventListener('resize',fitClocks);
-  if(document.fonts && document.fonts.ready) document.fonts.ready.then(fitClocks);
-  if(window.ResizeObserver){var clockObserver=new ResizeObserver(fitClocks);clocks.forEach(function(c){clockObserver.observe(c);});}
+  // 主机时钟不再做"按容器宽度整体缩放"。
+  //
+  // 原来（console 布局）时钟横铺整张卡，三段挤不下时会缩小字号；
+  // 现在它在总览统计行左侧、按内容宽度自然排（flex:0 0 auto），
+  // 再缩放只会把 23px 的时刻压成 12px —— boss 2026-10-17 报的
+  // "时间还是太小"就是这么来的。字号一律交给 CSS（.t/.d/.tz）。
 
   // ---- 启动 ----
   drawAllSparks();
@@ -561,9 +648,57 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     scheduleLiveDismiss();
   }
 
-  if (typeof EventSource !== 'undefined') {
+  document.addEventListener('kokoro:admin-feedback', function (event) {
+    showLiveMessage(event.detail.message, event.detail.status);
+  });
+
+  var liveStreams = [];
+  var streamOpenedOnce = false, needsFragmentSync = document.hidden, fragmentSyncController = null;
+  function syncPanelFragments() {
+    if (!document.querySelector('[id^="task-card-"], [id^="netq-rows-"], #nq-detail')) return;
+    if (fragmentSyncController) fragmentSyncController.abort();
+    var controller = window.AbortController ? new AbortController() : null;
+    fragmentSyncController = controller;
+    var syncURL = new URL(window.location.href);
+    var detail = document.getElementById('nq-detail');
+    if (detail && detail.dataset.waveRange) syncURL.searchParams.set('netq_range', detail.dataset.waveRange);
+    // Resync only live fragments after returning to a tab. Forms and dialogs
+    // stay intact; a completed task must not remain "running" after a pause.
+    fetch(syncURL.toString(), { credentials: 'same-origin', cache: 'no-store', signal: controller ? controller.signal : undefined })
+      .then(function (response) { if (!response.ok) throw new Error('sync'); return response.text(); })
+      .then(function (html) {
+        if (document.hidden || fragmentSyncController !== controller) return;
+        var fresh = new DOMParser().parseFromString(html, 'text/html');
+        document.querySelectorAll('[id^="task-card-"], [id^="netq-rows-"], #nq-detail').forEach(function (current) {
+          var next = fresh.getElementById(current.id);
+          if (next && current.id === 'nq-detail' && current.querySelector('.nq-extra:not(.nq-hidden)')) {
+            next.querySelectorAll('.nq-extra').forEach(function (row) { row.classList.remove('nq-hidden'); });
+            var toggle = next.querySelector('#nq-toggle');
+            if (toggle) toggle.textContent = '收起 ▴';
+          }
+          if (next && current.outerHTML !== next.outerHTML) current.replaceWith(document.importNode(next, true));
+        });
+        bindNQToggle();
+      })
+      .catch(function () { /* Live metrics remain connected; retry on the next reconnect. */ });
+  }
+  function disconnectStreams() {
+    needsFragmentSync = true;
+    if (fragmentSyncController) fragmentSyncController.abort();
+    liveStreams.forEach(function (stream) { stream.close(); });
+    liveStreams = [];
+  }
+  function connectStreams() {
+    if (typeof EventSource === 'undefined' || document.hidden || liveStreams.length ||
+        !document.querySelector('[data-node], [data-admin-task-live], [data-task-history], [data-global-task-list]')) return;
     var streamSlug = document.body && document.body.getAttribute('data-node-slug');
     var es = new EventSource('/api/v1/stream' + (streamSlug ? '?node=' + encodeURIComponent(streamSlug) : ''));
+    liveStreams.push(es);
+    es.addEventListener('open', function () {
+      if (streamOpenedOnce || needsFragmentSync) syncPanelFragments();
+      streamOpenedOnce = true;
+      needsFragmentSync = false;
+    });
     es.addEventListener('node_status', function (ev) {
       var statuses;
       try { statuses = JSON.parse(ev.data); } catch (e) { return; }
@@ -647,6 +782,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     if (document.body && document.body.hasAttribute('data-admin') && taskHistory) {
       var taskNodeID = taskHistory.getAttribute('data-task-history');
       var taskEvents = new EventSource('/admin/stream/tasks?node=' + encodeURIComponent(taskNodeID));
+      liveStreams.push(taskEvents);
       taskEvents.addEventListener('task_history', function (ev) {
         var d;
         try { d = JSON.parse(ev.data); } catch (e) { return; }
@@ -658,6 +794,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     var globalTaskList = document.querySelector('[data-global-task-list]');
     if (document.body && document.body.hasAttribute('data-admin') && globalTaskList) {
       var globalTaskEvents = new EventSource('/admin/stream/tasks?all=1');
+      liveStreams.push(globalTaskEvents);
       globalTaskEvents.addEventListener('task_list', function (ev) {
         var d;
         try { d = JSON.parse(ev.data); } catch (e) { return; }
@@ -667,10 +804,120 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       });
     }
   }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) disconnectStreams(); else connectStreams();
+  });
+  window.addEventListener('pagehide', disconnectStreams);
+  window.addEventListener('pageshow', connectStreams);
+  connectStreams();
   if (liveClose) liveClose.addEventListener('click', function () {
     clearLiveTimers();
     liveBar.hidden = true;
     liveBar.classList.remove('is-fading');
+  });
+})();
+
+// Save the visibility switch in place. Sending the desired state makes retries
+// idempotent and avoids a POST + redirect + complete admin-page rebuild.
+(function () {
+  document.addEventListener('submit', function (event) {
+    var form = event.target.closest('[data-node-visibility]');
+    if (!form || !window.fetch) return;
+    event.preventDefault();
+    var button = form.querySelector('button[type="submit"]');
+    if (button.disabled) return;
+    var wasShown = button.getAttribute('aria-checked') === 'true';
+    function paint(shown) {
+      button.classList.toggle('on', shown);
+      button.setAttribute('aria-checked', String(shown));
+      button.querySelector('.switch-text').textContent = shown ? '显示中' : '已隐藏';
+    }
+    var data = new URLSearchParams(new FormData(form));
+    data.set('visibility', wasShown ? 'private' : 'public');
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    paint(!wasShown);
+    fetch(form.getAttribute('action'), { method: 'POST', body: data, credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (response) {
+        return response.json().then(function (result) {
+          if (!response.ok || !result.ok) throw new Error(result.error || '保存展示状态失败，请重试');
+          paint(result.visibility !== 'private');
+        });
+      })
+      .catch(function (error) {
+        paint(wasShown);
+        document.dispatchEvent(new CustomEvent('kokoro:admin-feedback', { detail: { message: error.message || '网络异常，请重试', status: 'failed' } }));
+      })
+      .finally(function () { button.disabled = false; button.removeAttribute('aria-busy'); });
+  });
+})();
+
+// Save ordering IDs independently and keep the admin table in the same order
+// as the server's sort_order, name, id ordering without a full-page reload.
+(function () {
+  function compareText(a, b) { return a < b ? -1 : (a > b ? 1 : 0); }
+  function sortRows(rows) {
+    rows.sort(function (a, b) {
+      return (Number(a.dataset.nodeSort) - Number(b.dataset.nodeSort)) ||
+        compareText(a.dataset.nodeName || '', b.dataset.nodeName || '') ||
+        compareText(a.dataset.nodeId || '', b.dataset.nodeId || '');
+    });
+  }
+  function reorderGroups(tbody) {
+    var groups = [];
+    Array.from(tbody.children).forEach(function (row) {
+      if (row.matches('.admin-node-group')) groups.push({ header: row, rows: [] });
+      else if (row.matches('[data-node-group-row]') && groups.length) groups[groups.length - 1].rows.push(row);
+    });
+    groups.forEach(function (group) {
+      sortRows(group.rows);
+      group.rows.forEach(function (row) { tbody.appendChild(row); });
+    });
+    groups.sort(function (a, b) {
+      var ar = a.rows[0], br = b.rows[0];
+      if (!ar) return br ? 1 : 0;
+      if (!br) return -1;
+      return (Number(ar.dataset.nodeSort) - Number(br.dataset.nodeSort)) ||
+        compareText(ar.dataset.nodeName || '', br.dataset.nodeName || '') ||
+        compareText(ar.dataset.nodeId || '', br.dataset.nodeId || '');
+    });
+    groups.forEach(function (group) {
+      tbody.appendChild(group.header);
+      group.rows.forEach(function (row) { tbody.appendChild(row); });
+    });
+  }
+  document.addEventListener('submit', function (event) {
+    var form = event.target.closest('[data-node-sort-form]');
+    if (!form || !window.fetch) return;
+    event.preventDefault();
+    var input = form.querySelector('[name="sort_order"]');
+    var button = form.querySelector('button[type="submit"]');
+    if (!input || !button || button.disabled || !form.reportValidity()) return;
+    var row = form.closest('[data-node-group-row]');
+    var oldValue = row ? row.dataset.nodeSort : input.value;
+    var data = new URLSearchParams(new FormData(form));
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    fetch(form.getAttribute('action'), { method: 'POST', body: data, credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (response) {
+        return response.json().then(function (result) {
+          if (!response.ok || !result.ok) throw new Error(result.error || '保存排序 ID 失败，请重试');
+          return result;
+        });
+      })
+      .then(function (result) {
+        input.value = String(result.sort_order);
+        if (row) {
+          row.dataset.nodeSort = String(result.sort_order);
+          reorderGroups(row.closest('tbody'));
+        }
+        document.dispatchEvent(new CustomEvent('kokoro:admin-feedback', { detail: { message: '排序 ID 已保存', status: 'done' } }));
+      })
+      .catch(function (error) {
+        input.value = oldValue;
+        document.dispatchEvent(new CustomEvent('kokoro:admin-feedback', { detail: { message: error.message || '网络异常，请重试', status: 'failed' } }));
+      })
+      .finally(function () { button.disabled = false; button.removeAttribute('aria-busy'); });
   });
 })();
 
@@ -713,20 +960,6 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
   function getCookie(name) {
     var m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
     return m ? decodeURIComponent(m[1]) : '';
-  }
-
-  /* 深浅色：改 html 的 data-k-mode，CSS 变量随之切换；同时记进 cookie，
-     下次 SSR 直接输出目标模式，不需要闪烁。 */
-  var toggle = document.querySelector('[data-toggle-mode]');
-  if (toggle) {
-    toggle.addEventListener('click', function () {
-      var cur = document.documentElement.getAttribute('data-k-mode') || 'light';
-      var next = cur === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-k-mode', next);
-      setCookie('k_mode', next, 365);
-      toggle.textContent = next === 'dark' ? '☀' : '☾';
-      toggle.setAttribute('aria-label', next === 'dark' ? '切到浅色' : '切到深色');
-    });
   }
 
   /* 皮肤切换现在是访客级权限：直接走链接 /pick/<id>，服务端写 cookie 后 303 回原页。
@@ -821,6 +1054,15 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     else pop.remove();
     active = null;
   }
+  function dismiss() {
+    if (!active) return;
+    var host = active.host;
+    var returnFocus = active.pop.contains(document.activeElement);
+    dismissed = host;
+    close();
+    var trigger = host.querySelector('.task-summary');
+    if (returnFocus && trigger) trigger.focus({preventScroll:true});
+  }
   function open(host, x, y) {
     if (active && active.host === host) return;
     close();
@@ -851,7 +1093,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
   });
   document.addEventListener('focusin', function (event) {
     var host = event.target.closest('.task-hover');
-    if (!host) return;
+    if (!host || host === dismissed) return;
     var rect = host.getBoundingClientRect();
     open(host, rect.left + 40, rect.top + 20);
   });
@@ -861,11 +1103,12 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     if (!next || (!active.host.contains(next) && !active.pop.contains(next))) close();
   });
   document.addEventListener('click', function (event) {
+    if (event.target.closest('[data-task-pop-close]')) { dismiss(); return; }
     var line = event.target.closest('.task-summary');
     if (line) { var rect = line.getBoundingClientRect(); open(line.closest('.task-hover'), event.clientX || rect.left + 40, event.clientY || rect.top + 20); }
     else if (active && !active.host.contains(event.target) && !active.pop.contains(event.target)) close();
   });
-  document.addEventListener('keydown', function (event) { if (event.key === 'Escape') { dismissed = active && active.host; close(); } });
+  document.addEventListener('keydown', function (event) { if (event.key === 'Escape') dismiss(); });
   window.addEventListener('resize', close);
   window.addEventListener('scroll', close);
 })();
@@ -968,22 +1211,11 @@ function renderRateChart(svg, pts) {
     }
     svg.innerHTML = grid + rateDots;
   } else {
-    var cute=type==='area' && document.body.getAttribute('data-k-theme')==='kokoro.cute';
     var rateAreas=type==='area' ?
-      '<path class="dash-area-up" d="M'+pad+' '+(H-pad)+' L'+up.slice(1)+' L'+(W-pad)+' '+(H-pad)+' Z"/>'+
-      (cute?'<path class="dash-area-down" d="M'+pad+' '+(H-pad)+' L'+down.slice(1)+' L'+(W-pad)+' '+(H-pad)+' Z"/>':'') : '';
+      '<path class="dash-area-up" d="M'+pad+' '+(H-pad)+' L'+up.slice(1)+' L'+(W-pad)+' '+(H-pad)+' Z"/>' : '';
     svg.innerHTML = grid + rateAreas +
       '<path class="dash-line-up" d="' + up + '"/>' +
       '<path class="dash-line-down" d="' + down + '"/>';
-    if(cute) {
-      var markerEvery=Math.max(1,Math.ceil(pts.length/12)),rateMarkers='';
-      for(i=0;i<pts.length;i++) if(i%markerEvery===0||i===pts.length-1) {
-        x=(pad+i*((W-pad*2)/(pts.length-1))).toFixed(1);
-        rateMarkers+='<ellipse class="dash-point" data-screen-radius="2.5" cx="'+x+'" cy="'+(H-pad-(pts[i].up/max)*(H-pad*2)).toFixed(1)+'" rx="2.5" ry="2.5"/>'+
-          '<ellipse class="dash-point-down" data-screen-radius="2.5" cx="'+x+'" cy="'+(H-pad-(pts[i].down/max)*(H-pad*2)).toFixed(1)+'" rx="2.5" ry="2.5"/>';
-      }
-      svg.innerHTML+=rateMarkers;
-    }
   }
 
   // 数据点。半径由主题的 --kokoro-chart-point-radius 决定，0 = 不画。
@@ -1075,15 +1307,6 @@ function renderResChart(svg, pts) {
       ' L' + (W - pad) + ' ' + (H - pad) + ' Z"/>' : '') +
     '<path class="res-line-mem" d="' + mem + '"/>' +
     '<path class="res-line-cpu" d="' + cpu + '"/>';
-  if(type==='area' && document.body.getAttribute('data-k-theme')==='kokoro.cute') {
-    var markerEvery=Math.max(1,Math.ceil(pts.length/12)),resourceMarkers='';
-    for(i=0;i<pts.length;i++) if(i%markerEvery===0||i===pts.length-1) {
-      x=(pad+i*((W-pad*2)/(pts.length-1))).toFixed(1);
-      resourceMarkers+='<ellipse class="res-dot-cpu" data-screen-radius="2.5" cx="'+x+'" cy="'+(H-pad-clamp(pts[i].cpu)*(H-pad*2)/100).toFixed(1)+'" rx="2.5" ry="2.5"/>'+
-        '<ellipse class="res-dot-mem" data-screen-radius="2.5" cx="'+x+'" cy="'+(H-pad-clamp(pts[i].mem)*(H-pad*2)/100).toFixed(1)+'" rx="2.5" ry="2.5"/>';
-    }
-    svg.innerHTML+=resourceMarkers;
-  }
   fitKokoroChartMarkers(svg);
 }
 
@@ -1132,6 +1355,36 @@ function renderResChart(svg, pts) {
   if (!scrim || !panels.art.el) return;
 
   var st = { slug: '', kind: 'art', page: 1, expanded: false, cur: null };
+  var requestID = 0, returnFocus = null, closeTimer = null;
+  var drawerCache = new Map(), prefetchTimer = null;
+  function dataURL(slug, kind, page) {
+    return '/n/' + encodeURIComponent(slug) + '/' + (kind === 'art' ? 'articles' : 'comments') + '.json?page=' + page;
+  }
+  function drawerData(url) {
+    var entry = drawerCache.get(url);
+    if (entry && Date.now() - entry.at < 10000) return entry.promise;
+    entry = { at: Date.now() };
+    entry.promise = fetch(url, { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (response) { if (!response.ok) throw new Error('load'); return response.json(); })
+      .catch(function (error) { if (drawerCache.get(url) === entry) drawerCache.delete(url); throw error; });
+    drawerCache.set(url, entry);
+    if (drawerCache.size > 40) drawerCache.delete(drawerCache.keys().next().value);
+    return entry.promise;
+  }
+  function warmDrawer(event) {
+    var button = event.target.closest('[data-dlg]');
+    if (!button || (navigator.connection && navigator.connection.saveData)) return;
+    clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(function () {
+      drawerData(dataURL(button.dataset.dlg, button.dataset.panel === 'cmt' ? 'cmt' : 'art', 1)).catch(function () {});
+    }, event.type === 'focusin' ? 0 : 120);
+  }
+  document.addEventListener('pointerover', warmDrawer);
+  document.addEventListener('focusin', warmDrawer);
+  document.addEventListener('pointerout', function (event) {
+    var button = event.target.closest('[data-dlg]');
+    if (button && !button.contains(event.relatedTarget)) clearTimeout(prefetchTimer);
+  });
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -1139,12 +1392,15 @@ function renderResChart(svg, pts) {
   }
 
   function open(slug, kind) {
+    if (closeTimer) clearTimeout(closeTimer);
+    scrim.classList.remove('closing');
+    returnFocus = document.activeElement;
     st.slug = slug;
     st.kind = kind === 'cmt' ? 'cmt' : 'art';
     st.page = 1;
     st.expanded = false;
     st.cur = panels[st.kind];
-    Object.keys(panels).forEach(function (k) { panels[k].el.hidden = true; });
+    Object.keys(panels).forEach(function (k) { panels[k].el.hidden = true; panels[k].el.classList.remove('closing'); panels[k].el.setAttribute('aria-hidden', 'true'); });
     st.cur.el.hidden = false;
     st.cur.el.setAttribute('aria-hidden', 'false');
     // 留言表单只在评论弹窗出现；文章弹窗没有表单
@@ -1156,15 +1412,18 @@ function renderResChart(svg, pts) {
     }
     scrim.hidden = false;
     document.body.style.overflow = 'hidden';  // 栏开着时锁住背景滚动
+    var closeButton = st.cur.el.querySelector('[data-dlgclose]');
+    if (closeButton) closeButton.focus();
     load();
   }
 
   function close() {
     if (!st.cur) return;
+    requestID++;
     var el = st.cur.el;
     el.classList.add('closing');
     scrim.classList.add('closing');
-    setTimeout(function () {
+    closeTimer = setTimeout(function () {
       el.hidden = true;
       scrim.hidden = true;
       el.classList.remove('closing');
@@ -1172,26 +1431,29 @@ function renderResChart(svg, pts) {
       el.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
       st.cur = null;
+      if (returnFocus && returnFocus.isConnected) returnFocus.focus();
     }, 180);
   }
 
   function load() {
     var cur = st.cur;
     if (!cur) return;
+    var loadingRequest = ++requestID, loadingKind = st.kind;
+    cur.body.setAttribute('aria-busy', 'true');
     cur.body.innerHTML = '<p class="d-empty">加载中…</p>';
     if (cur.foot) cur.foot.innerHTML = '';
     // ⚠️ 面板 key（art/cmt）和接口路径（articles/comments）**不是一回事**，
     // 必须查表 —— 直接拼 st.kind 会请求 /n/x/art.json，那个端点是 404。
-    var path = st.kind === 'art' ? 'articles' : 'comments';
-    var url = '/n/' + encodeURIComponent(st.slug) + '/' + path + '.json?page=' + st.page;
-    fetch(url, { credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
+    var url = dataURL(st.slug, st.kind, st.page);
+    drawerData(url)
       .then(function (d) {
+        if (loadingRequest !== requestID || st.cur !== cur) return;
+        cur.body.removeAttribute('aria-busy');
         if (!d || !d.ok) { cur.body.innerHTML = '<p class="d-empty">加载失败</p>'; return; }
         renderAdmin(cur, d);
-        if (st.kind === 'art') renderArticles(cur, d); else renderComments(cur, d);
+        if (loadingKind === 'art') renderArticles(cur, d); else renderComments(cur, d);
       })
-      .catch(function () { cur.body.innerHTML = '<p class="d-empty">加载失败</p>'; });
+      .catch(function () { if (loadingRequest !== requestID) return; cur.body.removeAttribute('aria-busy'); cur.body.innerHTML = '<p class="d-empty">加载失败，请稍后重试。</p><button type="button" class="btn ghost small" data-dretry>重新加载</button>'; });
   }
 
   function renderAdmin(cur, d) {
@@ -1273,6 +1535,7 @@ function renderResChart(svg, pts) {
   document.addEventListener('click', function (e) {
     var btn = e.target.closest('[data-dlg]');
     if (btn) { open(btn.dataset.dlg, btn.dataset.panel); return; }
+    if (e.target.closest('[data-dretry]')) { drawerCache.delete(dataURL(st.slug, st.kind, st.page)); load(); return; }
     if (e.target.closest('[data-dlgclose]')) { close(); }
   });
 
@@ -1304,6 +1567,8 @@ function renderResChart(svg, pts) {
         return;
       }
       cf.reset();
+      var commentPrefix = '/n/' + encodeURIComponent(st.slug) + '/comments.json';
+      drawerCache.forEach(function (_, key) { if (key.indexOf(commentPrefix) === 0) drawerCache.delete(key); });
       if (msg) {
         msg.textContent = d.pending ? '已提交，站长审核后显示' : '已发布';
         msg.className = 'hint ok';
@@ -1325,11 +1590,32 @@ function renderResChart(svg, pts) {
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && st.cur) close();
+    if (e.key === 'Tab' && st.cur && !scrim.hidden) {
+      var focusable = Array.prototype.filter.call(st.cur.el.querySelectorAll('a[href],button,input,textarea,select,[tabindex="0"]'), function (el) { return !el.disabled && el.getClientRects().length; });
+      if (!focusable.length) return;
+      var first=focusable[0], last=focusable[focusable.length-1];
+      if (e.shiftKey && document.activeElement===first) {e.preventDefault();last.focus();}
+      else if (!e.shiftKey && document.activeElement===last) {e.preventDefault();first.focus();}
+    }
   });
 })();
 
 /* ---- 复制后台 Agent 安装命令 ---- */
 (function () {
+  document.querySelectorAll('.install-command[data-install-url]').forEach(function(command){
+    var input=command.querySelector('[data-install-node-name]');
+    var code=command.querySelector('code.cmd');
+    if (!input || !code) return;
+    function update(){
+      var name=input.value.trim();
+      var invalid=/[\u0000-\u001f\u007f-\u009f]/.test(name) || Array.from(name).length>128;
+      input.setCustomValidity(invalid ? '节点名称最多 128 个字符，不能包含换行或控制字符' : '');
+      var url=command.dataset.installUrl+(name ? '?name='+encodeURIComponent(name) : '');
+      code.textContent="curl -fsSL '"+url.replace(/'/g,"'\"'\"'")+"' | sh";
+      var button=command.querySelector('[data-copy-install]');if (button) button.disabled=invalid;
+    }
+    input.addEventListener('input',update);update();
+  });
   function copyText(text) {
     function fallback() {
       return new Promise(function (resolve, reject) {
@@ -1354,16 +1640,17 @@ function renderResChart(svg, pts) {
 
   document.addEventListener('click', function (e) {
     if (!e.target || !e.target.closest) return;
-    var button = e.target.closest('[data-copy-install]');
+    var button = e.target.closest('[data-copy-install],[data-copy-code]');
     if (!button || button.disabled) return;
-    var command = button.closest('.install-command');
-    var code = command && command.querySelector('code.cmd');
+    var articleCode = button.hasAttribute('data-copy-code');
+    var command = button.closest(articleCode ? '.md-codeblock' : '.install-command');
+    var code = command && command.querySelector(articleCode ? 'pre code' : 'code.cmd');
     if (!code) return;
 
     var original = button.textContent;
     button.disabled = true;
     button.textContent = '复制中…';
-    copyText(code.textContent.trim()).then(function () {
+    copyText(articleCode ? code.textContent : code.textContent.trim()).then(function () {
       button.textContent = '已复制';
     }, function () {
       button.textContent = '复制失败';
@@ -1494,6 +1781,10 @@ function renderResChart(svg, pts) {
     var h = (location.hash || '').replace(/^#/, '');
     var tab = tabOfHash();
     show(tab, h);
+    if (h === 'buy-intents') {
+      var intents = document.getElementById(h);
+      if (intents && intents.tagName === 'DETAILS') intents.open = true;
+    }
   }
 
   tabs.forEach(function (t) {
@@ -1547,6 +1838,90 @@ function renderResChart(svg, pts) {
       });
       if (empty) empty.hidden = visible !== 0;
     });
+  });
+})();
+
+/* ---- 首页节点卡片曲线时间范围 ---- */
+(function () {
+  var nodeRangePrefix = 'kokoro.node-range.';
+  var allowedRanges = ['1h', '6h', '12h', '1d', '7d', '30d'];
+
+  function setCardRange(card, select, key) {
+    var id = card && card.getAttribute('data-node');
+    if (!id || allowedRanges.indexOf(key) === -1) return Promise.reject(new Error('invalid node range'));
+    select.disabled = true;
+    card.setAttribute('aria-busy', 'true');
+    return fetch('/api/v1/card-series?id=' + encodeURIComponent(id) + '&range=' + encodeURIComponent(key), { cache: 'no-store' })
+      .then(function (res) { if (!res.ok) throw new Error('node chart refresh failed'); return res.json(); })
+      .then(function (data) {
+        var svg = card.querySelector('.spark');
+        if (!svg && data.line) {
+          var ns = 'http://www.w3.org/2000/svg';
+          svg = document.createElementNS(ns, 'svg');
+          svg.setAttribute('class', 'spark');
+          svg.setAttribute('viewBox', '0 0 260 40');
+          svg.setAttribute('preserveAspectRatio', 'none');
+          svg.setAttribute('aria-hidden', 'true');
+          var empty = card.querySelector('.spark-empty');
+          if (empty) empty.replaceWith(svg);
+        }
+        if (svg) {
+          var line = svg.querySelector('.sp-line');
+          var area = svg.querySelector('.sp-area');
+          if (!line) { line = document.createElementNS('http://www.w3.org/2000/svg', 'path'); line.setAttribute('class', 'sp-line'); svg.appendChild(line); }
+          if (!area) { area = document.createElementNS('http://www.w3.org/2000/svg', 'path'); area.setAttribute('class', 'sp-area'); svg.insertBefore(area, line); }
+          if (line) line.setAttribute('d', data.line || '');
+          if (area) area.setAttribute('d', data.area || '');
+        }
+        var label = card.querySelector('[data-spark-label]');
+        if (label) label.textContent = data.line ? '峰值 ' + data.peak : (data.info || '暂无数据');
+        try { localStorage.setItem(nodeRangePrefix + id, key); } catch (_) {}
+      })
+      .finally(function () {
+        select.disabled = false;
+        card.removeAttribute('aria-busy');
+      });
+  }
+
+  document.querySelectorAll('[data-home-range]').forEach(function (select) {
+    if (!select.form) return;
+    select.addEventListener('change', function () {
+      // 总览时间范围明确作用于全部节点，清除单卡覆盖，保证全局选择生效。
+      try {
+        for (var i = localStorage.length - 1; i >= 0; i--) {
+          var key = localStorage.key(i);
+          if (key && key.indexOf(nodeRangePrefix) === 0) localStorage.removeItem(key);
+        }
+      } catch (_) {}
+      if (select.form.requestSubmit) select.form.requestSubmit();
+      else select.form.submit();
+    });
+  });
+
+  document.querySelectorAll('[data-node-range]').forEach(function (select) {
+    var card = select.closest('[data-home-node-card]');
+    var id = card && card.getAttribute('data-node');
+    if (!card || !id) return;
+    var initial = select.value;
+    var saved = null;
+    try { saved = localStorage.getItem(nodeRangePrefix + id); } catch (_) {}
+    if (allowedRanges.indexOf(saved) !== -1 && saved !== initial) {
+      select.value = saved;
+      setCardRange(card, select, saved).catch(function () {
+        select.value = initial;
+        select.setAttribute('data-last-range', initial);
+      });
+    }
+    select.addEventListener('change', function () {
+      var previous = select.getAttribute('data-last-range') || initial;
+      var chosen = select.value;
+      setCardRange(card, select, chosen).then(function () {
+        select.setAttribute('data-last-range', chosen);
+      }).catch(function () {
+        select.value = previous;
+      });
+    });
+    select.setAttribute('data-last-range', select.value);
   });
 })();
 
@@ -1734,6 +2109,9 @@ function renderResChart(svg, pts) {
     if (b.hasAttribute('data-md-font')) return toggleFontMenu();
     if (b.hasAttribute('data-md-preview')) return togglePreview();
     if (b.hasAttribute('data-md-link')) return addLink();
+    if (b.hasAttribute('data-md-img-url')) return addImageLink();
+    if (b.hasAttribute('data-md-code-block')) return insert('\n\n```sh\n' + (ta.value.slice(ta.selectionStart,ta.selectionEnd) || '# 在这里输入代码') + '\n```\n');
+    if (b.hasAttribute('data-md-table')) return insert('\n\n| 项目 | 说明 |\n| --- | --- |\n| 内容 | 内容 |\n');
     if (b.hasAttribute('data-md-img')) return file.click();
     if (b.hasAttribute('data-md')) wrap(b.dataset.md);
   });
@@ -1815,6 +2193,18 @@ function renderResChart(svg, pts) {
       return;
     }
     insert('[' + text + '](' + url.trim() + ')');
+  }
+
+  function addImageLink() {
+    var alt = ta.value.slice(ta.selectionStart,ta.selectionEnd) || '图片';
+    var address = window.prompt('图片直链（https://…，指向图片文件）','https://');
+    if (!address) return;
+    address=address.trim();
+    if (!/^https?:\/\//i.test(address) || /[\r\n]/.test(address)) {say('请输入 http 或 https 图片直链','err');return;}
+    alt=alt.replace(/[\[\]\\]/g,'\\$&');
+    address=address.replace(/</g,'%3C').replace(/>/g,'%3E');
+    insert('\n!['+alt+'](<'+address+'>)\n');
+    say('已插入图片链接，可点预览查看');
   }
 
   // 粘贴图片：截图之后直接 Ctrl+V 是最顺手的流程，

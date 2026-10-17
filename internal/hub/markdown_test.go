@@ -70,3 +70,43 @@ func TestMarkdownEscapesHTML(t *testing.T) {
 		t.Errorf("HTML 没被转义: %q", got)
 	}
 }
+
+func TestMarkdownRichArticle(t *testing.T) {
+	input := "## 配置\n\n| 项目 | 内容 |\n| --- | --- |\n| 系统 | Debian |\n\n- 一级\n  - 二级\n\n- [x] 已完成\n\n~~旧内容~~\n\n![截图](https://example.com/a_(1).png \"配图\")\n\n![上传](/images/test.png)\n\n```go\nfunc main() {\n  println(\"**原样代码**\")\n}\n```\n\n`**不是加粗**`\n\n{lg}**大号强调**{/lg}"
+	got := string(RenderMarkdown(input))
+	for _, want := range []string{"<table>", "<th>项目</th>", "<del>旧内容</del>", `type="checkbox"`, `src="https://example.com/a_(1).png"`, `src="/images/test.png"`, `alt="截图"`, `title="配图"`, `class="md-codeblock"`, `data-copy-code`, `class="kd">func`, `**原样代码**`, `<code>**不是加粗**</code>`, `<span class="md-lg"><strong>大号强调</strong></span>`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %s", want, got)
+		}
+	}
+	if strings.Count(got, "<ul>") < 2 {
+		t.Errorf("nested lists lost: %s", got)
+	}
+}
+
+func TestMarkdownDangerousDestinations(t *testing.T) {
+	for _, src := range []string{
+		`![x](javascript:alert(1))`, `![x](data:image/svg+xml;base64,PHN2Zz4=)`,
+		`![x](//evil.example/x.png)`, `![x](mailto:a@example.com)`,
+		`[x](JaVaScRiPt:alert(1))`, `[x](java&#x73;cript:alert(1))`,
+		`<img src=x onerror=alert(1)>`,
+	} {
+		got := string(RenderMarkdown(src))
+		if strings.Contains(got, `<img `) || strings.Contains(got, `<a href=`) {
+			t.Errorf("unsafe destination accepted: %q => %s", src, got)
+		}
+	}
+	got := string(RenderMarkdown("```html\n<script>alert(1)</script>\n```"))
+	if strings.Contains(got, "<script>") {
+		t.Fatalf("code block escaped its boundary: %s", got)
+	}
+}
+
+func TestMarkdownCodeFenceFallback(t *testing.T) {
+	for _, src := range []string{"~~~\na < b\n~~~", "```unknown-language\na < b\n```", "```sh\necho ok"} {
+		got := string(RenderMarkdown(src))
+		if !strings.Contains(got, `class="md-codeblock"`) || !strings.Contains(got, `<pre class="chroma">`) {
+			t.Errorf("unformatted code fence: %s", got)
+		}
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -106,20 +107,29 @@ func (h *Hub) handleBuy(w http.ResponseWriter, r *http.Request) {
 	if h.alerts != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 		defer cancel()
-		body := "有人想买这台机器：\n" + n.Name
+		body := "联系方式：" + contact
 		if n.Region != "" {
-			body += "（" + n.Region + "）"
+			body = "地区：" + n.Region + "\n" + body
 		}
-		body += "\n\n联系方式：" + contact
 		if note != "" {
 			body += "\n备注：" + note
 		}
-		body += "\n\n时间：" + time.Now().Format("2006-01-02 15:04:05")
+		body += "\n提交时间：" + time.Now().Format("2006-01-02 15:04:05")
+		nodeURL := ""
+		if h.cfg != nil && strings.TrimSpace(h.cfg.Domain) != "" {
+			slug := n.Slug
+			if slug == "" {
+				slug = n.ID
+			}
+			nodeURL = strings.TrimRight(h.siteBaseURL(r), "/") + "/n/" + url.PathEscape(slug)
+		}
 		statuses, err := h.alerts.NotifyChannels(ctx, notify.Message{
-			Title:  "💰 有人想买它 / " + n.Name,
-			Body:   body,
-			Level:  notify.LevelInfo,
-			NodeID: n.ID,
+			Title:    "有人想购买",
+			Body:     body,
+			Level:    notify.LevelInfo,
+			NodeID:   n.ID,
+			NodeName: n.Name,
+			NodeURL:  nodeURL,
 		})
 		for channel, status := range statuses {
 			delivery[channel] = status

@@ -4,12 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/Vincentkeio/kokoro/internal/collector"
 	"github.com/Vincentkeio/kokoro/internal/model"
 )
 
@@ -21,9 +19,7 @@ import (
 
 // 仪表盘用到的时间窗口与分桶长度（毫秒）。
 const (
-	dashBucket1m  = int64(60 * 1000)
 	dashBucket5m  = int64(5 * 60 * 1000)
-	dashWindow1h  = int64(60 * 60 * 1000)
 	dashWindow24h = int64(24 * 60 * 60 * 1000)
 )
 
@@ -43,9 +39,10 @@ type dashboardData struct {
 
 	// 今日 / 本月流量。首页的「全网速率」卡要用 —— 那里的数字全在这里
 	// 算好传过去，模板里不再各自调 TrafficSince（同一份数据算两遍容易不一致）。
-	TodayUp, TodayDown     int64
-	MonthUp, MonthDown     int64
-	TodayTotal, MonthTotal int64
+	TodayUp, TodayDown               int64
+	MonthUp, MonthDown               int64
+	TodayTotal, MonthTotal           int64
+	TotalUp, TotalDown, TotalTraffic int64
 
 	AlertRules  int // 生效中的告警规则数（未静默）
 	AlertFiring int // 未恢复的告警事件数
@@ -80,13 +77,14 @@ type dashboardData struct {
 	ScaleMax  int64  // 刻度上限（上下行峰值的较大者，B/s）
 	ScaleMid  int64  // 刻度中线（上限的一半）
 
+	// 走势时间窗（?range=1h|6h|1d|7d|30d）。Range 是当前生效的窗，
+	// RangeOpts 是全部可选项 —— 总览卡的切换按钮直接从这两块渲染。
+	Range     string
+	RangeOpts []rangeOpt
+
 	TopLoad []dashTopNode // 负载最高的几台小鸡
 	Events  []dashEvent   // 最近告警事件
 
-	Host        *model.Metrics // 主机自身（Hub 所在机器）现采一次
-	HostMemPct  float64
-	HostDiskPct float64
-	HostNote    string // 采不到时的说明（平台不支持 / 采集失败）
 }
 
 // dashPoint 是全网曲线上的一点：某个分钟桶内各节点速率之和。
@@ -270,107 +268,139 @@ func sumCounterDelta(rows *sql.Rows) (up, down int64, ok bool) {
 	return up, down, len(last) > 0
 }
 
-// dashNetPoints 取全网最近一小时的上下行曲线：按 1 分钟分桶，
-// 桶内先对每个节点求平均速率，再把各节点相加，得到「全网这一分钟的合计速率」。
-// 结果最多 60 个点。
-func (h *Hub) dashNetPoints(ids []string) []dashPoint {
+// dashMaxPoints 是总览曲线的目标点数上限。600px 宽的图，
+// 144 个点足够顺滑，再多只会让 SQL 分桶更碎。
+const dashMaxPoints = 144
+
+// dashSource 按窗口跨度挑数据源（表名 + 时间列 + 速率/占用率列名）。
+// 阈值与 store.History 同一套：metrics_raw 默认只留 6 小时，
+// 更长的窗必须读 rollup 层，否则曲线会凭空截断。
+func dashSource(span time.Duration) (table, tsCol, upCol, downCol, cpuCol, memCol string) {
+	switch {
+	case span <= 2*time.Hour:
+		return "metrics_raw", "ts", "net_up", "net_down", "cpu", "mem_used"
+	case span <= 12*time.Hour:
+		return "metrics_1m", "bucket", "net_up_avg", "net_down_avg", "cpu_avg", "mem_used_avg"
+	case span <= 3*24*time.Hour:
+		return "metrics_5m", "bucket", "net_up_avg", "net_down_avg", "cpu_avg", "mem_used_avg"
+	case span <= 45*24*time.Hour:
+		return "metrics_1h", "bucket", "net_up_avg", "net_down_avg", "cpu_avg", "mem_used_avg"
+	default:
+		return "metrics_1d", "bucket", "net_up_avg", "net_down_avg", "cpu_avg", "mem_used_avg"
+	}
+}
+
+// dashNetPoints 取全网的上下行曲线：桶内先对每个节点求平均速率，
+// 再把各节点相加，得到「全网这一刻的合计速率」。
+// 窗口决定数据源（1 小时读原始表，更长的读 rollup）与归并步长，
+// 点数控制在 dashMaxPoints 附近。
+func (h *Hub) dashNetPoints(ids []string, win rangeWindow) []dashPoint {
 	if len(ids) == 0 {
 		return nil
 	}
-	from := time.Now().UnixMilli() - dashWindow1h
+	now := time.Now().UnixMilli()
+	from := now - win.dur.Milliseconds()
+	table, tsCol, upCol, downCol, _, _ := dashSource(win.dur)
 	ph := dashPlaceholders(len(ids))
-	args := make([]any, 0, len(ids)+1)
-	args = append(args, from)
+	step := (win.dur.Milliseconds() + dashMaxPoints - 1) / dashMaxPoints
+	if step < 1 {
+		step = 1
+	}
+
+	// 两层聚合：内层按节点求桶内平均，外层跨节点求和。
+	// AVG 的权重问题（长窗下各桶样本数不同）与 store.History 一样按简单平均处理。
+	// ⚠️ b 必须是**毫秒时间戳**（(t/step)*step），不能只返回 t/step 的桶序号 ——
+	// 时段说明会拿它当 UnixMilli 格式化，桶序号会被解析成 1970 年。
+	q := fmt.Sprintf(`SELECT b, SUM(up), SUM(down) FROM (
+SELECT (%[2]s / %[5]d) * %[5]d AS b, node_id, AVG(%[3]s) AS up, AVG(%[4]s) AS down
+FROM %[1]s WHERE %[2]s >= ? AND %[2]s <= ? AND node_id IN (%[6]s)
+GROUP BY b, node_id) GROUP BY b ORDER BY b`,
+		table, tsCol, upCol, downCol, step, ph)
+	args := make([]any, 0, len(ids)+2)
+	args = append(args, from, now)
 	for _, id := range ids {
 		args = append(args, id)
 	}
-
-	q := fmt.Sprintf(`SELECT (ts / %d) * %d AS b, AVG(net_up), AVG(net_down)
-FROM metrics_raw WHERE ts >= ? AND node_id IN (%s)
-GROUP BY b, node_id ORDER BY b`, dashBucket1m, dashBucket1m, ph)
 	rows, err := h.store.DB().Query(q, args...)
 	if err != nil {
-		log.Printf("[hub] 仪表盘读取最近一小时曲线失败: %v", err)
+		log.Printf("[hub] 仪表盘读取全网速率曲线失败: %v", err)
 		return nil
 	}
 	defer rows.Close()
 
-	sums := make(map[int64]*[2]int64)
-	var buckets []int64
+	var out []dashPoint
 	for rows.Next() {
 		var (
 			bk       int64
 			up, down float64
 		)
 		if err := rows.Scan(&bk, &up, &down); err != nil {
-			log.Printf("[hub] 仪表盘扫描曲线分桶失败: %v", err)
+			log.Printf("[hub] 仪表盘扫描速率曲线失败: %v", err)
 			return nil
 		}
-		s, seen := sums[bk]
-		if !seen {
-			s = &[2]int64{}
-			sums[bk] = s
-			buckets = append(buckets, bk)
-		}
-		s[0] += int64(up + 0.5)
-		s[1] += int64(down + 0.5)
+		out = append(out, dashPoint{Ts: bk, Up: int64(up + 0.5), Down: int64(down + 0.5)})
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("[hub] 仪表盘遍历曲线分桶失败: %v", err)
-	}
-
-	// ORDER BY b 保证 buckets 是升序的，直接按顺序输出即可。
-	out := make([]dashPoint, 0, len(buckets))
-	for _, bk := range buckets {
-		s := sums[bk]
-		out = append(out, dashPoint{Ts: bk, Up: s[0], Down: s[1]})
+		log.Printf("[hub] 仪表盘遍历速率曲线失败: %v", err)
 	}
 	return out
 }
 
-// dashResPoints 取全网最近一小时的 CPU / 内存平均使用率：按 1 分钟分桶，
-// 桶内先对每个节点求平均，再把各节点平均一遍。
+// dashResPoints 取全网的 CPU / 内存平均使用率曲线，窗口与分桶同 dashNetPoints。
 //
 // 为什么不是 SUM（速率那条就是这么合的）：占用率**不可加** ——
 // 两台各 50% 的机器相加没有意义。先按节点取平均再跨节点平均，
 // 得到的是"一台普通小鸡这一刻的占用"，节点多少都不会把它冲高。
 //
-// 内存占用在 SQL 里现算（mem_used / mem_total）：各机器内存总量差着量级，
+// 内存占比在 Go 里现算（mem_used / memTotal）：rollup 层只有
+// mem_used_avg 没有 mem_total，而各机器内存总量差着量级，
 // 用「已用字节的平均」会被大内存机器带偏，占比才是可横向比较的量。
-func (h *Hub) dashResPoints(ids []string) []dashResPoint {
+// memTotals 缺某个节点时该节点按 0% 处理 —— 宁可少算不可虚构。
+func (h *Hub) dashResPoints(ids []string, win rangeWindow, memTotals map[string]int64) []dashResPoint {
 	if len(ids) == 0 {
 		return nil
 	}
-	from := time.Now().UnixMilli() - dashWindow1h
+	now := time.Now().UnixMilli()
+	from := now - win.dur.Milliseconds()
+	table, tsCol, _, _, cpuCol, memCol := dashSource(win.dur)
 	ph := dashPlaceholders(len(ids))
-	args := make([]any, 0, len(ids)+1)
-	args = append(args, from)
+	step := (win.dur.Milliseconds() + dashMaxPoints - 1) / dashMaxPoints
+	if step < 1 {
+		step = 1
+	}
+
+	// b 同速率曲线：必须是毫秒时间戳，不是桶序号（时段说明按 UnixMilli 格式化）。
+	q := fmt.Sprintf(`SELECT (%[2]s / %[5]d) * %[5]d AS b, node_id, AVG(%[3]s), AVG(%[4]s)
+FROM %[1]s WHERE %[2]s >= ? AND %[2]s <= ? AND node_id IN (%[6]s)
+GROUP BY b, node_id ORDER BY b`,
+		table, tsCol, cpuCol, memCol, step, ph)
+	args := make([]any, 0, len(ids)+2)
+	args = append(args, from, now)
 	for _, id := range ids {
 		args = append(args, id)
 	}
-
-	q := fmt.Sprintf(`SELECT (ts / %d) * %d AS b, AVG(cpu),
-		AVG(CASE WHEN mem_total > 0 THEN mem_used * 100.0 / mem_total ELSE 0 END)
-		FROM metrics_raw WHERE ts >= ? AND node_id IN (%s)
-		GROUP BY b, node_id ORDER BY b`, dashBucket1m, dashBucket1m, ph)
 	rows, err := h.store.DB().Query(q, args...)
 	if err != nil {
-		log.Printf("[hub] 仪表盘读取最近一小时占用率失败: %v", err)
+		log.Printf("[hub] 仪表盘读取占用率曲线失败: %v", err)
 		return nil
 	}
 	defer rows.Close()
 
-	type acc struct{ cpu, mem float64 }
+	type acc struct {
+		cpu, mem float64
+		n        int
+	}
 	sums := make(map[int64]*acc)
-	counts := make(map[int64]int)
 	var buckets []int64
 	for rows.Next() {
 		var (
-			bk       int64
-			cpu, mem float64
+			bk      int64
+			node    string
+			cpu     float64
+			memUsed float64
 		)
-		if err := rows.Scan(&bk, &cpu, &mem); err != nil {
-			log.Printf("[hub] 仪表盘扫描占用率分桶失败: %v", err)
+		if err := rows.Scan(&bk, &node, &cpu, &memUsed); err != nil {
+			log.Printf("[hub] 仪表盘扫描占用率曲线失败: %v", err)
 			return nil
 		}
 		s, seen := sums[bk]
@@ -379,23 +409,26 @@ func (h *Hub) dashResPoints(ids []string) []dashResPoint {
 			sums[bk] = s
 			buckets = append(buckets, bk)
 		}
+		var memPct float64
+		if total := memTotals[node]; total > 0 {
+			memPct = memUsed * 100 / float64(total)
+		}
 		s.cpu += cpu
-		s.mem += mem
-		counts[bk]++
+		s.mem += memPct
+		s.n++
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("[hub] 仪表盘遍历占用率分桶失败: %v", err)
+		log.Printf("[hub] 仪表盘遍历占用率曲线失败: %v", err)
 	}
 
 	// ORDER BY b 保证 buckets 升序，直接按顺序输出即可。
 	out := make([]dashResPoint, 0, len(buckets))
 	for _, bk := range buckets {
-		n := counts[bk]
-		if n <= 0 {
+		s := sums[bk]
+		if s.n <= 0 {
 			continue
 		}
-		s := sums[bk]
-		out = append(out, dashResPoint{Ts: bk, CPU: s.cpu / float64(n), Mem: s.mem / float64(n)})
+		out = append(out, dashResPoint{Ts: bk, CPU: s.cpu / float64(s.n), Mem: s.mem / float64(s.n)})
 	}
 	return out
 }
@@ -436,32 +469,6 @@ ORDER BY e.fired_at DESC LIMIT ?`
 	return out
 }
 
-// collectHostSelf 现采一次主机（Hub 进程所在机器）的资源占用。
-// 只有 Linux 支持；平台不支持或采集失败时返回说明文案，页面显示占位而不是报错。
-func (h *Hub) collectHostSelf() (*model.Metrics, string) {
-	if runtime.GOOS != "linux" {
-		return nil, "当前平台不支持（主机资源采集仅支持 Linux）"
-	}
-	c, err := collector.New()
-	if err != nil {
-		log.Printf("[hub] 仪表盘创建采集器失败: %v", err)
-		return nil, "当前平台不支持"
-	}
-	defer c.Close()
-
-	// CPU 使用率靠两次采样的差分得出，先采一次当基线，间隔片刻再采一次才是真实占用。
-	if _, err := c.Collect(); err != nil {
-		log.Printf("[hub] 仪表盘主机基线采集失败: %v", err)
-	}
-	time.Sleep(300 * time.Millisecond)
-	m, err := c.Collect()
-	if err != nil {
-		log.Printf("[hub] 仪表盘主机采集失败: %v", err)
-		return nil, "采集失败（Hub 可能不是 root，部分指标读不到）"
-	}
-	return m, ""
-}
-
 // dashPlaceholders 生成 n 个 ? 占位符，用于 node_id IN (...) 这类查询。
 func dashPlaceholders(n int) string {
 	if n <= 0 {
@@ -470,12 +477,27 @@ func dashPlaceholders(n int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }
 
+// dashSpanPrefix 把时间窗 key 映射成时段说明的前缀。
+// 文案从 rangeOptions 的 label 拼出来 —— 按钮上写什么，
+// 说明里就是什么，两处永远对得上。
+func dashSpanPrefix(key string) string {
+	for _, opt := range rangeOptions {
+		if opt.Key == key {
+			return "近 " + opt.Label
+		}
+	}
+	return "近 1 小时"
+}
+
 // buildDashboard 组装仪表盘要用的全部数据。
 //
 // 抽成独立函数是因为**首页也要用** —— 仪表盘的内容要并到首页上，
 // 两边调同一个函数算同一份数据，才不会出现「首页说 3 台在线、
 // 仪表盘说 4 台」这种自相矛盾。
-func (h *Hub) buildDashboard() dashboardData {
+//
+// win 是总览曲线的时间窗（?range= 解析结果）。曲线、峰值、
+// 均值和时段说明全都跟随这个窗，一张卡里不会出现两个时间口径。
+func (h *Hub) buildDashboard(win rangeWindow) dashboardData {
 	data := dashboardData{SiteName: h.cfg.SiteName, Year: time.Now().Year()}
 	// 仪表盘对访客可见，所以只统计公开节点，隐藏机器不出现在任何一块里。
 	nodes, err := h.store.ListNodes(false)
@@ -496,6 +518,8 @@ func (h *Hub) buildDashboard() dashboardData {
 		// 容量取上报值，取不到才退回注册时记的静态值。
 		mem, disk := n.MemTotal, n.DiskTotal
 		if m := snap[n.ID]; m != nil {
+			data.TotalUp += m.Net.TotalUp
+			data.TotalDown += m.Net.TotalDown
 			if m.Mem.Total > 0 {
 				mem = m.Mem.Total
 			}
@@ -511,6 +535,7 @@ func (h *Hub) buildDashboard() dashboardData {
 		data.DiskTotal += disk
 	}
 	data.Offline = data.Total - data.Online
+	data.TotalTraffic = data.TotalUp + data.TotalDown
 	if data.Total > 0 {
 		data.AvailPct = fmt.Sprintf("%.0f%%", float64(data.Online)*100/float64(data.Total))
 	}
@@ -538,7 +563,23 @@ func (h *Hub) buildDashboard() dashboardData {
 
 	data.TrafficUp, data.TrafficDown, data.TrafficOK = h.dashTraffic24h(ids)
 
-	data.Points = h.dashNetPoints(ids)
+	// 时间窗与切换按钮：跟随 URL，认不出的值 netqWindow 会退回 1 小时。
+	data.Range = win.key
+	data.RangeOpts = rangeOptions
+
+	// 内存占比的分母：各节点当前内存总量（上报值优先，注册值兜底）。
+	// 长窗下机器可能换过内存，但按"现在"算对绝大多数场景足够准，
+	// 也避免了 rollup 表里没有 mem_total 的死结。
+	memTotals := make(map[string]int64, len(nodes))
+	for _, n := range nodes {
+		total := n.MemTotal
+		if m := snap[n.ID]; m != nil && m.Mem.Total > 0 {
+			total = m.Mem.Total
+		}
+		memTotals[n.ID] = total
+	}
+
+	data.Points = h.dashNetPoints(ids, win)
 	for _, p := range data.Points {
 		if p.Up > data.PeakUp {
 			data.PeakUp = p.Up
@@ -547,11 +588,16 @@ func (h *Hub) buildDashboard() dashboardData {
 			data.PeakDown = p.Down
 		}
 	}
-	// 时段与刻度：曲线覆盖的实际时间范围 + 纵轴上限（峰值的较大者）
+	// 时段与刻度：曲线覆盖的实际时间范围 + 纵轴上限（峰值的较大者）。
+	// 跨度超过两天只写日期（07-02），短窗才写时刻（14:05）。
 	if n := len(data.Points); n > 0 {
-		from := time.UnixMilli(data.Points[0].Ts).Format("15:04")
-		to := time.UnixMilli(data.Points[n-1].Ts).Format("15:04")
-		data.SpanLabel = "近 1 小时 · " + from + "–" + to
+		layout := "15:04"
+		if win.dur >= 48*time.Hour {
+			layout = "01-02"
+		}
+		from := time.UnixMilli(data.Points[0].Ts).Format(layout)
+		to := time.UnixMilli(data.Points[n-1].Ts).Format(layout)
+		data.SpanLabel = dashSpanPrefix(win.key) + " · " + from + "–" + to
 	}
 	data.ScaleMax = data.PeakUp
 	if data.PeakDown > data.ScaleMax {
@@ -560,7 +606,7 @@ func (h *Hub) buildDashboard() dashboardData {
 	data.ScaleMid = data.ScaleMax / 2
 
 	// CPU / 内存平均使用率：和速率曲线同一个窗口，图例上的均值按整段算。
-	data.ResPoints = h.dashResPoints(ids)
+	data.ResPoints = h.dashResPoints(ids, win, memTotals)
 	if n := len(data.ResPoints); n > 0 {
 		var sumCPU, sumMem float64
 		for _, p := range data.ResPoints {
@@ -573,12 +619,6 @@ func (h *Hub) buildDashboard() dashboardData {
 
 	data.TopLoad = h.dashTopLoad(nodes, snap)
 	data.Events = h.dashAlertEvents(ids)
-
-	data.Host, data.HostNote = h.collectHostSelf()
-	if data.Host != nil {
-		data.HostMemPct = Pct(float64(data.Host.Mem.Used), float64(data.Host.Mem.Total))
-		data.HostDiskPct = Pct(float64(data.Host.Disk.Used), float64(data.Host.Disk.Total))
-	}
 
 	return data
 }

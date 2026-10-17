@@ -21,11 +21,6 @@ type adminPostData struct {
 	adminData
 	Node    *model.Node
 	Profile *model.NodeProfile
-	// ExpireDate 是洗成 YYYY-MM-DD 的到期值，给 <input type="date"> 用。
-	// 非标准格式（"永久"、老数据"2027年3月"）洗成空串 —— 塞进 date 框
-	// 浏览器只会显示空白，保存时又提交空串，原值就被无声抹掉了。
-	// 原值始终留在 Profile.ExpireAt 里，模板据此提示"选了新的会覆盖"。
-	ExpireDate string
 	// Article 是这台机器的第一篇文章。编辑器编辑的就是它 ——
 	// 老的"一台一篇"入口，内容已迁到 node_articles。
 	Article *model.Article
@@ -60,15 +55,14 @@ func (h *Hub) handleAdminPost(w http.ResponseWriter, r *http.Request, authed boo
 	if len(arts) > 0 {
 		first = arts[0]
 	} else {
-		first = &model.Article{NodeID: node.ID}
+		first = &model.Article{NodeID: node.ID, Summary: prof.Summary, ContentMD: prof.ContentMD}
 	}
 	data := adminPostData{
-		adminData:  h.adminBase(r),
-		Node:       node,
-		Profile:    prof,
-		ExpireDate: expireDateValue(prof.ExpireAt),
-		Article:    first,
-		Saved:      r.URL.Query().Get("saved") == "1",
+		adminData: h.adminBase(r),
+		Node:      node,
+		Profile:   prof,
+		Article:   first,
+		Saved:     r.URL.Query().Get("saved") == "1",
 	}
 	h.render(w, "admin_post.html", &data, r)
 }
@@ -82,16 +76,14 @@ func (h *Hub) savePost(node *model.Node, form url.Values) {
 	content := clampRunes(form.Get("content_md"), maxPostRunes)
 	title := clampRunes(strings.TrimSpace(form.Get("title")), 120)
 
-	// 名片部分（摘要/价格/到期）还是存 node_profile ——
-	// 这些是"这台机器"的属性，不是"某篇文章"的属性。
+	// SaveProfile replaces the full row. Article saves must preserve renewal
+	// settings, cover images and visit counters managed elsewhere.
 	old, _ := h.store.GetProfile(node.ID)
 	if old == nil {
 		old = &model.NodeProfile{NodeID: node.ID}
 	}
 	old.Summary = summary
 	old.ContentMD = content // 保留一份，老数据/导出还用得上
-	old.Price = clampRunes(strings.TrimSpace(form.Get("price")), 64)
-	old.ExpireAt = clampRunes(normalizeExpireDateInput(form.Get("expire_at")), 32)
 	old.UpdatedAt = time.Now().UnixMilli()
 	if err := h.store.SaveProfile(old); err != nil {
 		log.Printf("[hub] 保存名片失败 node=%s: %v", node.ID, err)

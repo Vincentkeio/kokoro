@@ -38,7 +38,7 @@
     <a class="brand" href="/">{{.SiteName}} 后台</a>
     <div class="top-tools">
       <a class="btn ghost small" href="/admin">← 后台</a>
-      {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode>{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
+
       <a class="btn ghost small" href="/n/{{.Node.Slug}}" target="_blank" rel="noopener">看详情页 ↗</a>
     </div>
   </div>
@@ -47,7 +47,7 @@
 <main class="wrap post-wrap">
 
   <div class="post-head">
-    <h1>{{if .Profile.ContentMD}}编辑文章{{else}}写一篇文章{{end}}</h1>
+    <h1>{{if .Article.ContentMD}}编辑文章{{else}}写一篇文章{{end}}</h1>
     <span class="sub">
       {{.Node.Name}}{{if .Node.Region}} · {{.Node.Region}}{{end}}
       · <code>/n/{{.Node.Slug}}</code>
@@ -59,7 +59,7 @@
   {{/* 每台小鸡一篇文章：node_profile 以 node_id 为主键，存的就是这一篇。
        不需要"新建/删除"，写就是这篇、清空就是删掉。 */}}
   <p class="post-hint">每台小鸡只有一篇文章，写在这里就是它的介绍。支持 Markdown：
-    标题 <code>#</code>、列表 <code>-</code>、链接 <code>[文字](地址)</code>、代码块用三个反引号。
+    标题、列表、表格、引用、代码块和图片。图片使用 <code>![说明](图片直链)</code>，也可以上传、粘贴或拖入图片。
     正文留空即表示不显示文章。</p>
 
   <form class="post-form" method="post" action="/admin/nodes">
@@ -74,7 +74,7 @@
     </div>
     <div>
       <label for="p-summary">摘要（列表页和分享卡片上的一句话）</label>
-      <input id="p-summary" type="text" name="summary" value="{{.Profile.Summary}}"
+      <input id="p-summary" type="text" name="summary" value="{{.Article.Summary}}"
              maxlength="200" placeholder="一句话说清这台机器是干嘛的">
     </div>
 
@@ -105,7 +105,9 @@
         <span class="mdsep"></span>
         <button type="button" class="mdbtn" data-md-link title="插入链接  Ctrl+K" aria-label="插入链接"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></button>
         <button type="button" class="mdbtn" data-md-img title="上传图片（也可直接粘贴 / 拖进来）" aria-label="上传图片（也可直接粘贴 / 拖进来）"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><polyline points="21 16 16 11 6 20"/></svg></button>
-        <button type="button" class="mdbtn" data-md="|---|" title="插入表格" aria-label="插入表格"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="9.5" y1="9.5" x2="9.5" y2="20"/></svg></button>
+        <button type="button" class="mdbtn mdbtn-text" data-md-img-url title="通过图片直链插入图片">图片链接</button>
+        <button type="button" class="mdbtn mdbtn-text" data-md-code-block title="插入带语言标记的代码块">代码块</button>
+        <button type="button" class="mdbtn" data-md-table title="插入表格" aria-label="插入表格"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1.5"/><line x1="3" y1="9.5" x2="21" y2="9.5"/><line x1="9.5" y1="9.5" x2="9.5" y2="20"/></svg></button>
         <button type="button" class="mdbtn" data-md="&#10;---&#10;|" title="分隔线" aria-label="分隔线"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"/><line x1="6" y1="7" x2="18" y2="7" opacity=".35"/><line x1="6" y1="17" x2="18" y2="17" opacity=".35"/></svg></button>
         <span class="mdsep"></span>
         <button type="button" class="mdbtn" data-md-font title="字体与字号" aria-label="字体与字号"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l6-16 6 16"/><line x1="5.6" y1="15" x2="12.4" y2="15"/></svg></button>
@@ -126,35 +128,12 @@
 
       <div class="mdwrap">
         <textarea id="p-body" class="body" name="content_md"
-                  placeholder="# 标题&#10;&#10;正文…">{{.Profile.ContentMD}}</textarea>
+                  placeholder="# 标题&#10;&#10;正文…">{{.Article.ContentMD}}</textarea>
         {{/* 预览面板。**服务端渲染**的结果塞进来 —— 用的就是前台那个 RenderMarkdown，
              所以预览和访客看到的完全一致（换成前端库必然会有偏差）。 */}}
-        <div id="p-preview" class="mdpreview" hidden></div>
+        <div id="p-preview" class="mdpreview md" hidden></div>
       </div>
       <input type="file" id="md-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-    </div>
-
-    <div class="post-row">
-      <div>
-        <label for="p-price">价格（可留空，不给访客看）</label>
-        <input id="p-price" type="text" name="price" value="{{.Profile.Price}}"
-               maxlength="64" placeholder="例如 ¥99/年">
-      </div>
-      <div>
-        <label for="p-expire">到期时间（可留空）</label>
-        <span class="date-entry">
-          <input id="p-expire" type="text" inputmode="numeric" autocomplete="off" name="expire_at"
-                 placeholder="yyyy/mm/dd" value="{{.ExpireDate}}" data-exp-date
-                 maxlength="32" title="格式：yyyy/mm/dd；留空表示还没定">
-          <input class="date-entry-picker" type="date" aria-hidden="true" tabindex="-1" data-exp-picker>
-          <button class="date-entry-button" type="button" data-exp-picker-button aria-label="选择到期日" title="选择到期日">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3.5" width="12" height="10.5" rx="1.5"/><path d="M5 2v3M11 2v3M2 6.5h12"/></svg>
-          </button>
-        </span>
-        {{if and .Profile.ExpireAt (ne .Profile.ExpireAt .ExpireDate)}}
-        <p class="post-hint">当前值「{{.Profile.ExpireAt}}」不是标准日期，选定新日期后会被覆盖。</p>
-        {{end}}
-      </div>
     </div>
 
     <div class="post-actions">
@@ -166,7 +145,7 @@
 
 </main>
 
-<script src="/static/app.js?v=125"></script>
+<script src="/static/app.js?v=140"></script>
 </body>
 </html>
 {{end}}

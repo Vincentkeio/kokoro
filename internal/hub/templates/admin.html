@@ -10,7 +10,7 @@
   <div class="wrap">
     <a class="brand admin-brand" href="/">{{template "kokoro-mark" .}}<span>{{.SiteName}}</span></a>
     <div class="admin-top-tools">
-      {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode title="切换深色 / 浅色" aria-label="切换深色或浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
+
       <a class="btn ghost admin-front" href="/"><span aria-hidden="true">↗</span> 前台</a>
       <span class="admin-user-chip"><i aria-hidden="true"></i>{{.OwnerDisplayName}}</span>
       <form class="admin-logout-form" method="post" action="/admin/logout">
@@ -52,16 +52,16 @@
   <section class="panel" data-atab="sys">
     <h3>一键安装令牌</h3>
     <p class="hint">生成一条命令，在小鸡上粘贴执行即可接入。令牌可设有效期与使用次数。</p>
-    <form class="row" method="post" action="/admin/tokens">
+    <form class="install-token-form" method="post" action="/admin/tokens">
       <input type="hidden" name="action" value="create">
-      <input name="label" placeholder="备注，如节点 A" required>
-      <input name="ttl_hours" type="number" placeholder="有效小时(留空永久)" style="width:11rem">
-      <input name="max_uses" type="number" placeholder="可用次数(留空不限)" style="width:11rem">
+      <label>备注（节点名）<input name="label" maxlength="128" placeholder="如节点 A，安装后即使用此名" required></label>
+      <label>有效小时<input name="ttl_hours" type="number" placeholder="留空永久"></label>
+      <label>可用次数<input name="max_uses" type="number" placeholder="留空不限"></label>
       <button class="btn" type="submit">生成</button>
     </form>
 
     {{if .Tokens}}
-    <table class="tbl">
+    <table class="tbl install-token-table">
       <thead><tr><th>备注</th><th>令牌</th><th>已用</th><th>安装命令</th><th></th></tr></thead>
       <tbody>
       {{range .Tokens}}
@@ -71,7 +71,7 @@
         <td>{{.Uses}}{{if .MaxUses}} / {{.MaxUses}}{{end}}</td>
         <td>
           <div class="install-command">
-            <code class="cmd">curl -fsSL {{$.HubURL}}/i/{{.Token}} | sh</code>
+            <code class="cmd">curl -fsSL '{{$.HubURL}}/i/{{.Token}}?name={{urlquery .Label}}' | sh</code>
             <button class="btn ghost small" type="button" data-copy-install aria-live="polite">复制</button>
           </div>
         </td>
@@ -94,7 +94,7 @@
   <section class="panel" data-atab="nodes">
     <h3>节点（{{len .Nodes}}）</h3>
     <form method="post" action="/admin/tasks" class="node-bulk-test" id="node-selected-tests">
-      <input type="hidden" name="kind" value="selected-nodes">
+      <input type="hidden" name="kind" value="selected-nodes"><fieldset class="ip-family-options"><legend>IP 协议</legend><input type="hidden" name="ip_family_selection" value="1"><label><input type="checkbox" name="ip_family" value="4" checked>IPv4</label><label><input type="checkbox" name="ip_family" value="6" checked>IPv6</label></fieldset>
       <div class="node-selection-tools">
         <button class="btn ghost small" type="button" data-node-select="all" {{if not .Nodes}}disabled{{end}}>全选</button>
         <button class="btn ghost small" type="button" data-node-select="invert" {{if not .Nodes}}disabled{{end}}>反选</button>
@@ -165,22 +165,39 @@
     <table class="tbl admin-node-table">
       {{/* 没有「架构」列：所有节点都是 amd64，一列全一样的值没有信息量。
          地区/国家码也不在这里编辑 —— 那是 agent 上报的（见 hostFactsOf）。 */}}
-      <thead><tr><th class="node-select-cell"><label class="node-select-control"><input type="checkbox" data-node-select-all aria-label="全选节点"></label></th><th>名称</th><th>分组</th><th>地区</th><th>状态</th><th>展示</th><th>操作</th></tr></thead>
+      <thead><tr><th class="node-select-cell"><label class="node-select-control"><input type="checkbox" data-node-select-all aria-label="全选节点"></label></th><th title="数字越小越靠前；相同则按名称排列">排序 ID</th><th>名称</th><th>分组</th><th>地区</th><th>状态</th><th>展示</th><th>操作</th></tr></thead>
       <tbody>
       {{range .NodeGroups}}
-      <tr class="admin-node-group" data-group-section="{{.Name}}"><th colspan="7"><div class="admin-node-group-head"><div><span>{{.Name}}</span><small>{{len .Nodes}} 台服务器</small></div><button class="btn small ghost" type="button" data-group-assign-open {{if not $.Groups}}disabled{{end}}>加入分组</button></div></th></tr>
+      <tr class="admin-node-group" data-group-section="{{.Name}}"><th colspan="8"><div class="admin-node-group-head"><div><span>{{.Name}}</span><small>{{len .Nodes}} 台服务器</small></div><button class="btn small ghost" type="button" data-group-assign-open {{if not $.Groups}}disabled{{end}}>加入分组</button></div></th></tr>
       {{range .Nodes}}
-      <tr data-node-group-row="{{if .Group}}{{.Group}}{{else}}未分组{{end}}">
+      <tr data-node-group-row="{{if .Group}}{{.Group}}{{else}}未分组{{end}}" data-node-sort="{{.SortOrder}}" data-node-name="{{.Name}}" data-node-id="{{.ID}}">
         <td class="node-select-cell"><label class="node-select-control"><input type="checkbox" name="node_ids" value="{{.ID}}" form="node-selected-tests" data-node-select-item aria-label="选择 {{.Name}}"></label></td>
+        <td class="node-sort-cell">
+          <form method="post" action="/admin/nodes" class="admin-node-sort" data-node-sort-form>
+            <input type="hidden" name="action" value="sort_order">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <label class="node-sort-control"><span class="sr-only">{{.Name}} 的排序 ID</span><input type="number" name="sort_order" value="{{.SortOrder}}" min="-1000000" max="1000000" step="1" inputmode="numeric" aria-label="{{.Name}} 的排序 ID"></label>
+            <button class="btn small ghost" type="submit" aria-label="保存 {{.Name}} 的排序 ID">保存</button>
+          </form>
+        </td>
         <td>
-          <form class="row" method="post" action="/admin/nodes">
+          <form class="row admin-node-edit" method="post" action="/admin/nodes">
             <input type="hidden" name="action" value="rename">
             <input type="hidden" name="id" value="{{.ID}}">
-            <input name="name" value="{{.Name}}" style="width:11rem" title="小鸡名称">
-            <input name="tags" value="{{joinTags .Tags}}" placeholder="标签（逗号分隔）" style="width:9rem" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 8 个">
-            {{/* 到期日 / 续费费用。这两样跟"这台机器"绑定，
-                 和名字、标签是同一类"站长填的资料"，所以放同一栏。
-                 （原来藏在文章编辑器里，找起来别扭。） */}}
+            <label class="fld node-name-entry">
+              <span>节点名称</span>
+              <input name="name" value="{{.Name}}" title="小鸡名称" aria-label="节点名称">
+            </label>
+            <label class="fld node-tags-entry">
+              <span>固定标签</span>
+              <input name="tags" value="{{joinTags .Tags}}" placeholder="逗号分隔" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 8 个" aria-label="固定标签">
+            </label>
+            {{/* 续费与到期都是节点资料，在这里单独维护，不放进文章内容。 */}}
+            {{$price := ""}}{{with index $.Profiles .ID}}{{$price = .Price}}{{end}}
+            <label class="fld renewal-entry">
+              <span>续费信息</span>
+              <input name="price" placeholder="例如：¥100/月" value="{{priceText $price}}" aria-label="续费信息">
+            </label>
             {{/* 到期日。type=date 给原生日历选择器，
                  库里存的就是 YYYY-MM-DD，格式天然一致。
                  要带 label —— 光一个空日期框看不出是干吗的。 */}}
@@ -206,8 +223,6 @@
                 </label>
               </span>
             </label>
-            {{/* 「设费用」按钮已删（boss 要求）—— 那一行控件太多了。
-                 费用仍在**文章编辑器**里能改，数据字段也照常保留。 */}}
             {{/* ⚠️ 这里**没有**地区和国家的输入框：
                  它们由 agent 上报（从所在网络问 Cloudflare 得到），
                  手填多半会填错 —— 而且 IP 归属库对 VPS 本来就不准
@@ -220,10 +235,10 @@
         <td>{{if .Online}}<span class="ok">在线</span>{{else}}<span class="bad">离线</span>{{end}}</td>
         <td>
           {{$shown := ne .Visibility "private"}}
-          <form method="post" action="/admin/nodes" class="inline">
+          <form method="post" action="/admin/nodes" class="inline" data-node-visibility>
             <input type="hidden" name="action" value="toggle">
             <input type="hidden" name="id" value="{{.ID}}">
-            <button type="submit" class="switch {{if $shown}}on{{end}}" title="一键显示/隐藏">
+            <button type="submit" class="switch {{if $shown}}on{{end}}" role="switch" aria-checked="{{if $shown}}true{{else}}false{{end}}" aria-label="展示 {{.Name}}" title="一键显示/隐藏">
               <span class="knob"></span>
               <span class="switch-text">{{if $shown}}显示中{{else}}已隐藏{{end}}</span>
             </button>
@@ -286,15 +301,15 @@
     <form class="col" id="netq-form">
       <p class="hint">
         默认只探「上海 × 电信/联通/移动」三个点（明细页的三张卡就是它）。
-        分省探测是重活：一个省三个点，默认**连续探测**（打完一轮歇几秒就打下一轮）。
+        上海为固定基准，不可取消；其他省份按需选择。
         当前选中 <b>{{len .NetQProvinces}}</b> 个省 = <b>{{.NetQTargets}}</b> 个探测点。
         保存后各台机器 <b>数秒内</b> 生效，不重启。
       </p>
       <div class="row">
         <button class="btn ghost small" type="button" data-netq-all>全选</button>
         <button class="btn ghost small" type="button" data-netq-invert>反选</button>
-        <button class="btn ghost small" type="button" data-netq-none>全不选</button>
-        <span class="hint">全不选 = 关掉分省探测，只保留三网基线</span>
+        <button class="btn ghost small" type="button" data-netq-none>仅保留上海</button>
+        <span class="hint">全选、反选仅调整可选省份，上海始终保留</span>
       </div>
       <div class="netq-prov" id="netq-prov">
         {{/* 省份勾选框：数据来自内置探测表（internal/netprobe），
@@ -305,7 +320,7 @@
         {{range .NetQProvOpts}}
         <label class="chk{{if eq .HitPct 0.0}} dead{{end}}"
                title="{{if gt .Samples 0}}本机实测通率 {{printf "%.0f" .HitPct}}%（{{.Samples}} 个样本）{{else}}还没有探测数据{{end}}">
-          <input type="checkbox" name="provinces" value="{{.Name}}" {{if .On}}checked{{end}}> {{.Name}}
+          <input type="checkbox" name="provinces" value="{{.Name}}" {{if eq .Name "上海"}}checked disabled aria-label="上海，固定基准，不可取消"{{else if .On}}checked{{end}}> {{.Name}}{{if eq .Name "上海"}}（基准）{{end}}
           {{if gt .Samples 0}}<span class="nq-hit{{if eq .HitPct 0.0}} zero{{end}}">{{printf "%.0f" .HitPct}}%</span>{{end}}
         </label>
         {{end}}
@@ -336,33 +351,69 @@
   <section class="panel" id="alerts" data-atab="alerts">
     <h3>告警与通知</h3>
 
-    <h4 class="sub">Telegram Bot</h4>
-    <form class="col" id="notify-form">
+    <div class="notify-channel">
+    <h4 class="sub">Telegram</h4>
+    <details class="notify-help">
+      <summary>Telegram 怎么配置？</summary>
+      <ol>
+        <li>在 Telegram 打开 <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@BotFather</a>，发送 <code>/newbot</code>，按提示创建机器人，把获得的 Token 填到下方。</li>
+        <li>私聊通知：先打开自己的机器人，点 Start 或发送 <code>/start</code>。群组通知：先把机器人加入目标群，并确保它有发送消息的权限。</li>
+        <li>给机器人或所在群发送一条消息，然后访问 <code>https://api.telegram.org/bot&lt;你的Token&gt;/getUpdates</code>，找到对应消息的 <code>message.chat.id</code>，填入 Chat ID。群组 ID 的负号要保留；已有其他程序接收消息或设置了 Telegram webhook 时，需从该程序取得 Chat ID。</li>
+        <li>保存 Telegram 配置后，点“测试 Telegram”只会向 Telegram 发送测试消息。随后创建告警规则。</li>
+      </ol>
+      <p>Token 相当于机器人密码，请勿分享含 Token 的地址。静音发送仍会收到消息，只是不响铃；免打扰时段则只记录告警、不推送。正式通知需要面板服务器能够访问 Telegram API。</p>
+      <p><a href="https://core.telegram.org/bots/tutorial" target="_blank" rel="noopener noreferrer">Telegram 官方配置指南</a></p>
+    </details>
+    <form class="col notify-form" id="notify-telegram-form">
       <div class="row">
         <label class="chk"><input type="checkbox" name="telegram_enabled" value="1" {{if .NotifyOn}}checked{{end}}> 启用 Telegram</label>
         <label class="chk"><input type="checkbox" name="telegram_silent" value="1" {{if .NotifySilent}}checked{{end}}> 静音发送</label>
       </div>
-      <div class="row">
-        <input name="telegram_bot_token" placeholder="Bot Token（留空或保持打码值表示不改）" value="{{.NotifyToken}}" style="min-width:22rem;flex:1">
-        <input name="telegram_chat_id" placeholder="Chat ID，如 -100123456789" value="{{.NotifyChat}}" style="width:16rem">
+      <div class="notify-fields">
+        <label>Bot Token<input type="password" name="telegram_bot_token" autocomplete="new-password" placeholder="{{if .NotifyToken}}已保存，留空保持不变{{else}}粘贴 Bot Token{{end}}" value=""></label>
+        <label>Chat ID<input name="telegram_chat_id" autocomplete="off" placeholder="例如 -100123456789" value="{{.NotifyChat}}"></label>
       </div>
-      <div class="row">
-        <span class="hint">免打扰时段：</span>
-        <input name="quiet_hours_start" type="number" min="-1" max="23" value="{{.NotifyQuietStart}}" style="width:6rem" title="起始整点，-1 表示不设">
-        <span class="hint">点到</span>
-        <input name="quiet_hours_end" type="number" min="-1" max="23" value="{{.NotifyQuietEnd}}" style="width:6rem" title="结束整点，-1 表示不设">
-        <span class="hint">这段时间内只记录不推送（当前 {{.NotifyQuiet}}）</span>
-      </div>
-      <div class="row">
-        <input name="webhook_url" placeholder="Webhook URL（可选，POST JSON）" value="{{.WebhookURL}}" style="min-width:18rem;flex:1">
-        <label class="chk"><input type="checkbox" name="webhook_enabled" value="1" {{if .WebhookOn}}checked{{end}}> 启用 Webhook</label>
-      </div>
-      <div class="row">
-        <button class="btn" type="submit">保存通知配置</button>
-        <button class="btn ghost" type="button" id="notify-test">发一条测试</button>
-        <span class="hint" id="notify-msg"></span>
+      <div class="row notify-actions">
+        <button class="btn" type="submit">保存 Telegram</button>
+        <button class="btn ghost" type="button" data-notify-test="telegram">测试 Telegram</button>
+        <span class="hint" id="notify-telegram-msg" aria-live="polite"></span>
       </div>
     </form>
+    </div>
+
+    <div class="notify-channel">
+      <h4 class="sub">Webhook</h4>
+      <details class="notify-help">
+        <summary>Webhook 怎么配置？</summary>
+        <p>填写接收服务提供的 HTTP / HTTPS 地址，保存后点“测试 Webhook”。服务器会向此地址发送 <code>POST</code> 请求，格式为 <code>application/json</code>；接收端返回 2xx 表示接收成功。</p>
+        <pre><code>{"title":"告警标题","body":"告警详情","level":"warning","node_id":"节点ID","ts":1700000000000}</code></pre>
+        <p><code>ts</code> 为毫秒时间戳；<code>level</code> 为 info、warning 或 critical，恢复通知使用 info。</p>
+        <p>适合自建接收端或能映射这些字段的自动化服务。企业微信、钉钉、飞书等机器人通常要求各自的消息格式，需通过中转服务转换，不能直接把机器人地址当作通用 Webhook。</p>
+      </details>
+      <form class="col notify-form" id="notify-webhook-form">
+        <label class="chk"><input type="checkbox" name="webhook_enabled" value="1" {{if .WebhookOn}}checked{{end}}> 启用 Webhook</label>
+        <label class="notify-field">Webhook URL<input name="webhook_url" type="url" autocomplete="url" placeholder="https://example.com/kokoro" value="{{.WebhookURL}}"></label>
+        <div class="row notify-actions">
+          <button class="btn" type="submit">保存 Webhook</button>
+          <button class="btn ghost" type="button" data-notify-test="webhook">测试 Webhook</button>
+          <span class="hint" id="notify-webhook-msg" aria-live="polite"></span>
+        </div>
+      </form>
+    </div>
+
+    <div class="notify-channel notify-quiet">
+      <h4 class="sub">免打扰时段</h4>
+      <p class="hint">此设置同时作用于 Telegram 和 Webhook。时段内告警会记录，但不会推送；按面板服务器时区。</p>
+      <form class="row" id="notify-quiet-form">
+        <label>从<input name="quiet_hours_start" type="number" min="-1" max="23" value="{{.NotifyQuietStart}}" title="起始整点，-1 表示不设"></label>
+        <span class="hint">点</span>
+        <label>到<input name="quiet_hours_end" type="number" min="-1" max="23" value="{{.NotifyQuietEnd}}" title="结束整点，-1 表示不设"></label>
+        <span class="hint">点（当前 {{.NotifyQuiet}}）</span>
+        <button class="btn" type="submit">保存免打扰</button>
+        <span class="hint" id="notify-quiet-msg" aria-live="polite"></span>
+      </form>
+    </div>
+    <p class="hint">测试只发送到对应渠道，使用已保存的配置，不受免打扰时段影响。告警规则每 15 秒检查一次。</p>
 
     <h4 class="sub">告警规则</h4>
     {{if .AlertRules}}
@@ -428,23 +479,23 @@
   {{/* 面板自身所在机器的资源占用。
        原来只在 /dashboard 上有，那个页面删掉之后就并在后台这里 ——
        "面板会不会先撑不住"是站长该关心的事，但跟访客无关。 */}}
-  <section class="panel" id="hostself" data-atab="sys">
+  <section class="panel" id="hostself" data-atab="sys"{{if .HostNodeID}} data-node="{{.HostNodeID}}"{{end}}>
     <h3>面板主机自身</h3>
-    <p class="hint" style="margin-top:0">Hub 所在机器的资源占用。面板跑不动了，所有小鸡都会显示离线。</p>
+    <p class="hint" style="margin-top:0">与前台共用面板主机的 Agent 上报数据。</p>
     {{if .Host}}
     <div class="kv-grid">
       <div>
         <span>CPU</span>
-        <b>{{printf "%.1f" .Host.CPU.Usage}}%</b>
+        <b data-field="cpu">{{printf "%.1f" .Host.CPU.Usage}}%</b>
       </div>
       <div>
         <span>内存</span>
-        <b>{{if gt .Host.Mem.Total 0}}{{printf "%.0f" .HostMemPct}}%{{else}}—{{end}}
+        <b><span data-field="mem">{{if gt .Host.Mem.Total 0}}{{printf "%.0f" .HostMemPct}}%{{else}}—{{end}}</span>
         {{if gt .Host.Mem.Total 0}}<small>{{fmtBytes .Host.Mem.Used}} / {{fmtBytes .Host.Mem.Total}}</small>{{end}}</b>
       </div>
       <div>
         <span>磁盘</span>
-        <b>{{if gt .Host.Disk.Total 0}}{{printf "%.0f" .HostDiskPct}}%{{else}}—{{end}}
+        <b><span data-field="disk">{{if gt .Host.Disk.Total 0}}{{printf "%.0f" .HostDiskPct}}%{{else}}—{{end}}</span>
         {{if gt .Host.Disk.Total 0}}<small>{{fmtBytes .Host.Disk.Used}} / {{fmtBytes .Host.Disk.Total}}</small>{{end}}</b>
       </div>
       <div><span>负载</span><b>{{printf "%.2f" .Host.CPU.Load1}}<small> {{printf "%.2f" .Host.CPU.Load5}} / {{printf "%.2f" .Host.CPU.Load15}}</small></b></div>
@@ -519,9 +570,9 @@
     {{else}}
     <p class="empty">还没有评论。</p>
     {{end}}
-  
+
     {{/* 站内消息：购买咨询无论外部推送状态都会保存在这里。 */}}
-    <details class="adv" style="margin-top:var(--s4)">
+    <details class="adv" id="buy-intents" data-atab="comments" style="margin-top:var(--s4)">
       <summary>站内消息 · 购买咨询（{{len .BuyIntents}}）</summary>
       {{if .BuyIntents}}
       <table class="tbl">
@@ -591,7 +642,7 @@
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=125"></script>
+<script src="/static/app.js?v=140"></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {
@@ -618,24 +669,31 @@
   function collect(form) {
     var p = {};
     new FormData(form).forEach(function (v, k) { p[k] = v; });
+    form.querySelectorAll('input[type="checkbox"][name]').forEach(function (box) { if (!box.checked) p[box.name] = '0'; });
     return p;
   }
 
-  var nf = document.getElementById('notify-form');
-  if (nf) nf.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    var msg = document.getElementById('notify-msg');
-    post('/admin/notify', collect(nf)).then(function (d) {
-      say(msg, !!(d && d.ok), d && d.ok ? '已保存' : ('失败：' + ((d && d.error) || '未知错误')));
+  ['telegram', 'webhook', 'quiet'].forEach(function (channel) {
+    var form = document.getElementById('notify-' + channel + '-form');
+    if (!form) return;
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var msg = document.getElementById('notify-' + channel + '-msg');
+      post('/admin/notify', collect(form)).then(function (d) {
+        say(msg, !!(d && d.ok), d && d.ok ? '已保存' : ('保存失败：' + ((d && d.error) || '未知错误')));
+      }).catch(function () { say(msg, false, '保存失败，请检查连接后重试'); });
     });
   });
 
-  var tb = document.getElementById('notify-test');
-  if (tb) tb.addEventListener('click', function () {
-    var msg = document.getElementById('notify-msg');
-    say(msg, true, '发送中…');
-    post('/admin/alerts/test', {}).then(function (d) {
-      say(msg, !!(d && d.ok), d && d.ok ? '测试消息已发出，去看 Telegram' : ('失败：' + ((d && d.error) || '检查 token 与 chat id')));
+  document.querySelectorAll('[data-notify-test]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var channel = button.getAttribute('data-notify-test');
+      var msg = document.getElementById('notify-' + channel + '-msg');
+      button.disabled = true;
+      say(msg, true, '正在测试…');
+      post('/admin/notify', { action: 'test', channel: channel }).then(function (d) {
+        say(msg, !!(d && d.test_ok), d && d.test_ok ? '测试消息已发送' : ('测试失败：' + ((d && d.error) || '请检查该渠道的已保存配置')));
+      }).catch(function () { say(msg, false, '测试失败，请检查连接后重试'); }).finally(function () { button.disabled = false; });
     });
   });
 
@@ -646,7 +704,7 @@
     function netqBoxes() {
       return [].slice.call(nqf.querySelectorAll('input[name="provinces"]'));
     }
-    function eachBox(fn) { netqBoxes().forEach(fn); }
+    function eachBox(fn) { netqBoxes().forEach(function(b) { if (b.disabled) { b.checked = true; } else { fn(b); } }); }
     var nbAll = document.querySelector('[data-netq-all]');
     var nbInv = document.querySelector('[data-netq-invert]');
     var nbNone = document.querySelector('[data-netq-none]');

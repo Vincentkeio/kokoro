@@ -19,10 +19,10 @@ import (
 	"time"
 
 	"github.com/Vincentkeio/kokoro/internal/model"
+	benchtool "github.com/Vincentkeio/kokoro/scripts"
 )
 
-const testToolURL = "https://raw.githubusercontent.com/Vincentkeio/kokoro/a6cc49bf74bd759f317a2f92a367c14c33779008/scripts/kokoro-bench.sh"
-const testToolSHA256 = "74203f1683e6e258f5ad6e1766419c8e9eba6a63a032062f0262508457e35468"
+const testToolSHA256 = "e25d02de9e81b9ec8b3d056387ff7cb4406c064972ab75ef89ca09bdf92aa58e"
 const testToolLimit = 1024 * 1024
 
 // Invoked by a fixed local oneshot service, outside the Agent filesystem
@@ -67,9 +67,13 @@ type testRecipe struct {
 
 // This local map is the complete test allowlist. Payloads cannot extend it.
 var testRecipes = map[string]testRecipe{
-	"bench":      {"sysinfo,disk,cpu,memory", 30 * time.Minute},
-	"ipquality":  {"ip", 15 * time.Minute},
-	"netquality": {"net,route", 20 * time.Minute},
+	"bench":       {"sysinfo,disk,cpu,memory", 30 * time.Minute},
+	"ipquality4":  {"ip4", 15 * time.Minute},
+	"ipquality6":  {"ip6", 15 * time.Minute},
+	"ipquality":   {"ip", 30 * time.Minute},
+	"netquality4": {"net,route4", 20 * time.Minute},
+	"netquality6": {"net,route6", 20 * time.Minute},
+	"netquality":  {"net,route", 35 * time.Minute},
 }
 
 func (a *Agent) runTest(cmd model.Command) model.CommandResult {
@@ -81,7 +85,7 @@ func (a *Agent) runTestContext(parent context.Context, cmd model.Command) model.
 	kind, ok := cmd.Payload["kind"].(string)
 	recipe, allowed := testRecipes[kind]
 	if !ok || !allowed || len(cmd.Payload) != 1 {
-		res.Stderr = "安全限制：仅接受 bench、ipquality、netquality 测试类型，不接受自定义命令、参数或脚本地址"
+		res.Stderr = "安全限制：仅接受内置硬件、IP 与线路测试类型，不接受自定义命令、参数或脚本地址"
 		return res
 	}
 	if runtime.GOOS != "linux" {
@@ -138,9 +142,16 @@ func (a *Agent) runTestContext(parent context.Context, cmd model.Command) model.
 }
 
 func (a *Agent) fetchTestTool(ctx context.Context) ([]byte, error) {
-	sources := []string{testToolURL, strings.TrimRight(a.hub, "/") + "/api/v1/dl/kokoro-bench.sh"}
+	// The embedded script and its digest ship in the same reviewed release.
+	// Keep verified downloads as a recovery path for mismatched builds.
+	tool := benchtool.Script()
+	digest := sha256.Sum256(tool)
+	if len(tool) <= testToolLimit && hex.EncodeToString(digest[:]) == testToolSHA256 {
+		return tool, nil
+	}
+	sources := []string{strings.TrimRight(a.hub, "/") + "/api/v1/dl/kokoro-bench.sh"}
 	var lastErr error
-	for i, source := range sources {
+	for _, source := range sources {
 		fetchCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, source, nil)
 		if err != nil {
@@ -149,10 +160,7 @@ func (a *Agent) fetchTestTool(ctx context.Context) ([]byte, error) {
 			continue
 		}
 		// The Agent client includes the configured Hub certificate pin.
-		client := http.DefaultClient
-		if i == 1 {
-			client = a.client
-		}
+		client := a.client
 		resp, err := client.Do(req)
 		if err == nil {
 			var data []byte

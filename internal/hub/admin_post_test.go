@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Vincentkeio/kokoro/internal/model"
 )
@@ -66,8 +65,7 @@ func TestAdminPostPage(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("编辑器返回 %d，应为 200", code)
 	}
-	for _, want := range []string{`name="content_md"`, `name="summary"`, `name="price"`,
-		`name="expire_at"`, "旧摘要", "# 旧标题"} {
+	for _, want := range []string{`name="content_md"`, `name="summary"`, "旧摘要", "# 旧标题"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("编辑器缺少 %s", want)
 		}
@@ -78,54 +76,31 @@ func TestAdminPostPage(t *testing.T) {
 	}
 }
 
-// TestAdminPostExpireHasDatePicker 到期日固定显示字母格式，同时保留原生日历。
-func TestAdminPostExpireHasDatePicker(t *testing.T) {
-	h, st := newTestHub(t)
-	n := mkNode(t, st, "测试节点 JP", "JP", "日本 · 东京", "")
-
-	expire := time.Now().AddDate(0, 0, 45).Format("2006-01-02")
-	if err := st.SaveProfile(&model.NodeProfile{
-		NodeID: n.ID, ExpireAt: expire,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	_, body := getAsAdmin(t, h, "/admin/post?node="+url.QueryEscape(n.ID))
-	if !strings.Contains(body, `id="p-expire" type="text"`) || !strings.Contains(body, `placeholder="yyyy/mm/dd"`) {
-		t.Error("到期输入框应该显示固定的 yyyy/mm/dd 格式")
-	}
-	if !strings.Contains(body, `type="date" aria-hidden="true" tabindex="-1" data-exp-picker`) {
-		t.Error("到期输入框应保留原生日历选择器")
-	}
-	// 标准日期要回填进日期框 —— 空框等于"没填"，保存时会把人家的抹掉
-	if !strings.Contains(body, `value="`+expire+`"`) {
-		t.Errorf("已有到期值 %s 应回填进日期框", expire)
-	}
-}
-
-// TestAdminPostExpireLegacyValue 非标准格式的到期值不能无声消失。
-//
-// "永久"、老数据"2027年3月"塞进 type="date" 浏览器只显示空白，
-// 保存时提交空串 —— 原值被无声抹掉。所以：日期框放空 +
-// 给一句提示说明"选了新的会覆盖"。
-func TestAdminPostExpireLegacyValue(t *testing.T) {
-	h, st := newTestHub(t)
-	n := mkNode(t, st, "测试节点 JP", "JP", "日本 · 东京", "")
-
-	if err := st.SaveProfile(&model.NodeProfile{
-		NodeID: n.ID, ExpireAt: "永久",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	_, body := getAsAdmin(t, h, "/admin/post?node="+url.QueryEscape(n.ID))
-	if !strings.Contains(body, "当前值「永久」不是标准日期") {
-		t.Error("非标准到期值应给出提示，否则用户不知道选了新的会覆盖什么")
-	}
-	// 日期框必须是空的 —— 塞"永久"进去浏览器同样显示空白，
-	// 但会让人以为那个框里存着"永久"
-	if strings.Contains(body, `value="永久"`) {
-		t.Error("「永久」不该出现在 type=date 的 value 里")
+// Article editing never edits, clears or exposes renewal metadata.
+func TestAdminPostPreservesRenewalSettings(t *testing.T) {
+	for _, expiry := range []string{"2027-03-01", "永久", "2027年3月"} {
+		t.Run(expiry, func(t *testing.T) {
+			h, st := newTestHub(t)
+			n := mkNode(t, st, "测试节点 JP", "JP", "日本 · 东京", "")
+			if err := st.SaveProfile(&model.NodeProfile{NodeID: n.ID, Price: "99 CNY / 年", ExpireAt: expiry}); err != nil {
+				t.Fatal(err)
+			}
+			_, body := getAsAdmin(t, h, "/admin/post?node="+url.QueryEscape(n.ID))
+			for _, field := range []string{`name="price"`, `name="expire_at"`, `id="p-expire"`} {
+				if strings.Contains(body, field) {
+					t.Errorf("article editor exposes %s", field)
+				}
+			}
+			// Even a stale or crafted article form cannot change node renewal fields.
+			h.savePost(n, url.Values{"content_md": {"新的正文"}, "price": {"0"}, "expire_at": {""}})
+			profile, err := st.GetProfile(n.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if profile.Price != "99 CNY / 年" || profile.ExpireAt != expiry {
+				t.Fatalf("renewal metadata changed: price=%q expiry=%q", profile.Price, profile.ExpireAt)
+			}
+		})
 	}
 }
 
@@ -157,8 +132,8 @@ func TestAdminPostSaveAndRender(t *testing.T) {
 	if prof.Summary != "一台东京的小鸡" {
 		t.Errorf("摘要 = %q", prof.Summary)
 	}
-	if prof.ExpireAt != "2027-03-01" {
-		t.Errorf("斜线日期应规范化保存为 ISO 日期，实际为 %q", prof.ExpireAt)
+	if prof.ExpireAt != "" {
+		t.Errorf("文章保存不应修改到期日，实际为 %q", prof.ExpireAt)
 	}
 	if !strings.Contains(prof.ContentMD, "CN2 GIA") {
 		t.Errorf("正文没存上: %q", prof.ContentMD)

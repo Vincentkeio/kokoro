@@ -7,9 +7,72 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
+
+// NetSeriesByNode returns a bounded, batched network-rate series for the
+// selected nodes and interval. It selects the same rollup layers as History
+// so longer ranges do not read raw metrics or exceed their retention window.
+func (s *Store) NetSeriesByNode(ids []string, from, to int64, maxPoints int) (map[string][]NetPoint, error) {
+	out := make(map[string][]NetPoint, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	if to <= 0 {
+		to = nowMS()
+	}
+	if from <= 0 || from >= to {
+		from = to - int64(time.Hour/time.Millisecond)
+	}
+	if maxPoints <= 0 {
+		maxPoints = 144
+	}
+	span := to - from
+	step := (span + int64(maxPoints) - 1) / int64(maxPoints)
+	if step < 1 {
+		step = 1
+	}
+	var table, tsCol, upCol, downCol string
+	switch {
+	case span <= int64(2*time.Hour/time.Millisecond):
+		table, tsCol, upCol, downCol = "metrics_raw", "ts", "net_up", "net_down"
+	case span <= int64(12*time.Hour/time.Millisecond):
+		table, tsCol, upCol, downCol = "metrics_1m", "bucket", "net_up_avg", "net_down_avg"
+	case span <= int64(3*24*time.Hour/time.Millisecond):
+		table, tsCol, upCol, downCol = "metrics_5m", "bucket", "net_up_avg", "net_down_avg"
+	case span <= int64(45*24*time.Hour/time.Millisecond):
+		table, tsCol, upCol, downCol = "metrics_1h", "bucket", "net_up_avg", "net_down_avg"
+	default:
+		table, tsCol, upCol, downCol = "metrics_1d", "bucket", "net_up_avg", "net_down_avg"
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	q := fmt.Sprintf(`SELECT node_id, b, AVG(up), AVG(down) FROM (
+  SELECT node_id, (%[1]s / ?) * ? AS b, %[2]s AS up, %[3]s AS down
+  FROM %[4]s WHERE %[1]s >= ? AND %[1]s <= ? AND node_id IN (%[5]s)
+) GROUP BY node_id, b ORDER BY node_id, b`, tsCol, upCol, downCol, table, placeholders)
+	args := make([]any, 0, len(ids)+4)
+	args = append(args, step, step, from, to)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var p NetPoint
+		if err := rows.Scan(&id, &p.Bucket, &p.Up, &p.Down); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], p)
+	}
+	return out, rows.Err()
+}
 
 // ---- 聚合窗口（与 hub 侧 LoadNetQ 同一口径）----
 //
@@ -180,19 +243,8 @@ const netqHistoryRounds = 24
 // 48 小时足够覆盖 24 轮（最慢 30 分钟一轮也只要 12 小时）。
 const netqHistorySince = 48 * time.Hour
 
-// NetQByNode 取每台机器**最近一轮**探测里三网的延迟，外加最近几轮的历史。
-//
-// 为什么用"最近一轮"而不是"最近 N 小时平均"：
-// 详情页用的就是最近一轮，两处口径必须一样 ——
-// 不然卡片写 45ms、点进去写 82ms，站长会以为其中一个是错的。
-//
-// 只算 ok=1 的条目：不通的目标延迟记 0，
-// 混进平均值里会把结果拉低，看起来比实际更好（丢包率相反，按全部点算 ——
-// 不通本身就是丢包的一部分，见 netq.go 里 NetQIspStat 的算法）。
-//
-// 历史用 ROW_NUMBER() 窗口函数按 (node, isp) 分组取最近 N **轮**而不是按
-// 时间取固定窗口：探测间隔可配（5~30 分钟+），按轮数取图上的密度才稳定。
-// NetQByNode 取每台机器三网的「当前值」与最近几轮的延迟历史。
+// NetQByNode 取每台机器上海三网基准的当前值与延迟历史。
+// 缺少上海数据时不借用其他省份；延迟、丢包和历史曲线使用同一地域口径。
 //
 // 当前值 = **窗口聚合**（15 分钟内最近 5 轮一起算），不取裸的最新
 // 一轮：连续探测下 ICMP 单轮抖动（偶尔整轮漏包到对端）会让卡片上的
@@ -221,7 +273,7 @@ current_windows AS MATERIALIZED (
     SELECT n.id AS node_id, COALESCE((
         SELECT ts FROM net_quality INDEXED BY idx_netq_node_time
         WHERE node_id = n.id AND ts >= params.agg_since
-          AND isp IN (SELECT isp FROM isps)
+          AND isp IN (SELECT isp FROM isps) AND province = '上海'
         GROUP BY ts ORDER BY ts DESC LIMIT 1 OFFSET ?
     ), params.agg_since) AS cutoff
     FROM nodes n CROSS JOIN params
@@ -234,13 +286,13 @@ cur AS (
     FROM current_windows win
     CROSS JOIN net_quality q INDEXED BY idx_netq_node_time
     WHERE q.node_id = win.node_id AND q.ts >= win.cutoff
-      AND q.isp IN (SELECT isp FROM isps)
+      AND q.isp IN (SELECT isp FROM isps) AND q.province = '上海'
     GROUP BY q.node_id, q.isp
 ),
 history_windows AS MATERIALIZED (
     SELECT n.id AS node_id, isps.isp, COALESCE((
         SELECT ts FROM net_quality INDEXED BY idx_netq_node_time
-        WHERE node_id = n.id AND isp = isps.isp AND ts >= params.hist_since
+        WHERE node_id = n.id AND isp = isps.isp AND ts >= params.hist_since AND province = '上海'
         GROUP BY ts ORDER BY ts DESC LIMIT 1 OFFSET ?
     ), params.hist_since) AS cutoff
     FROM nodes n CROSS JOIN isps CROSS JOIN params
@@ -252,7 +304,7 @@ hist AS (
                PARTITION BY q.node_id, q.isp ORDER BY q.ts DESC) AS rn
     FROM history_windows win
     CROSS JOIN net_quality q INDEXED BY idx_netq_node_time
-    WHERE q.node_id = win.node_id AND q.isp = win.isp AND q.ts >= win.cutoff
+    WHERE q.node_id = win.node_id AND q.isp = win.isp AND q.ts >= win.cutoff AND q.province = '上海'
     GROUP BY q.node_id, q.isp, q.ts
 )
 SELECT node_id, isp, lat, loss, okn, 0 FROM cur

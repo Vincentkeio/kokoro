@@ -1,5 +1,5 @@
 param(
-    [string]$Version = 'v0.1.1',
+    [string]$Version = 'v0.1.3-preview.1',
     [string]$GoPath = 'go',
     [string]$OutputDirectory = 'dist\release'
 )
@@ -50,11 +50,10 @@ foreach ($arch in @('amd64', 'arm64')) {
 }
 
 $agentSource = Get-Content -LiteralPath (Join-Path $repoRoot 'internal\agent\test_command.go') -Raw
-$urlMatch = [regex]::Match($agentSource, 'const testToolURL = "([^"]+)"')
 $hashMatch = [regex]::Match($agentSource, 'const testToolSHA256 = "([0-9a-f]{64})"')
-if (-not $urlMatch.Success -or -not $hashMatch.Success) { throw 'Could not find the pinned test script URL and SHA-256' }
+if (-not $hashMatch.Success) { throw 'Could not find the pinned test script SHA-256' }
 $benchPath = Join-Path $outputPath 'kokoro-bench.sh'
-Invoke-WebRequest -Uri $urlMatch.Groups[1].Value -OutFile $benchPath
+Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\kokoro-bench.sh') -Destination $benchPath -Force
 $benchHash = (Get-FileHash -LiteralPath $benchPath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($benchHash -ne $hashMatch.Groups[1].Value) { throw 'Downloaded test script does not match the Agent pinned SHA-256' }
 Write-Checksum $benchPath

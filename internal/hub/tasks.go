@@ -31,17 +31,31 @@ var testScripts = []testScript{
 	{
 		Kind:  "ipquality",
 		Title: "IP 质量与解锁",
-		Note:  "IP 类型/原生 IP/风险分 + Netflix、Disney+、ChatGPT 等解锁检测，约 3~8 分钟",
+		Note:  "分别检测 IPv4 / IPv6 的 IP 类型、风险与流媒体解锁，约 6~16 分钟",
 	},
 	{
 		Kind:  "netquality",
 		Title: "线路与三网质量",
-		Note:  "上下行测速 + 京沪深三网 TCP 回程路由，约 3~8 分钟",
+		Note:  "上下行测速 + IPv4 / IPv6 京沪深三网 TCP 线路，约 6~16 分钟",
 	},
 }
 
 // testScriptByKind 按 kind 找脚本。
 func testScriptByKind(kind string) (testScript, bool) {
+	if kind == "netquality4" || kind == "netquality6" {
+		family := "IPv4"
+		if kind == "netquality6" {
+			family = "IPv6"
+		}
+		return testScript{Kind: kind, Title: family + " 线路与三网质量"}, true
+	}
+	if kind == "ipquality4" || kind == "ipquality6" {
+		family := "IPv4"
+		if kind == "ipquality6" {
+			family = "IPv6"
+		}
+		return testScript{Kind: kind, Title: family + " 质量与解锁"}, true
+	}
 	for _, s := range testScripts {
 		if s.Kind == kind {
 			return s, true
@@ -76,7 +90,8 @@ func (h *Hub) DispatchTask(nodeID, kind string) (*model.NodeTask, error) {
 //
 // 返回实际入队的条数。已经排队/在跑的同类任务会被跳过 ——
 // 连点两下不该把同一台机器上的跑分排两遍（那是二十分钟的 CPU）。
-func (h *Hub) DispatchAll(nodeID string) (int, error) {
+func (h *Hub) DispatchAll(nodeID string) (int, error) { return h.dispatchAllIP(nodeID, "ipquality") }
+func (h *Hub) dispatchAllIP(nodeID, ipKind string) (int, error) {
 	busy := map[string]bool{}
 	if ts, err := h.store.ListTasks(nodeID, 30); err == nil {
 		for _, t := range ts {
@@ -88,6 +103,21 @@ func (h *Hub) DispatchAll(nodeID string) (int, error) {
 	n := 0
 	var firstErr error
 	for _, sc := range testScripts {
+		if sc.Kind == "ipquality" {
+			sc.Kind = ipKind
+			if busy["ipquality"] || (busy["ipquality4"] && busy["ipquality6"]) {
+				continue
+			}
+			if sc.Kind == "ipquality" && busy["ipquality4"] {
+				sc.Kind = "ipquality6"
+			}
+			if sc.Kind == "ipquality" && busy["ipquality6"] {
+				sc.Kind = "ipquality4"
+			}
+		}
+		if sc.Kind == "netquality" && ipKind != "ipquality" {
+			sc.Kind = "netquality" + strings.TrimPrefix(ipKind, "ipquality")
+		}
 		if busy[sc.Kind] {
 			continue
 		}
@@ -124,6 +154,9 @@ func (h *Hub) DispatchAllNodes() (int, int, error) {
 // Validate the full selection before creating any tasks. A missing or stale
 // selection never expands to all nodes.
 func (h *Hub) DispatchSelectedNodes(ids []string) (int, int, error) {
+	return h.dispatchSelectedIP(ids, "ipquality")
+}
+func (h *Hub) dispatchSelectedIP(ids []string, ipKind string) (int, int, error) {
 	if len(ids) == 0 {
 		return 0, 0, fmt.Errorf("请先选择要测试的服务器")
 	}
@@ -154,7 +187,7 @@ func (h *Hub) DispatchSelectedNodes(ids []string) (int, int, error) {
 	queued := 0
 	var firstErr error
 	for _, node := range selected {
-		n, err := h.DispatchAll(node.ID)
+		n, err := h.dispatchAllIP(node.ID, ipKind)
 		queued += n
 		if err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("%s: %w", node.Name, err)
@@ -230,6 +263,24 @@ func (h *Hub) finishTaskFromResult(res model.CommandResult) error {
 	}
 	if report.Structured {
 		expected := map[string][]string{"bench": {"disk", "cpu", "memory"}, "ipquality": {"ip"}, "netquality": {"net", "route"}}
+		if t.Kind == "netquality4" {
+			expected[t.Kind] = []string{"net", "route4"}
+		}
+		if t.Kind == "netquality6" {
+			expected[t.Kind] = []string{"net", "route6"}
+		}
+		if t.Kind == "netquality" && !seen["route"] {
+			expected[t.Kind] = []string{"net", "route4", "route6"}
+		}
+		if t.Kind == "ipquality4" {
+			expected[t.Kind] = []string{"ip4"}
+		}
+		if t.Kind == "ipquality6" {
+			expected[t.Kind] = []string{"ip6"}
+		}
+		if t.Kind == "ipquality" && !seen["ip"] {
+			expected["ipquality"] = []string{"ip4", "ip6"}
+		}
 		for _, test := range expected[t.Kind] {
 			if !seen[test] {
 				ok = false

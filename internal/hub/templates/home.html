@@ -11,29 +11,6 @@
 
 <main class="wrap">
 
-  {{if not .Hero.Enabled}}
-  {{/* 总览卡（2026-10-16 重设）：从"一条只有下边框的信息带"改成一张
-       有金色描边的总览卡 —— 左侧标题/说明，右上时钟，下方四格金色数据块。
-       消除"总览和卡片不是一套东西"的割裂感；金色框线由主题 token
-       （--kokoro-card-border）驱动，其他主题自动退回中性描边。 */}}
-  <section class="console-intro" aria-labelledby="console-title">
-    <div class="console-intro-copy">
-      <p class="console-kicker"><span></span> INFRASTRUCTURE / LIVE</p>
-      <h1 id="console-title">服务器概况</h1>
-      <p>全球节点、资源使用与链路质量的实时状态。</p>
-    </div>
-    <div class="console-clock-slot" aria-label="当前时间">
-      {{template "clockchip.html" .}}
-    </div>
-    <div class="console-summary" aria-label="节点状态">
-      <div class="sum-tile"><b>{{.Total}}</b><span>台服务器</span></div>
-      <div class="sum-tile is-online"><b data-field="online">{{.Online}}</b><span>在线</span></div>
-      <div class="sum-tile is-offline"><b>{{.Offline}}</b><span>离线</span></div>
-      <div class="sum-tile is-regions"><b>{{len .Regions}}</b><span>点亮地区</span></div>
-    </div>
-  </section>
-  {{end}}
-
   {{/* 只有主题开了 Hero 才渲染这一行。 */}}
   {{if .Hero.Enabled}}
   {{/* ⚠️ 判据是 Hero.Enabled 而不是 Title —— Title 永远等于站点名（非空），
@@ -67,7 +44,7 @@
   {{if .Dash.Points}}
   <script id="rate-data" type="application/json">{{.DashJSON}}</script>
   {{end}}
-  {{/* CPU / 内存平均使用率图的数据。和速率曲线同一个 1 小时窗口，
+  {{/* CPU / 内存平均使用率图的数据。和速率曲线同一个时间窗（?range=），
        所以是单独的块而不是塞进 rate-data —— 两套点的个数未必相同
        （某台机器某分钟没上报占用率），硬凑一个数组只会互相拖累。 */}}
   {{if .Dash.ResPoints}}
@@ -97,10 +74,29 @@
          后台和节点页还能看到历史。 */}}
     <section class="panel home-side-new" id="speed">
       <div class="live-head">
-        <h3>全网速率</h3>
-        <span class="live-pulse" aria-hidden="true"></span>
+        <h3>服务器总览</h3>
+        {{/* 曲线时间窗切换：与详情页同一套 rangeOptions、同一个 ?range= 参数。
+             链接跳转而非 AJAX —— 曲线数据是服务端算好渲染的，整页重取最省事也最稳。
+             ⚠️ 不带 #锚点：带锚点时每次切换都会把总览滚到视口顶端，
+             和初始状态的版面位置对不上（boss 2026-10-17 报过）。 */}}
+        <nav class="ranges" role="group" aria-label="总览曲线时间范围">
+          {{range .Dash.RangeOpts}}
+          <a class="range-btn{{if eq .Key $.Dash.Range}} on{{end}}"
+             href="{{if $.Query}}/search?q={{$.Query}}&amp;{{else}}/?{{end}}range={{.Key}}"
+             aria-current="{{if eq .Key $.Dash.Range}}true{{else}}false{{end}}">{{.Label}}</a>
+          {{end}}
+        </nav>
       </div>
-      {{if .Online}}
+      <div class="speed-overview">
+    <div class="console-summary" aria-label="节点状态">
+      <div class="sum-tile"><b>{{.Total}}</b><span>台服务器</span></div>
+      <div class="sum-tile is-online"><b data-field="online">{{.Online}}</b><span>在线</span></div>
+      <div class="sum-tile is-offline"><b data-field="offline">{{.Offline}}</b><span>离线</span></div>
+      <div class="sum-tile is-regions"><b>{{.Globe.LitCountries}}</b><span>点亮地区</span></div>
+    </div>
+      <div class="speed-clock">{{template "clockchip.html" .}}</div>
+      </div>
+      <div class="speed-metrics">
       <div class="rate-row">
         <div class="rate">
           <span class="rl">↑ 上行</span>
@@ -117,28 +113,34 @@
         <div class="rate">
           <span class="rl">今日流量</span>
           <b class="rv sm">{{fmtBytes .Dash.TodayTotal}}</b>
-          <span class="rs">↑ {{fmtBytes .Dash.TodayUp}} · ↓ {{fmtBytes .Dash.TodayDown}}</span>
+          <span class="rs"><span>↑ {{fmtBytes .Dash.TodayUp}}</span><span>↓ {{fmtBytes .Dash.TodayDown}}</span></span>
         </div>
         <div class="rate">
           <span class="rl">本月流量</span>
           <b class="rv sm">{{fmtBytes .Dash.MonthTotal}}</b>
-          <span class="rs">↑ {{fmtBytes .Dash.MonthUp}} · ↓ {{fmtBytes .Dash.MonthDown}}</span>
+          <span class="rs"><span>↑ {{fmtBytes .Dash.MonthUp}}</span><span>↓ {{fmtBytes .Dash.MonthDown}}</span></span>
+        </div>
+        <div class="rate" title="节点上报的累计流量，机器重启后可能归零">
+          <span class="rl">总流量</span>
+          <b class="rv sm">{{fmtBytes .Dash.TotalTraffic}}</b>
+          <span class="rs"><span>↑ {{fmtBytes .Dash.TotalUp}}</span><span>↓ {{fmtBytes .Dash.TotalDown}}</span></span>
         </div>
       </div>
-      {{else}}
-      <p class="hint">没有在线节点。</p>
-      {{end}}
+      </div>
 
       {{/* 最近一小时的全网速率曲线（从仪表盘搬过来的）。
            和上面的四个数字配着看：数字是"此刻"，曲线是"这一小时怎么变的" ——
            只看数字的话，分不清刚才是平稳还是正在飙。 */}}
+      <div class="overview-charts">
+      <div class="overview-chart-group">
+      <div class="rate-sub">网络流量趋势</div>
       {{if .Dash.Points}}
       {{/* 曲线的时间范围与刻度：折线本身看不出"这是多久、多高算高"。
            刻度数值不能写进 SVG —— 它用 preserveAspectRatio="none" 拉伸，
            文字会跟着变形，所以放一个 HTML 覆盖层（服务端直接渲染）。 */}}
       <div class="rate-chart-wrap">
         <svg class="rate-chart" viewBox="0 0 600 180" preserveAspectRatio="none"
-             role="img" aria-label="最近一小时全网上下行速率" data-rate-chart></svg>
+             role="img" aria-label="{{.Dash.SpanLabel}}全网上下行速率" data-rate-chart></svg>
         <div class="rate-axis" aria-hidden="true">
           <span>{{fmtRate .Dash.ScaleMax}}</span>
           <span>{{fmtRate .Dash.ScaleMid}}</span>
@@ -152,8 +154,9 @@
         <span>{{len .Dash.Points}} 个采样点</span>
       </div>
       {{else}}
-      <p class="hint">最近一小时采样点还不够，再等等。</p>
+      <p class="hint">这段窗口的采样点还不够，再等等。</p>
       {{end}}
+      </div>
 
       {{/* 第二张：CPU / 内存 平均使用率。
             和上面的速率曲线同一个时间窗 —— 速率回答"此刻多快"，
@@ -161,10 +164,11 @@
             不能按峰值自适应：两台空闲机器能把 50% 画成爆满）。
             刻度文字同样走 HTML 覆盖层，原因同上一张图。 */}}
       {{if .Dash.ResPoints}}
+      <div class="overview-chart-group">
       <div class="rate-sub">CPU / 内存 平均使用率</div>
       <div class="res-chart-wrap">
         <svg class="rate-chart" viewBox="0 0 600 180" preserveAspectRatio="none"
-             role="img" aria-label="最近一小时全网 CPU 内存平均使用率" data-res-chart></svg>
+             role="img" aria-label="{{.Dash.SpanLabel}}全网 CPU 内存平均使用率" data-res-chart></svg>
         <div class="rate-axis" aria-hidden="true">
           <span>100%</span>
           <span>50%</span>
@@ -177,14 +181,16 @@
         <span><i style="background:var(--mem)"></i>内存 平均 {{printf "%.1f" .Dash.ResAvgMem}}%</span>
         <span>{{len .Dash.ResPoints}} 个采样点</span>
       </div>
+      </div>
       {{end}}
+      </div>
     </section>
 
     {{/* 没有可定位的节点时整块地球不渲染——画一个空球没意义 */}}
     {{if .Globe.Places}}
     <section class="map-card">
       <div class="map-head">
-        <h2>全球节点</h2>
+        <h2>全球节点 <span class="map-region-count">点亮 {{.Globe.LitCountries}} 个地区</span></h2>
         <div class="map-legend">
           {{/* 只保留三个图例项。原来这里还有一条
                <span><i class="i-hub"></i>主机</span>，而 .i-hub 从来没写过
@@ -198,11 +204,21 @@
 
 
       </div>
-      <div class="globe" id="globe" data-land="{{.GlobeLandURL}}"
-           aria-label="节点分布地球"></div>
+      <div class="globe-mode-switch" role="group" aria-label="节点标注方式">
+        <button type="button" data-globe-mode="labels" aria-pressed="true">连线标注</button>
+        <button type="button" data-globe-mode="list" aria-pressed="false">右侧列表</button>
+      </div>
+      <div class="globe-body" data-globe-view="labels">
+        <div class="globe" id="globe" data-land="{{.GlobeLandURL}}" aria-label="节点分布地球"></div>
+        <div class="globe-node-list" role="list" aria-label="节点地区列表" tabindex="0">
+          {{range .Globe.Places}}<div class="globe-node-entry" role="listitem" data-node-key="{{.Key}}">
+            <span class="flag">{{flag .Country}}</span><span class="globe-city">{{.City}}<small>{{.Name}}</small></span><span class="globe-node-status{{if .Online}} is-online{{end}}">{{if .Online}}在线{{else}}离线{{end}}</span>
+          </div>{{end}}
+        </div>
+      </div>
       <div class="map-foot">
         <span>拖动旋转 · 滚轮缩放</span>
-        <span>{{len .Globe.Places}} 个可定位节点{{if .Globe.LitCountries}} · 点亮 {{.Globe.LitCountries}} 个国家/地区{{end}}</span>
+        <span>{{len .Globe.Places}} 个可定位节点</span>
       </div>
     </section>
     {{end}}
@@ -218,6 +234,14 @@
     </button>
     {{end}}
   </nav>
+  <form class="range-control" method="get" action="{{if .Query}}/search{{else}}/{{end}}" aria-label="节点卡片图表时间范围">
+    {{if .Query}}<input type="hidden" name="q" value="{{.Query}}">{{end}}
+    <label for="home-card-range"><span>曲线范围</span>
+      <select id="home-card-range" name="range" data-home-range aria-label="节点卡片曲线时间范围">
+        {{range .Dash.RangeOpts}}<option value="{{.Key}}"{{if eq .Key $.Dash.Range}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+    </label>
+  </form>
   <label class="grid-control">
     <span>排列</span>
     <select data-card-columns aria-label="每行卡片数量">
@@ -249,18 +273,21 @@
       {{/* 第二行的地名已删（boss 2026-10-11）：这一行整个留给标签。
             地区信息详情页有，卡片上重复一遍只是噪音。 */}}
 
-      {{/* 标签行：NAT（固定 tag）+ 自定义标签 + **到期倒计时**。
+      {{/* 标签行：NAT（固定 tag）+ 自定义标签 + 续费与到期固定标签。
             倒计时是**必须**有的那个 —— 站长一眼就知道还有几天。
             NAT 原来在规格表的「网络」项里，boss 2026-10-11 要求挪到
             这里当固定 tag：它和"大盘鸡"是同一性质的信息（机器属性），
             规格表只留大小快慢这类硬指标。
-            到期槽固定保留；没有到期日显示横线，卡片保持同一行高。 */}}
+            续费与到期槽固定保留；未填续费按默认人民币/年展示。 */}}
       <div class="tags">
         <div class="tag-list">
           {{if .NAT}}<span class="tag nat" title="NAT：共享公网 IP，没有独立 IPv4">NAT</span>{{end}}
           {{range .Tags}}<span class="tag">{{.}}</span>{{end}}
         </div>
-        <span class="tag expire-slot {{if .ExpireText}}{{.ExpireLv}}{{else}}exp-empty{{end}}" title="到期时间">{{if .ExpireText}}{{.ExpireText}}{{else}}—{{end}}</span>
+        <div class="fixed-tags">
+          <span class="tag renewal-slot{{if .RenewEmpty}} renew-empty{{end}}" title="{{if .RenewEmpty}}未填写续费价格{{else}}续费价格{{end}}">{{.RenewText}}</span>
+          <span class="tag expire-slot {{if .ExpireText}}{{.ExpireLv}}{{else}}exp-empty{{end}}" title="到期时间">{{if .ExpireText}}{{.ExpireText}}{{else}}到期 - 天{{end}}</span>
+        </div>
       </div>
       </div>
 
@@ -295,14 +322,15 @@
       </div>
 
       <div class="net">
-        {{if .SparkLine}}
-        {{/* 曲线的时间范围与量级：光一条折线，看不出"这是多久的、多大算大"。
-             左边写时段（固定近 1 小时，数据来自 5 分钟汇总表），
-             右边写窗口内的峰值当刻度。 */}}
         <div class="spark-cap">
-          <span>近 1 小时</span>
-          <span>峰值 {{fmtRate .SparkPeak}}</span>
+          <div class="spark-range-form">
+            <label><span class="sr-only">曲线范围</span><select data-node-range aria-label="{{.Name}} 节点曲线时间范围">
+              {{range $.Dash.RangeOpts}}<option value="{{.Key}}"{{if eq .Key $.Dash.Range}} selected{{end}}>{{.Label}}</option>{{end}}
+            </select></label>
+          </div>
+          <span data-spark-label>{{if .SparkLine}}峰值 {{fmtRate .SparkPeak}}{{else}}{{.SparkInfo}}{{end}}</span>
         </div>
+        {{if .SparkLine}}
         <svg class="spark" viewBox="0 0 260 40" preserveAspectRatio="none" aria-hidden="true">
           <path class="sp-area" d="{{.SparkArea}}"/>
           <path class="sp-line" d="{{.SparkLine}}"/>
@@ -327,13 +355,13 @@
           </g>
         </svg>
         {{else}}
-        <div class="spark-cap"><span>近 1 小时</span><span>暂无曲线</span></div>
         <div class="spark-empty" aria-hidden="true"></div>
         {{end}}
         <div class="net-num">
           <span class="up">↑ <b data-field="up">{{fmtRate .Latest.Net.Up}}</b></span>
           <span class="down">↓ <b data-field="down">{{fmtRate .Latest.Net.Down}}</b></span>
-          <span class="lat">延迟
+          <span class="lat" title="主机探针上报到面板服务并收到响应的 HTTP 往返耗时。">
+            主机延迟
             <i class="bar mini"><i class="cpu lv-{{.LatLv}}" style="width:{{printf "%.0f" .LatencyPct}}%"></i></i>
             {{.LatencyText}}</span>
         </div>
@@ -346,12 +374,22 @@
         <div class="g"><span class="gl">磁盘</span><i class="bar"><i></i></i><em>—</em></div>
       </div>
       <div class="net net-empty-data">
-        <div class="spark-cap"><span>近 1 小时</span><span>等待上报</span></div>
+        <div class="spark-cap">
+          <div class="spark-range-form">
+            <label><span class="sr-only">曲线范围</span><select data-node-range aria-label="{{.Name}} 节点曲线时间范围">
+              {{range $.Dash.RangeOpts}}<option value="{{.Key}}"{{if eq .Key $.Dash.Range}} selected{{end}}>{{.Label}}</option>{{end}}
+            </select></label>
+          </div>
+          <span>等待上报</span>
+        </div>
         <div class="spark-empty" aria-hidden="true"></div>
-        <div class="net-num"><span class="up">↑ —</span><span class="down">↓ —</span><span class="lat">延迟 —</span></div>
+        <div class="net-num"><span class="up">↑ —</span><span class="down">↓ —</span><span class="lat" title="主机探针上报到面板服务并收到响应的 HTTP 往返耗时。">主机延迟 —</span></div>
       </div>
       {{end}}
 
+      <div class="ip-connectivity" aria-label="IP 连通状态" title="节点到公网的 IPv4 / IPv6 TCP 连通性，每分钟检测一次">
+        {{range .ConnectivityIndicators}}<span class="ip-indicator is-{{.State}}" data-ip-family="{{.Family}}"><i aria-hidden="true"></i><b>{{.Family}}</b><span>{{.Text}}</span></span>{{end}}
+      </div>
       <div class="vote-actions" aria-label="评价这台服务器">
         <button type="button" class="act vote up {{if .MineUp}}on{{end}}"
                 data-target="node" data-id="{{.ID}}" data-slug="{{.Slug}}" data-vote="up"
@@ -391,6 +429,10 @@
             原来流量挤在一行、用「今」「月」当行内前缀，两行标签宽度
             不一致，值就对不齐 —— 拆成独立两行反而更整齐。 ---- */}}
       <div class="netcard">
+        <p class="netrow">
+          <span class="nl">总流量</span>
+          <span class="nv" title="节点上报的累计流量，机器重启后可能归零">{{if .Latest}}↑{{fmtBytes .Latest.Net.TotalUp}} ↓{{fmtBytes .Latest.Net.TotalDown}}{{else}}—{{end}}</span>
+        </p>
         <p class="netrow">
           <span class="nl">本日</span>
           <span class="nv" title="本日估算">{{if .TodayUp}}↑{{.TodayUp}} ↓{{.TodayDown}}{{else}}—{{end}}</span>
@@ -462,42 +504,7 @@
      遮罩是 flex 容器，靠它把弹窗居中；放成兄弟节点的话
      弹窗没有定位、会作为一个普通块级元素沉到页面底部 ——
      表现是"点开只有一片灰背景，看不到内容"。（踩过一次） */}}
-<div class="dlg-scrim" id="dlg-scrim" hidden>
-
-<div class="dlg" id="d-art" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="文章">
-    <header class="dlg-head">
-      <b class="dlg-title">文章</b>
-      <span class="dlg-admin" id="d-art-admin"></span>
-      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
-    </header>
-    <div class="dlg-body" id="d-art-body"></div>
-  </div>
-
-  <div class="dlg" id="d-cmt" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="评论">
-    <header class="dlg-head">
-      <b class="dlg-title">评论</b>
-      <span class="dlg-admin" id="d-cmt-admin"></span>
-      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
-    </header>
-    <div class="dlg-body" id="d-cmt-body"></div>
-    {{/* 留言表单：**卡片弹窗里直接发**。详情页的留言区已下线，
-          这里是唯一入口。提交走 JSON（原地刷新列表），不跳页。 */}}
-    <form class="dcmt-form" id="d-cmt-form" hidden>
-      <div class="row">
-        <input name="author" placeholder="昵称（可留空）" maxlength="32">
-        <input name="contact" placeholder="联系方式，可选 —— 只有站长看得到" maxlength="120">
-      </div>
-      <textarea name="content" rows="3" maxlength="2000"
-                placeholder="说点什么… 想收 / 出这台机器也可以直接写在这里"></textarea>
-      <div class="row">
-        <button class="btn small" type="submit">发出留言</button>
-        <span class="hint" id="d-cmt-msg"></span>
-      </div>
-    </form>
-    <footer class="dlg-foot" id="d-cmt-foot"></footer>
-  </div>
-
-</div>
+{{template "article-dialogs.html" .}}
 
 {{/* ---- 购买意向弹窗 ----
      ⚠️ 它必须和 #dlg-scrim **平级**，不能嵌进那个遮罩里。
@@ -550,7 +557,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=125"></script>
+<script src="/static/app.js?v=143"></script>
 </body>
 </html>
 {{end}}
@@ -560,7 +567,7 @@
      前端拿整块 HTML 替换 #netq-rows-<节点ID>。所以这个片段是完整
      自包含的（外层 div + id 都在这里），改结构记得同步 broadcastNetQ。 */}}
 {{define "netq_rows.html"}}
-<div class="netqrows" id="netq-rows-{{.ID}}">
+<div class="netqrows" id="netq-rows-{{.ID}}" aria-label="上海三网延迟与丢包" title="上海基准 · 最近15分钟内最多5轮探测">
   {{range .Net3}}
   <div class="nqr{{if .Level}} lv-{{.Level}}{{end}}">
     <i class="dot" aria-hidden="true"></i>
@@ -590,11 +597,14 @@
   {{if .TaskSummary}}
   <div class="task-hover">
     <div class="task-line task-summary" tabindex="0" aria-label="测试结果">
-      {{range .TaskSummaryRows}}<div class="task-result-row"><span class="task-result-label">{{.Label}}</span><span class="task-result-value">{{.Value}}</span></div>{{end}}
+      {{range .TaskSummaryRows}}<div class="task-result-row{{if .Route}} is-route{{end}}"><span class="task-result-label">{{.Label}}</span><span class="task-result-value">{{if .Badges}}{{range .Badges}}<span class="route-badge {{.Class}}" title="{{.Text}}">{{.Text}}</span>{{end}}{{else}}{{.Value}}{{end}}</span></div>{{end}}
     </div>
     {{if .TaskItems}}
-    <div class="task-pop" role="tooltip" popover="manual" tabindex="0">
-      <div class="tp-head"><b>最近测试结果</b><span>{{.TaskWhen}}</span></div>
+    <div class="task-pop" role="dialog" aria-label="最近测试结果" popover="manual" tabindex="0">
+      <div class="tp-head">
+        <div class="tp-heading"><b>最近测试结果</b><span>{{.TaskWhen}}</span></div>
+        <button type="button" class="tp-close" data-task-pop-close aria-label="关闭测试结果">×</button>
+      </div>
       {{range .TaskItems}}
       <div class="tp-item">
         <h5>{{.Label}}{{if not .OK}} <span class="bad">失败</span>{{end}}</h5>

@@ -28,7 +28,7 @@ var enums = map[string]map[string]bool{
 	"charts.type":                 {"line": true, "area": true, "bar": true, "dot": true, "step": true},
 	"charts.tooltip":              {"axis": true, "item": true, "none": true},
 	"misc.statusDotStyle":         {"solid": true, "ring": true, "glow": true, "none": true},
-	"misc.usageBarStyle":          {"solid": true, "gradient": true, "segmented": true, "striped": true, "dotted": true, "none": true},
+	"misc.usageBarStyle":          {"solid": true, "gradient": true, "segmented": true, "striped": true, "dotted": true, "soft": true, "none": true},
 	"misc.uptimeBarStyle":         {"solid": true, "pill": true, "hatch": true, "ruled": true, "tiles": true, "dots": true},
 	"misc.tagStyle":               {"pill": true, "square": true, "text": true},
 	"misc.badgeStyle":             {"soft": true, "outline": true, "solid": true},

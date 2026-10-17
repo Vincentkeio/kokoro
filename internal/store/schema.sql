@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS metrics_raw (
     io_read      INTEGER,                      -- B/s，NULL 表示未采集
     io_write     INTEGER,
     hub_latency_ms REAL,                       -- 到 Hub 的往返延迟，NULL 表示未采集
+    connectivity TEXT NOT NULL DEFAULT '',     -- IPv4 / IPv6 独立连通探测
     PRIMARY KEY (node_id, ts)
 ) WITHOUT ROWID;
 
@@ -135,6 +136,7 @@ CREATE TABLE IF NOT EXISTS metrics_5m (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS idx_metrics_5m_node_bucket ON metrics_5m (node_id, bucket);
+CREATE INDEX IF NOT EXISTS idx_metrics_5m_node_samples ON metrics_5m (node_id, samples);
 
 CREATE TABLE IF NOT EXISTS metrics_1h (
     node_id       TEXT    NOT NULL,
@@ -208,6 +210,7 @@ CREATE TABLE IF NOT EXISTS comments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_comments_node_time ON comments (node_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_comments_node_page ON comments (node_id, pinned DESC, created_at ASC, id ASC);
 
 -- ---------- 点赞 / 点踩 ----------
 

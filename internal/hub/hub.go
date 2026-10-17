@@ -35,7 +35,7 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 // Version is set from the CLI build version before serving registrations.
-var Version = "0.1.2"
+var Version = "0.1.3-preview.1"
 
 // Hub 是一个运行中的主控实例。
 type Hub struct {
@@ -67,6 +67,10 @@ type Hub struct {
 	snapMu   sync.Mutex
 	snapAt   time.Time
 	snapData map[string]*model.Metrics
+
+	netqHitMu   sync.Mutex
+	netqHitAt   time.Time
+	netqHitData map[string]netqProvHitRate
 
 	// done 在开始关闭时被 close，用来通知 SSE 之类的长连接主动退出。
 	//
@@ -225,6 +229,7 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/api/v1/report", h.handleReport)
 	h.mux.HandleFunc("/api/v1/command/result", h.handleCommandResult)
 	h.mux.HandleFunc("/api/v1/netq", h.handleNetQ)
+	h.mux.HandleFunc("/api/v1/card-series", h.handleHomeCardSeries)
 	h.mux.HandleFunc("/api/v1/dl/", h.handleDownload)
 
 	// 实时推送

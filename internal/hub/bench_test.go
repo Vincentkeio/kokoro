@@ -286,3 +286,83 @@ func TestCardPopupMergesAllTasks(t *testing.T) {
 		}
 	}
 }
+
+// TestBenchFailureNotDuplicatedAndKindOrder 钉两件事（boss 2026-10-17 报过）：
+//  1. 失败原因不许显示两遍 —— Hub 会把失败条目的原因同时写进任务级 Error
+//     （"IPv6 质量与解锁：…退出码 60；" 里就含着条目的那句话），
+//     悬浮面板与详情页曾把它们各渲染一次，同一句话说两遍；
+//  2. 「测试结果」按 系统硬件 → 三网质量 → IP 质量 排，而不是"最后跑的排最前面"。
+func TestBenchFailureNotDuplicatedAndKindOrder(t *testing.T) {
+	h, st := newTestHub(t)
+	n := mkNode(t, st, "顺序节点 JP", "JP", "日本 · 东京", "")
+
+	// 先跑硬件（早），再跑 IP 质量（晚）—— 时间倒序会把 IP 排在硬件前面。
+	hw, err := h.DispatchTask(n.ID, "bench")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.pendingCommands(n.ID, nil, "", 0) // 取走 → running
+	if err := h.finishTaskFromResult(model.CommandResult{
+		ID: hw.ID, OK: true, ExitCode: 0,
+		Stdout: `{"event":"result","test":"disk","ok":true,"data":{"seq_read_mbs":1387,"tool":"fio"}}` + "\n" +
+			`{"event":"result","test":"cpu","ok":true,"data":{"single_eps":1029.53,"tool":"sysbench"}}` + "\n" +
+			`{"event":"result","test":"memory","ok":true,"data":{"read_mbs":1000}}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	const ip6Err = "IPv6 不可用或 IPQuality 未生成 JSON 结果文件（退出码 60），请检查依赖和网络后重试"
+	ip, err := h.DispatchTask(n.ID, "ipquality")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.pendingCommands(n.ID, nil, "", 0)
+	if err := h.finishTaskFromResult(model.CommandResult{
+		ID: ip.ID, OK: false, ExitCode: 60,
+		Stdout: `{"event":"result","test":"ip4","ok":true,"data":{"usage":"商业"}}` + "\n" +
+			`{"event":"result","test":"ip6","ok":false,"error":"` + ip6Err + `"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 悬浮面板：条目按类型排（CPU 跑分在前、IPv6 条目在后），失败原因只出现一次。
+	card := nodeCard{Node: *n}
+	h.populateTaskCard(&card)
+	if len(card.TaskItems) < 2 {
+		t.Fatalf("条目太少：%+v", card.TaskItems)
+	}
+	var labels []string
+	ip6Seen := 0
+	for _, it := range card.TaskItems {
+		labels = append(labels, it.Label)
+		if strings.Contains(it.Err, ip6Err) {
+			ip6Seen++
+		}
+	}
+	if ip6Seen != 1 {
+		t.Errorf("失败原因应只出现一次，实际 %d 次：%+v", ip6Seen, card.TaskItems)
+	}
+	cpuAt, ipAt := -1, -1
+	for i, l := range labels {
+		if l == "CPU 跑分" {
+			cpuAt = i
+		}
+		if l == "IPv4 质量与解锁" {
+			ipAt = i
+		}
+	}
+	if cpuAt < 0 || ipAt < 0 || cpuAt > ipAt {
+		t.Errorf("条目顺序应为 系统硬件 → IP 质量，实际 %v", labels)
+	}
+
+	// 详情页同样：顺序正确、失败原因只出现一次。
+	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/n/"+n.Slug, nil))
+	if c := strings.Count(body, ip6Err); c != 1 {
+		t.Errorf("详情页失败原因出现 %d 次，应为 1 次", c)
+	}
+	hwAt := strings.Index(body, "硬件跑分")
+	pageIPAt := strings.Index(body, "IP 质量与解锁")
+	if hwAt < 0 || pageIPAt < 0 || hwAt > pageIPAt {
+		t.Errorf("详情页顺序应为 硬件跑分 在 IP 质量与解锁 之前（%d / %d）", hwAt, pageIPAt)
+	}
+}

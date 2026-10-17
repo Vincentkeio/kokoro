@@ -29,8 +29,9 @@ func TestTasksPageListsAllScripts(t *testing.T) {
 		if !strings.Contains(page, s.Title) {
 			t.Errorf("测试项 %q 没出现在页面上", s.Title)
 		}
-		// 命令是渲染时用 benchCmd(Only) 拼的，不是结构体字段
-		if !strings.Contains(page, "--only") {
+		// 命令由 scriptViews 渲染成 test:<kind>（执行参数在 Agent 侧，
+		// Hub 不再下发 shell 文本），确认每项的命令都渲染出来
+		if !strings.Contains(page, "test:"+s.Kind) {
 			t.Errorf("测试项 %q 的命令没渲染出来", s.Title)
 		}
 		// 每张卡都要有「下发」按钮

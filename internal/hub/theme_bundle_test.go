@@ -344,8 +344,8 @@ func TestImportedThemeBecomesActiveAfterRestart(t *testing.T) {
 	raw := makeBundle(t, "acme.activated", nil)
 	uploadBundle(t, h, cookies, raw)
 
-	// 切换到它并确认落库。
-	req := withCookies(httptest.NewRequest(http.MethodGet, "/theme/acme.activated", nil), cookies)
+	// 切换到它并确认落库（入口是 POST，见 theme.go 的 handleThemeSwitch）。
+	req := withCookies(httptest.NewRequest(http.MethodPost, "/theme/acme.activated", nil), cookies)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if got := h.ActiveThemeID(); got != "acme.activated" {

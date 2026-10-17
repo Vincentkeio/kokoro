@@ -11,7 +11,7 @@
 //     详情页头部形态、状态点样式…）。Hub 把它展开成 <body> 上的 data-k-* 属性
 //     与一小段生成的 CSS，内置样式表按这些属性预置全部规则。
 //
-// 因此「换主题」不只是换配色：纸间使用编辑式表格与柱状图，极夜使用极光夜色与阶梯图；图表形态也会应用到首页、节点详情页的历史曲线。
+// 因此「换主题」不只是换配色：纸页使用编辑式表格与柱状图，极夜使用极光夜色与阶梯图；图表形态也会应用到首页、节点详情页的历史曲线。
 //
 // 内置主题走与第三方完全相同的解析/校验代码路径（只有 source 标记不同），
 // 所以「复制内置主题再改」是天然工作流。
@@ -192,7 +192,7 @@ type ChartsLayout struct {
 // MiscLayout 是零碎风格开关。
 type MiscLayout struct {
 	StatusDotStyle string `json:"statusDotStyle,omitempty"` // solid|ring|glow|none
-	UsageBarStyle  string `json:"usageBarStyle,omitempty"`  // solid|gradient|segmented|striped|dotted|none
+	UsageBarStyle  string `json:"usageBarStyle,omitempty"`  // solid|gradient|segmented|striped|dotted|soft|none
 	UptimeBarStyle string `json:"uptimeBarStyle,omitempty"` // solid|pill|hatch|ruled|tiles|dots
 	TagStyle       string `json:"tagStyle,omitempty"`       // pill|square|text
 	BadgeStyle     string `json:"badgeStyle,omitempty"`     // soft|outline|solid

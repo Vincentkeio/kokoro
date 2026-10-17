@@ -3,7 +3,7 @@
 set -eu
 
 REPO="Vincentkeio/kokoro"
-RELEASE_TAG="v0.1.2"
+RELEASE_TAG="v0.1.3-preview.1"
 INSTALL_DIR="/opt/kokoro"
 DATA_DIR="/var/lib/kokoro"
 SERVICE_FILE="/etc/systemd/system/kokoro-hub.service"
@@ -418,6 +418,10 @@ if [ "$NGINX_MODE" -eq 1 ]; then
     sleep 1
   done
 
+  NGINX_TLS_LISTEN="ssl"
+  if "$NGINX_BIN" -V 2>&1 | grep -q -- '--with-http_v2_module'; then
+    NGINX_TLS_LISTEN="ssl http2"
+  fi
   cat >"$NGINX_CONFIG_FILE" <<EOF
 # Managed-By=Kokoro-Installer
 server {
@@ -436,8 +440,8 @@ server {
 }
 
 server {
-  listen 443 ssl;
-  listen [::]:443 ssl;
+  listen 443 $NGINX_TLS_LISTEN;
+  listen [::]:443 $NGINX_TLS_LISTEN;
   server_name $DOMAIN;
 
   ssl_certificate $CADDY_CERT;

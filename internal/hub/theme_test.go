@@ -250,8 +250,10 @@ func TestSwitchThemePersistsAndChangesLayout(t *testing.T) {
 		t.Fatalf("默认主题列表形态 = %q，应为 card", before)
 	}
 
-	// 管理员把站点默认主题切成社区主题：列表应变表格、顶栏变毛玻璃
-	req := withCookies(httptest.NewRequest(http.MethodGet,
+	// 管理员把站点默认主题切成社区主题：状态点、顶栏、Hero、图表网格随之变化。
+	// ⚠️ 切换入口是 POST（模板里就是 method="post"，GET 一律 405）——
+	// GET 切主题等于给了一个可被外站 <img src> 触发的写操作。
+	req := withCookies(httptest.NewRequest(http.MethodPost,
 		"/theme/peer.alt?back=%2F", nil), cookies)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -265,8 +267,9 @@ func TestSwitchThemePersistsAndChangesLayout(t *testing.T) {
 	if saved, err := st.GetSetting(settingTheme); err != nil || saved != "peer.alt" {
 		t.Errorf("主题没有落库（重启会丢）: %q %v", saved, err)
 	}
-	if got := getAttr(t, h, cookies, "/", "data-k-list-mode"); got != "table" {
-		t.Errorf("切换后列表形态 = %q，应为 table", got)
+	// 列表形态切换已下线：首页固定卡片，主题里的 list.mode 不再影响它。
+	if got := getAttr(t, h, cookies, "/", "data-k-list-mode"); got != "card" {
+		t.Errorf("切换后列表形态 = %q，应固定为 card（列表切换已下线）", got)
 	}
 	if got := getAttr(t, h, cookies, "/", "data-k-dot"); got != "glow" {
 		t.Errorf("切换后状态点样式 = %q，应为 glow", got)
@@ -290,7 +293,7 @@ func TestSwitchThemePersistsAndChangesLayout(t *testing.T) {
 func TestSwitchThemeRequiresAdmin(t *testing.T) {
 	h, _ := newThemeTestHub(t)
 	importTestTheme(t, h, "peer.admin", testThemeJSON("peer.admin", "管理员用"))
-	req := httptest.NewRequest(http.MethodGet, "/theme/peer.admin", nil)
+	req := httptest.NewRequest(http.MethodPost, "/theme/peer.admin", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
@@ -305,7 +308,7 @@ func TestSwitchThemeRequiresAdmin(t *testing.T) {
 func TestSwitchThemeRejectsUnknownID(t *testing.T) {
 	h, _ := newThemeTestHub(t)
 	cookies := loginAsAdmin(t, h)
-	req := withCookies(httptest.NewRequest(http.MethodGet, "/theme/no.such.theme?back=%2F", nil), cookies)
+	req := withCookies(httptest.NewRequest(http.MethodPost, "/theme/no.such.theme?back=%2F", nil), cookies)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusSeeOther {
@@ -319,10 +322,15 @@ func TestSwitchThemeRejectsUnknownID(t *testing.T) {
 func TestSwitchThemeRejectsOpenRedirect(t *testing.T) {
 	h, _ := newThemeTestHub(t)
 	cookies := loginAsAdmin(t, h)
-	req := withCookies(httptest.NewRequest(http.MethodGet,
+	req := withCookies(httptest.NewRequest(http.MethodPost,
 		"/theme/"+theme.DefaultID+"?back=https%3A%2F%2Fevil.example%2Fx", nil), cookies)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
+	// 必须是 303 且落到站内：405/其它状态会让下面的"不含 evil"空过，
+	// 所以先把状态钉死，再查 Location。
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("切换主题应重定向，实际 %d", w.Code)
+	}
 	loc := w.Header().Get("Location")
 	if strings.Contains(loc, "evil.example") {
 		t.Errorf("切换主题时存在开放重定向: %q", loc)
@@ -382,9 +390,11 @@ func TestVisitorPickNeedsNoLoginButKeepsSiteDefault(t *testing.T) {
 		// 注意：getAttr 不带 cookie，所以看到的应是站点默认的 card
 		t.Errorf("无 cookie 的访客应看到站点默认布局，实际 %q", got)
 	}
+	// 访客 cookie 选中 peer.v 后，页面应带上该主题的布局标记。
+	// （列表形态已固定 card，这里改用状态点样式证明"访客主题真的生效"。）
 	if got := getAttr(t, h, []*http.Cookie{{Name: theme.ThemeCookie, Value: "peer.v"}},
-		"/", "data-k-list-mode"); got != "table" {
-		t.Errorf("带 cookie 的访客应看到 table 布局，实际 %q", got)
+		"/", "data-k-dot"); got != "glow" {
+		t.Errorf("带 cookie 的访客应看到 peer.v 的状态点样式 glow，实际 %q", got)
 	}
 }
 
@@ -393,9 +403,9 @@ func TestVisitorPickDefaultRestoresSiteTheme(t *testing.T) {
 	cookies := loginAsAdmin(t, h)
 	importTestTheme(t, h, "peer.site", testThemeJSON("peer.site", "站点用的"))
 
-	// 管理员先把站点主题设成社区主题
+	// 管理员先把站点主题设成社区主题（切换入口是 POST）
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, withCookies(httptest.NewRequest(http.MethodGet,
+	h.ServeHTTP(w, withCookies(httptest.NewRequest(http.MethodPost,
 		"/theme/peer.site?back=%2Fadmin%2Fthemes", nil), cookies))
 	if h.ActiveThemeID() != "peer.site" {
 		t.Fatalf("站点主题未切换，实际 %q", h.ActiveThemeID())
@@ -544,24 +554,26 @@ func TestVisitorSwitchHiddenOnlyWhenNoThemes(t *testing.T) {
 	}
 }
 
-// TestVisitorPickSwitchesListModeAndChips 验证访客切换后：
-// 列表形态回到新主题的默认（旧的访客偏好被清掉）、主题条出现"恢复默认"。
-func TestVisitorPickSwitchesListModeAndChips(t *testing.T) {
+// TestVisitorPickClearsLegacyListModeAndChips 验证访客切换后：
+// 残留的旧列表形态 cookie 被清掉（切换已下线，只做遗留清理）、
+// 主题条出现"恢复默认"。
+func TestVisitorPickClearsLegacyListModeAndChips(t *testing.T) {
 	h, _ := newThemeTestHub(t)
 	cookies := loginAsAdmin(t, h)
 	// 给站点设成社区主题、再让访客切回默认主题——这样至少有两套可切。
 	// （不依赖内置主题的数量：那条路在 2026-10-11 之前是靠"内置只有一套"
 	// 才成立的，加了 kokoro.neon 就不好使了。）
 	importTestTheme(t, h, "peer.cur", testThemeJSON("peer.cur", "站点当前"))
-	h.ServeHTTP(httptest.NewRecorder(), withCookies(httptest.NewRequest(http.MethodGet,
+	h.ServeHTTP(httptest.NewRecorder(), withCookies(httptest.NewRequest(http.MethodPost,
 		"/theme/peer.cur?back=%2F", nil), cookies))
 
-	// 访客之前记住了 compact（站点主题下合法的形态）
+	// 访客浏览器里可能还留着老版本写下的 k_list_mode cookie。
+	// 列表形态已下线，它不再影响渲染（固定 card），切换主题时顺手清掉。
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: listModeCookie, Value: "compact"})
 	v := h.themeFor(req)
-	if v.ListMode != "compact" {
-		t.Fatalf("前置条件不成立：访客列表形态 = %q", v.ListMode)
+	if v.ListMode != "card" {
+		t.Fatalf("列表形态应固定 card（切换已下线），实际 %q", v.ListMode)
 	}
 	if !v.VisitorSwitch {
 		t.Fatal("存在可切换的第二套主题时，VisitorSwitch 应为真")
@@ -802,8 +814,8 @@ func TestModeAndListModeCookies(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: theme.ModeCookie, Value: "dark"})
-	if got := h.themeFor(req).Mode; got != "dark" {
-		t.Errorf("k_mode=dark cookie 未生效，mode = %q", got)
+	if got := h.themeFor(req).Mode; got != "light" {
+		t.Errorf("旧 k_mode cookie 不应改变主题默认外观，mode = %q", got)
 	}
 
 	// 不支持深色的主题（supportsDark=false）应忽略深色 cookie，
@@ -819,10 +831,12 @@ func TestModeAndListModeCookies(t *testing.T) {
 		t.Errorf("不支持深色的主题应强制浅色，mode = %q", got)
 	}
 
+	// 列表形态切换已下线（首页统一卡片）：旧 cookie 不再影响渲染，
+	// 留着它的访客也不会看到"按钮显示某种形态、页面实际另一种"的错位。
 	req2 := httptest.NewRequest(http.MethodGet, "/", nil)
 	req2.AddCookie(&http.Cookie{Name: listModeCookie, Value: "compact"})
-	if got := h.themeFor(req2).ListMode; got != "compact" {
-		t.Errorf("列表形态 cookie 未生效，%q", got)
+	if got := h.themeFor(req2).ListMode; got != "card" {
+		t.Errorf("列表形态应固定为 card（切换已下线），%q", got)
 	}
 }
 

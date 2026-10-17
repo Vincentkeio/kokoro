@@ -251,8 +251,7 @@ func (h *Hub) resolvePickable() []*theme.Manifest {
 
 // resolveMode 决定这次请求用浅色还是深色。
 //
-// 优先级：访客 cookie > 主题默认（auto 时看系统偏好，服务端无从得知，
-// 交给前端内联脚本同步执行）。
+// Themes use their own fixed appearance; legacy mode cookies are ignored.
 func (h *Hub) resolveMode(r *http.Request, m *theme.Manifest) (mode, defaultMode string) {
 	if !m.SupportsDark() {
 		return "light", "light"
@@ -260,15 +259,6 @@ func (h *Hub) resolveMode(r *http.Request, m *theme.Manifest) (mode, defaultMode
 	defaultMode = m.Mode.Default
 	if defaultMode != "light" && defaultMode != "dark" {
 		defaultMode = "light"
-	}
-	if !m.AllowModeSwitch() {
-		return defaultMode, defaultMode
-	}
-	if c, err := r.Cookie(theme.ModeCookie); err == nil {
-		switch c.Value {
-		case "light", "dark":
-			return c.Value, defaultMode
-		}
 	}
 	return defaultMode, defaultMode
 }
@@ -315,7 +305,7 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 		DefaultMode:  defMode,
 		Builtin:      m.Builtin,
 		Attrs:        template.HTMLAttr(theme.AttrsString(theme.BodyAttrs(m, mode, listMode))),
-		ShowSwitch:   m.AllowModeSwitch(),
+		ShowSwitch:   false,
 		ListMode:     listMode,
 		GroupBy:      m.Layout.Home.List.GroupBy,
 		DetailHeader: theme.DetailHeaderVariant(m),
@@ -360,7 +350,7 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 
 func builtinWallpaperTheme(id string) bool {
 	switch id {
-	case "kokoro.simple", "kokoro.cute", "kokoro.tech", "kokoro.paper", "kokoro.midnight", "kokoro.mist":
+	case "kokoro.simple", "kokoro.paper", "kokoro.midnight", "kokoro.mist":
 		return true
 	default:
 		return false

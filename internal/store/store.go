@@ -42,7 +42,7 @@ var schemaSQL string
 // 只加 2 不加 1 的后果：新装的库缺列，跑起来报
 // "table xxx has no column named yyy" —— 而且**本地测试会先红**
 // （测试用的都是全新库）。踩过一次。
-const schemaVersion = 16
+const schemaVersion = 18
 
 // rollup 各层的窗口长度（毫秒）。级联方向：raw → 1m → 5m → 1h → 1d。
 const (
@@ -341,6 +341,8 @@ CREATE TABLE IF NOT EXISTS metrics_1d (
     PRIMARY KEY (node_id, bucket)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_metrics_1d_node_bucket ON metrics_1d (node_id, bucket);`},
+	{version: 17, sql: `ALTER TABLE metrics_raw ADD COLUMN connectivity TEXT NOT NULL DEFAULT '';`},
+	{version: 18, sql: `CREATE INDEX IF NOT EXISTS idx_metrics_5m_node_samples ON metrics_5m (node_id, samples);`},
 }
 
 // prepare 预编译高频写入语句。
@@ -348,8 +350,8 @@ func (s *Store) prepare() error {
 	st, err := s.db.Prepare(`INSERT INTO metrics_raw
 (node_id, ts, seq, cpu, mem_used, mem_total, mem_cached, swap_used, swap_total,
  disk_used, disk_total, net_up, net_down, total_up, total_down,
- load1, load5, load15, procs, tcp, udp, uptime, io_read, io_write, hub_latency_ms)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ load1, load5, load15, procs, tcp, udp, uptime, io_read, io_write, hub_latency_ms, connectivity)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT (node_id, ts) DO NOTHING`)
 	if err != nil {
 		return fmt.Errorf("预编译指标写入语句失败: %w", err)
@@ -625,7 +627,7 @@ func (s *Store) SetNodeOnline(id string, online bool) error {
 // rawCols 是指标明细列（不含 node_id）；rawColsWithID 用于需要 node_id 的查询。
 const rawCols = `ts, seq, cpu, mem_used, mem_total, mem_cached, swap_used, swap_total,
 disk_used, disk_total, net_up, net_down, total_up, total_down,
-load1, load5, load15, procs, tcp, udp, uptime, io_read, io_write, hub_latency_ms`
+load1, load5, load15, procs, tcp, udp, uptime, io_read, io_write, hub_latency_ms, connectivity`
 
 const rawColsWithID = `node_id, ` + rawCols
 
@@ -636,12 +638,13 @@ func scanMetricsWithNode(sc scanner, nodeID *string) (*model.Metrics, error) {
 		nodeID = &dump
 	}
 	var (
-		m       model.Metrics
-		tcp     sql.NullInt64
-		udp     sql.NullInt64
-		ioRead  sql.NullInt64
-		ioWrite sql.NullInt64
-		lat     sql.NullFloat64
+		m            model.Metrics
+		tcp          sql.NullInt64
+		udp          sql.NullInt64
+		ioRead       sql.NullInt64
+		ioWrite      sql.NullInt64
+		connectivity string
+		lat          sql.NullFloat64
 	)
 	err := sc.Scan(
 		nodeID,
@@ -649,10 +652,13 @@ func scanMetricsWithNode(sc scanner, nodeID *string) (*model.Metrics, error) {
 		&m.Mem.SwapUsed, &m.Mem.SwapTotal, &m.Disk.Used, &m.Disk.Total,
 		&m.Net.Up, &m.Net.Down, &m.Net.TotalUp, &m.Net.TotalDown,
 		&m.CPU.Load1, &m.CPU.Load5, &m.CPU.Load15, &m.Host.Procs,
-		&tcp, &udp, &m.Host.Uptime, &ioRead, &ioWrite, &lat,
+		&tcp, &udp, &m.Host.Uptime, &ioRead, &ioWrite, &lat, &connectivity,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if connectivity != "" {
+		_ = decodeJSON(connectivity, &m.Connectivity)
 	}
 	m.V = model.ProtocolVersion
 	// 采集失败的字段用 NULL 区分「没采到」和「真的是 0」。
@@ -685,7 +691,7 @@ func metricsArgs(nodeID string, m *model.Metrics) []any {
 		m.Mem.SwapUsed, m.Mem.SwapTotal, m.Disk.Used, m.Disk.Total,
 		m.Net.Up, m.Net.Down, m.Net.TotalUp, m.Net.TotalDown,
 		m.CPU.Load1, m.CPU.Load5, m.CPU.Load15, m.Host.Procs, tcp, udp, m.Host.Uptime,
-		ioRead, ioWrite, lat,
+		ioRead, ioWrite, lat, connectivityJSON(m.Connectivity),
 	}
 }
 
@@ -1177,6 +1183,57 @@ FROM comments`
 		}
 		c.Status = model.CommentStatus(status)
 		c.Pinned = pinInt != 0
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// CountComments 取节点评论数，避免仅为显示数量而加载全部评论内容。
+func (s *Store) CountComments(nodeID string, onlyApproved bool) (int, error) {
+	q := `SELECT COUNT(*) FROM comments WHERE node_id = ?`
+	args := []any{nodeID}
+	if onlyApproved {
+		q += ` AND status = 'approved'`
+	}
+	var count int
+	if err := s.db.QueryRow(q, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("统计评论失败: %w", err)
+	}
+	return count, nil
+}
+
+// ListCommentsPage 只读取当前页，避免评论弹窗每次都把整条历史载入内存。
+func (s *Store) ListCommentsPage(nodeID string, onlyApproved bool, limit, offset int) ([]model.Comment, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	q := `SELECT id, node_id, parent_id, author, contact, content, status, ip_hash, created_at, pinned
+FROM comments WHERE node_id = ?`
+	args := []any{nodeID}
+	if onlyApproved {
+		q += ` AND status = 'approved'`
+	}
+	q += ` ORDER BY pinned DESC, created_at ASC, id ASC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("分页读取评论失败: %w", err)
+	}
+	defer rows.Close()
+	var out []model.Comment
+	for rows.Next() {
+		var c model.Comment
+		var status string
+		var pinned int
+		if err := rows.Scan(&c.ID, &c.NodeID, &c.ParentID, &c.Author, &c.Contact, &c.Content,
+			&status, &c.IPHash, &c.CreatedAt, &pinned); err != nil {
+			return nil, err
+		}
+		c.Status = model.CommentStatus(status)
+		c.Pinned = pinned != 0
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -1909,4 +1966,12 @@ func (s *Store) ProfilesByNode() (map[string]*model.NodeProfile, error) {
 		out[p.NodeID] = &p
 	}
 	return out, rows.Err()
+}
+
+func connectivityJSON(v *model.IPConnectivity) string {
+	if v == nil {
+		return ""
+	}
+	text, _ := encodeJSON(v)
+	return text
 }

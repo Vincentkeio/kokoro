@@ -18,12 +18,10 @@ import (
 // 当前内置主题清单固定在 want 中；下面所有「换主题是否真的换脸」断言
 // 都使用现场构造的主题，不依赖某套内置主题的具体风格。
 var want = []string{
-	"kokoro.cute",
 	"kokoro.midnight",
 	"kokoro.mist",
 	"kokoro.paper",
 	"kokoro.simple",
-	"kokoro.tech",
 }
 
 func TestBuiltinThemesParse(t *testing.T) {

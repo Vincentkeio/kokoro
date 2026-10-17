@@ -17,9 +17,7 @@
     </div>
     <div class="top-tools">
       <a class="btn ghost small top-front" href="/">← 前台</a>
-      {{if .Theme.ShowSwitch}}
-      <button class="btn ghost small mode-toggle" type="button" data-toggle-mode title="切换深色 / 浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>
-      {{end}}
+
       {{/* 主题切换器必须在详情页也在——它原先挂在页尾，改到页头后
            这里漏了就会让详情页整页没有切换入口。由
            TestSkinPickerOnHomeAndNode 守住。 */}}
@@ -91,10 +89,36 @@
       </nav>
     </div>
     <div class="charts">
-      <div class="chart"><span class="chart-label">CPU %</span><svg class="spark cpu" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="cpu"></svg></div>
-      <div class="chart"><span class="chart-label">内存用量</span><svg class="spark mem" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="mem"></svg></div>
-      <div class="chart"><span class="chart-label">↑ 上行 B/s</span><svg class="spark up" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="up"></svg></div>
-      <div class="chart"><span class="chart-label">↓ 下行 B/s</span><svg class="spark down" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="down"></svg></div>
+      {{/* 刻度轨道（data-yaxis / data-xaxis）由 app.js 按与网格线同一套坐标公式填充。
+            文字放 SVG 外是因为图表 preserveAspectRatio="none" 拉伸渲染，SVG 内文字会变形。 */}}
+      <div class="chart"><span class="chart-label">CPU %</span>
+        <div class="chart-plot">
+          <div class="chart-yaxis" data-yaxis aria-hidden="true"></div>
+          <svg class="spark cpu" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="cpu"></svg>
+        </div>
+        <div class="chart-xaxis" data-xaxis aria-hidden="true"></div>
+      </div>
+      <div class="chart"><span class="chart-label">内存用量</span>
+        <div class="chart-plot">
+          <div class="chart-yaxis" data-yaxis aria-hidden="true"></div>
+          <svg class="spark mem" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="mem"></svg>
+        </div>
+        <div class="chart-xaxis" data-xaxis aria-hidden="true"></div>
+      </div>
+      <div class="chart"><span class="chart-label">↑ 上行 B/s</span>
+        <div class="chart-plot">
+          <div class="chart-yaxis" data-yaxis aria-hidden="true"></div>
+          <svg class="spark up" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="up"></svg>
+        </div>
+        <div class="chart-xaxis" data-xaxis aria-hidden="true"></div>
+      </div>
+      <div class="chart"><span class="chart-label">↓ 下行 B/s</span>
+        <div class="chart-plot">
+          <div class="chart-yaxis" data-yaxis aria-hidden="true"></div>
+          <svg class="spark down" viewBox="0 0 300 60" preserveAspectRatio="none" data-series="down"></svg>
+        </div>
+        <div class="chart-xaxis" data-xaxis aria-hidden="true"></div>
+      </div>
     </div>
   </section>
   {{end}}
@@ -102,12 +126,18 @@
   <section class="panel"><p class="empty">这台小鸡还没有上报数据。</p></section>
   {{end}}
 
-  {{/* 文章与留言**不在这里**（2026-10-11 boss 定）：
-       它们在首页卡片上是独立弹窗（点「文章 N」「评论 N」弹出，含发布表单），
-       详情页再摆一份就是重复。全文/全部评论走
-       /n/<slug>/articles.json 与 comments.json，弹窗按需拉。 */}}
-
   {{if .Uptime}}<section class="panel">{{template "uptime.html" .Uptime}}</section>{{end}}
+
+  <section class="node-content-actions" aria-label="节点文章和评论">
+    <button type="button" class="node-content-action" data-dlg="{{.Node.Slug}}" data-panel="art" aria-haspopup="dialog" aria-controls="d-art">
+      <span class="node-content-action-main"><span class="node-content-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3.75h7l4 4v12.5H7z"/><path d="M14 3.75v4h4M10 12h5m-5 3.5h5"/></svg></span><span><strong>文章</strong><small>{{.ArticleCount}} 篇节点文章</small></span></span>
+      <span class="node-content-action-arrow" aria-hidden="true">→</span>
+    </button>
+    <button type="button" class="node-content-action" data-dlg="{{.Node.Slug}}" data-panel="cmt" aria-haspopup="dialog" aria-controls="d-cmt">
+      <span class="node-content-action-main"><span class="node-content-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5.75h14a1.25 1.25 0 0 1 1.25 1.25v8A1.25 1.25 0 0 1 19 16.25h-7l-4.25 3v-3H5A1.25 1.25 0 0 1 3.75 15V7A1.25 1.25 0 0 1 5 5.75Z"/><path d="M8 10h8m-8 3h5"/></svg></span><span><strong>评论</strong><small>{{.CommentCount}} 条留言</small></span></span>
+      <span class="node-content-action-arrow" aria-hidden="true">→</span>
+    </button>
+  </section>
 
   {{if .NetQ}}{{template "netq.html" .NetQ}}{{end}}
 
@@ -158,12 +188,13 @@
 
   {{/* 站长名片并进顶栏（partials.html 的 top-owner），这里不再重复一张卡。 */}}
 </main>
+{{template "article-dialogs.html" .}}
 
 <script>
 window.__POINTS__ = [{{range .Points}}{"t":{{.Ts}},"cpu":{{.CPU}},"mu":{{.MemUsed}},"up":{{.NetUp}},"down":{{.NetDown}}},{{end}}];
 window.__SLUG__ = {{.Node.Slug | js}};
 </script>
-<script src="/static/app.js?v=125"></script>
+<script src="/static/app.js?v=140"></script>
 </body>
 </html>
 {{end}}

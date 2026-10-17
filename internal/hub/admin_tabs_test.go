@@ -207,7 +207,7 @@ func TestAdminNodeTableColumnsMatch(t *testing.T) {
 	if head == nil {
 		t.Fatal("节点表格没有表头")
 	}
-	ths := regexp.MustCompile(`<th>`).FindAllString(head[1], -1)
+	ths := regexp.MustCompile(`<th(?:\s[^>]*)?>`).FindAllString(head[1], -1)
 	t.Logf("表头 %d 列", len(ths))
 
 	// 数全部单元格 —— 它必须是列数的整数倍。
@@ -216,7 +216,7 @@ func TestAdminNodeTableColumnsMatch(t *testing.T) {
 	if j := strings.Index(rows, "</tbody>"); j > 0 {
 		rows = rows[:j]
 	}
-	tds := regexp.MustCompile(`<td>`).FindAllString(rows, -1)
+	tds := regexp.MustCompile(`<td(?:\s[^>]*)?>`).FindAllString(rows, -1)
 	if len(tds) == 0 {
 		t.Fatal("节点表格没有数据行")
 	}

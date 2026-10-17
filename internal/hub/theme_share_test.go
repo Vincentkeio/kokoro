@@ -61,20 +61,18 @@ func TestSkinGetDialogOnPublicPages(t *testing.T) {
 		if !strings.Contains(body, `id="skinget-scrim"`) {
 			t.Errorf("%s 缺少获取皮肤弹窗的 DOM", path)
 		}
-		// 地址框里必须是 `<站点>/theme.json` 的完整地址。
-		// 给光秃秃的域名时用户会问"复制这个有什么用"（boss 真的问了）；
-		// 带上 /theme.json 既像个主题文件（浏览器打开就能看到清单），
-		// 对方面板的「一键获取」也认这种写法（normalizeThemeBase 会剥后缀）。
-		if !strings.Contains(body, "https://vps.example.com/theme.json") {
-			t.Errorf("%s 的地址框里不是 <站点>/theme.json 完整地址", path)
+		// 地址框里必须是完整的对外地址。弹窗改版后按主题逐条列出
+		// `<站点>/theme-bundle/<主题ID>`（对方面板的「一键获取」认这种
+		// 写法，normalizeThemeBase 会剥掉后缀），不再是单一 /theme.json。
+		if !strings.Contains(body, "https://vps.example.com/theme-bundle/") {
+			t.Errorf("%s 的地址框里不是 <站点>/theme-bundle/<主题> 完整地址", path)
 		}
-		// 按 boss 要求只留"复制地址"一条路，下载入口已撤。
-		if strings.Contains(body, "/theme-export/") || strings.Contains(body, "/theme-bundle/") {
-			t.Errorf("%s 不该再出现下载入口（只保留复制地址）", path)
+		// 公开弹窗只留"复制地址"；下载入口 /theme-export/ 只在后台出现。
+		if strings.Contains(body, "/theme-export/") {
+			t.Errorf("%s 不该出现下载入口（只保留复制地址）", path)
 		}
 		// 文案要给出可照做的步骤 —— boss 明确要求"写清楚怎么操作"。
-		// （术语已从「皮肤」统一成「主题」，断言跟着改。）
-		if !strings.Contains(body, "一键获取别人的主题") {
+		if !strings.Contains(body, "在你自己的面板中获取并导入") {
 			t.Errorf("%s 的操作步骤里没提到对方要去点哪个入口", path)
 		}
 		// 弹窗不能嵌在 <details> 里 —— details 一收起就把弹窗一起藏了，

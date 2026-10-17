@@ -5,8 +5,8 @@
      然后 tokens 覆盖别名引用的具体值，最后 layout 变量补 --k-* 系列。
      themeTokens 已经过校验（未知变量名会被 Parse 拒绝），且值里不可能出现
      </style>，所以这里直接内联是安全的。 */}}
-<link rel="icon" href="/static/favicon.svg?v=67">
-<link rel="stylesheet" href="/static/style.css?v=159">
+<link rel="icon" href="/static/favicon.svg?v=68">
+<link rel="stylesheet" href="/static/style.css?v=198">
 <style id="kokoro-tokens">{{.Theme.Tokens}}</style>
 {{/* 站点壁纸只作为未自带壁纸的自定义主题的背景。
      这类主题的站点背景排在 #kokoro-tokens 后面，覆盖其空白默认值。
@@ -14,15 +14,7 @@
      （只放行 http(s)、且不含能跳出 url() 的字符）。 */}}
 {{if .Theme.WallpaperCSS}}<style id="kokoro-wallpaper">:root{ {{.Theme.WallpaperCSS}} }</style>{{end}}
 <style id="kokoro-layout">{{.Theme.LayoutCSS}}</style>
-{{if eq .Theme.DefaultMode "auto"}}
-<script>
-/* 主题声明"跟随系统"时，在首屏渲染前同步判定，避免深色偏好下闪一下白。
-   这段必须在任何 paint 之前执行，所以放在 <head> 里而不是页脚。 */
-(function(){try{if(matchMedia("(prefers-color-scheme: dark)").matches){
-document.documentElement.dataset.kMode="dark";
-document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
-</script>
-{{end}}
+
 {{end}}
 
 {{define "kokoro-mark"}}
@@ -45,7 +37,14 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
   {{if .Owner.Avatar}}
     <img class="avatar" src="{{.Owner.Avatar}}" alt="{{.Owner.Name}} 的头像" width="30" height="30">
   {{else}}
-    <span class="avatar placeholder" aria-hidden="true">👤</span>
+    <span class="avatar placeholder" aria-hidden="true">
+      <svg viewBox="0 0 32 32" focusable="false">
+        <path d="M10 7v18M11.8 16 22 8.5M11.8 16 22 23.5" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"></path>
+        <circle cx="22.5" cy="8" r="2" fill="currentColor"></circle>
+        <circle cx="22.5" cy="24" r="2" fill="currentColor"></circle>
+        <circle cx="10" cy="16" r="2" fill="currentColor"></circle>
+      </svg>
+    </span>
   {{end}}
   <span class="top-owner-txt">
     <b>{{.Owner.Name}}</b>
@@ -61,6 +60,7 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
   <span class="tz">{{if .Note}}{{.Note}}{{else if .TZ}}{{.TZ}}{{else}}UTC{{end}}</span>
   <span class="d">----</span>
   <b class="t">--:--:--</b>
+  <span class="live-pulse" aria-hidden="true"></span>
 </div>
 {{end}}{{end}}
 {{end}}
@@ -74,12 +74,7 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
     {{template "ownerchip.html" .}}
     </div>
     <div class="top-tools">
-      {{if .Theme.ShowSwitch}}
-      <button class="btn ghost small mode-toggle" type="button"
-              data-toggle-mode
-              title="切换深色 / 浅色"
-              aria-label="切换深色或浅色">{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>
-      {{end}}
+
       <a class="btn ghost small" href="/admin">后台</a>
       {{/* 主题切换器放在最后 = 贴着右上角。
            不要为了"把外观控件聚在一起"把它挪到 mode-toggle 旁边：
@@ -110,7 +105,7 @@ document.documentElement.dataset.kBoot="auto";}}catch(e){}})();
 {{if .Theme.VisitorSwitch}}
 <details class="skin" data-skin-picker>
   <summary class="skin-btn" title="切换主题">
-    <span class="skin-ico" aria-hidden="true">◐</span>
+    <span class="skin-ico" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3a9 9 0 1 0 9 9c0-1.66-1.34-3-3-3h-1.5A1.5 1.5 0 0 1 15 7.5 1.5 1.5 0 0 1 16.5 6H18a9 9 0 0 0-6-3Z"/><circle cx="7.5" cy="10" r="1"/><circle cx="10" cy="6.5" r="1"/><circle cx="6.5" cy="14" r="1"/></svg></span>
     <span class="skin-cur">{{.Theme.Name}}</span>
   </summary>
   <div class="skin-menu" role="menu" aria-label="主题">

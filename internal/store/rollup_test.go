@@ -53,12 +53,23 @@ func TestRollupLadderCascade(t *testing.T) {
 	if n := count("metrics_5m"); n < 1 {
 		t.Errorf("5 分钟层应有已闭合桶，实际 %d", n)
 	}
-	// 数据都在最近 12 分钟内：不可能有闭合的 1 小时/1 天窗口。
-	if n := count("metrics_1h"); n != 0 {
-		t.Errorf("1 小时层窗口未闭合，不该有数据，实际 %d", n)
+	// 粗层只该有"已闭合"的窗口。这里不能断言"必须为空"：整点后 12 分钟内
+	// 铺的数据会越过上一个整点，那个小时窗口是闭合的、本来就该有一行
+	// （2026-10-17 07:08 跑这条踩到过）。真正的不变量是：
+	// **当前这个还没闭合的小时 / 天窗口**里不许有数据。
+	countSince := func(tbl, col string, from int64) int {
+		var n int
+		if err := s.DB().QueryRow("SELECT COUNT(*) FROM "+tbl+" WHERE "+col+" >= ?", from).Scan(&n); err != nil {
+			t.Fatalf("统计 %s 失败: %v", tbl, err)
+		}
+		return n
 	}
-	if n := count("metrics_1d"); n != 0 {
-		t.Errorf("1 天层窗口未闭合，不该有数据，实际 %d", n)
+	cur := nowMS()
+	if n := countSince("metrics_1h", "bucket", cur/bucket1h*bucket1h); n != 0 {
+		t.Errorf("未闭合的小时窗口不该有数据，实际 %d", n)
+	}
+	if n := countSince("metrics_1d", "bucket", cur/bucket1d*bucket1d); n != 0 {
+		t.Errorf("未闭合的天窗口不该有数据，实际 %d", n)
 	}
 
 	// 级联正确性：任取一个 5 分钟桶，其 cpu_avg 应等于原始表在该桶内的直接平均。

@@ -32,29 +32,29 @@ func TestNetQSaveValidatesAndDedups(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 去重 + 丢掉表里没有的 + 排序
-	want := "[广东 浙江]"
+	want := "[上海 浙江 广东]"
 	if got := "[" + strings.Join(saved, " ") + "]"; got != want {
 		t.Errorf("保存后 = %s，应为 %s（去重、剔除未知省）", got, want)
 	}
-	if got := h.netqProvinces(); len(got) != 2 {
-		t.Errorf("回读 = %v，应有 2 个省", got)
+	if got := h.netqProvinces(); len(got) != 3 {
+		t.Errorf("回读 = %v，应含上海及两个可选省", got)
 	}
-	if n := netqTargetCount(saved); n != 6 {
-		t.Errorf("探测点数 = %d，应为 6（2 省 × 3 网）", n)
+	if n := netqTargetCount(saved); n != 9 {
+		t.Errorf("探测点数 = %d，应为 9（3 省 × 3 网）", n)
 	}
 }
 
-func TestNetQEmptyMeansProbingOff(t *testing.T) {
+func TestNetQEmptyKeepsShanghai(t *testing.T) {
 	h, _ := newTestHub(t)
 	saved, err := h.netqSaveProvinces(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(saved) != 0 {
-		t.Fatalf("全不选应保存成空数组，实际 %v", saved)
+	if len(saved) != 1 || saved[0] != "上海" {
+		t.Fatalf("清空可选省份后应保留上海，实际 %v", saved)
 	}
-	if got := h.netqProvinces(); len(got) != 0 {
-		t.Errorf("空选择回读 = %v，应为空", got)
+	if got := h.netqProvinces(); len(got) != 1 || got[0] != "上海" {
+		t.Errorf("空选择回读 = %v，应为上海", got)
 	}
 }
 
@@ -155,8 +155,10 @@ func TestPendingCommandsIncludesTaskAndNetQ(t *testing.T) {
 	for _, c := range cmds {
 		types[c.Type]++
 	}
-	if types["shell"] != 1 || types["netq_targets"] != 1 {
-		t.Fatalf("应同时带 shell + netq_targets，实际 %+v", cmds)
+	// 任务命令是 Type=test（执行配方在 agent 侧，Hub 不再下发 shell 文本），
+	// 加上三网目标命令，两条同一次带下去。
+	if types["test"] != 1 || types["netq_targets"] != 1 {
+		t.Fatalf("应同时带 test + netq_targets，实际 %+v", cmds)
 	}
 }
 
@@ -186,11 +188,26 @@ func TestBroadcastNetQPushesRenderedHTML(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// 订阅一个频道再触发广播：broker.latest 现在只缓存 metrics 快照
+	// （任务卡等增量事件不复播给新打开的页面），netq 帧要从订阅端收。
+	ch := h.broker.subscribe()
+	defer h.broker.unsubscribe(ch)
 	h.broadcastNetQ(n.ID)
 
-	msg := h.broker.latest // 最近一次广播（本测试只此一次）
-	if !bytes.HasPrefix(msg, []byte("event: netq\n")) {
-		t.Fatalf("应广播 netq 事件，实际 %q", string(msg[:min(80, len(msg))]))
+	var msg []byte
+	wait := time.After(2 * time.Second)
+recv:
+	for {
+		select {
+		case m := <-ch:
+			if bytes.HasPrefix(m, []byte("event: netq\n")) {
+				msg = m
+				break recv
+			}
+			// 其它事件不是本测试的对象，继续等 netq 帧
+		case <-wait:
+			t.Fatal("应广播 netq 事件，2s 内没收到")
+		}
 	}
 	i := bytes.Index(msg, []byte("data: "))
 	if i < 0 {
@@ -222,14 +239,23 @@ func TestBroadcastNetQPushesRenderedHTML(t *testing.T) {
 		t.Error("detail 表格应只含选中范围内的省（上海/北京）")
 	}
 
-	// 全不选（探测关闭）时没什么可推：rows/detail 都没有 → 不广播
-	if _, err := h.netqSaveProvinces(nil); err != nil {
-		t.Fatal(err)
-	}
-	h.broker.latest = nil
-	h.broadcastNetQ(n.ID)
-	if h.broker.latest != nil {
-		t.Error("全不选时没有可推的内容，不该广播")
+	// 没有可推内容时不广播。⚠️ "全不选"在新规则下会强制保留上海基准
+	// （requiredNetQProvinces），不再产生空选择 —— 换一台没有探测数据的
+	// 节点来走"rows/detail 都没有 → 早退"这条分支。
+	other := mkNode(t, st, "空数据节点 HK", "HK", "中国 · 香港", "")
+	h.broadcastNetQ(other.ID)
+	deadline := time.After(150 * time.Millisecond)
+drain:
+	for {
+		select {
+		case m := <-ch:
+			if bytes.HasPrefix(m, []byte("event: netq\n")) {
+				t.Error("没有可推的内容时不该广播 netq")
+				break drain
+			}
+		case <-deadline:
+			break drain
+		}
 	}
 }
 

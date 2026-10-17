@@ -50,12 +50,12 @@ type homeData struct {
 	Total        int
 	// Offline 是"总数 - 在线"，供总览卡的离线数据块直接使用；
 	// 放在后端算，模板里就不必引入减法函数。
-	Offline      int
-	Year         int
-	Query        string // 搜索关键词，非空表示当前是搜索结果页
-	Owner        ownerCard
-	Hero         heroView
-	Regions      []string
+	Offline int
+	Year    int
+	Query   string // 搜索关键词，非空表示当前是搜索结果页
+	Owner   ownerCard
+	Hero    heroView
+	Regions []string
 
 	// 信息面板：时钟、点阵地球
 	//
@@ -271,6 +271,12 @@ func (h *Hub) nodeTasks(nodeID string, limit int) []nodeTaskView {
 				if rep.ElapsedM > 0 {
 					v.ElapsedS = rep.ElapsedM / 1000
 				}
+				// 任务级错误和条目错误常常是同一句话（Hub 把失败条目的原因
+				// 也写进了任务级 Error）。条目里已经有了就别再顶一条，
+				// 否则详情页会把失败原因显示两遍。
+				if benchErrorDuplicated(rep.Items, v.Error) {
+					v.Error = ""
+				}
 				for _, it := range rep.Items {
 					v.Items = append(v.Items, nodeTaskItem{
 						Label:  benchLabel(it.Test),
@@ -283,6 +289,10 @@ func (h *Hub) nodeTasks(nodeID string, limit int) []nodeTaskView {
 		}
 		out = append(out, v)
 	}
+	// 展示顺序按类型排：系统硬件 → 三网质量 → IP 质量（同类保持时间倒序）。
+	sort.SliceStable(out, func(i, j int) bool {
+		return taskKindRank(out[i].Kind) < taskKindRank(out[j].Kind)
+	})
 	return out
 }
 
@@ -291,14 +301,25 @@ func (h *Hub) populateTaskCard(c *nodeCard) {
 	if c == nil || c.ID == "" {
 		return
 	}
-	ts, err := h.store.ListTasks(c.ID, 30)
+	ts, err := h.store.ListTaskCardTasks(c.ID)
 	if err != nil {
 		return
 	}
+	// 每次重建都从空开始：本函数是唯一往 TaskItems 里写的地方，
+	// 不清的话同一个卡片对象被刷新两次就会出现两套条目。
+	c.TaskItems = nil
+	// produced 先按任务类型收条目，最后统一排序（系统硬件 → 三网 → IP 质量）。
+	type kindItem struct {
+		kind string
+		item nodeTaskItem
+	}
+	var produced []kindItem
 	seenKind := make(map[string]bool, 3)
 	seenItems := make(map[string]bool)
 	var routeSummary []string
+	familyRoutes := map[string]map[string]string{}
 	var ipSummary string
+	familyIPRows := map[string]string{}
 	hardwareSummary := map[string]string{}
 	for _, t := range ts {
 		if seenKind[t.Kind] {
@@ -326,7 +347,13 @@ func (h *Hub) populateTaskCard(c *nodeCard) {
 			if msg == "" {
 				msg = "任务执行失败"
 			}
-			c.TaskItems = append(c.TaskItems, nodeTaskItem{Label: t.Title, Err: msg})
+			items := parseBenchNDJSON(t.Detail).Items
+			// 条目里已经带着同一条失败原因时不再单列任务级错误 ——
+			// 否则悬浮面板会把"IPv6 质量与解锁：…退出码 60"显示两遍
+			// （boss 2026-10-17 报过）。
+			if len(items) == 0 || !benchErrorDuplicated(items, msg) {
+				produced = append(produced, kindItem{kind: t.Kind, item: nodeTaskItem{Label: t.Title, Err: msg}})
+			}
 			if c.TaskWhen == "" {
 				at := t.FinishedAt
 				if at == 0 {
@@ -334,7 +361,7 @@ func (h *Hub) populateTaskCard(c *nodeCard) {
 				}
 				c.TaskWhen = relativeTime(at)
 			}
-			if len(parseBenchNDJSON(t.Detail).Items) == 0 {
+			if len(items) == 0 {
 				continue
 			}
 		}
@@ -351,11 +378,19 @@ func (h *Hub) populateTaskCard(c *nodeCard) {
 		}
 		if t.Detail != "" {
 			rep := parseBenchNDJSON(t.Detail)
+			collectCardRoutes(rep, familyRoutes)
 			if len(rep.Items) > 0 {
+				for _, row := range strings.Split(summarizeBenchCard(rep), "\n") {
+					for _, family := range []string{"IPv4", "IPv6"} {
+						if strings.HasPrefix(row, family+" ") && familyIPRows[family] == "" {
+							familyIPRows[family] = row
+						}
+					}
+				}
 				for _, row := range strings.Split(summarizeBenchCard(rep), "\n") {
 					if strings.HasPrefix(row, "回程 ") {
 						taskRouteRows = append(taskRouteRows, row)
-					} else if strings.Contains(row, "IP质量") && ipSummary == "" {
+					} else if strings.HasPrefix(row, "IP质量") && ipSummary == "" {
 						ipSummary = row
 					} else if strings.HasPrefix(row, "CPU 跑分") {
 						hardwareSummary["cpu"] = row
@@ -375,7 +410,7 @@ func (h *Hub) populateTaskCard(c *nodeCard) {
 					for _, row := range cardTaskSummaryRows(legacy) {
 						if strings.HasPrefix(row, "回程 ") {
 							taskRouteRows = append(taskRouteRows, row)
-						} else if strings.Contains(row, "IP质量") && ipSummary == "" {
+						} else if strings.HasPrefix(row, "IP质量") && ipSummary == "" {
 							ipSummary = row
 						}
 					}
@@ -386,16 +421,16 @@ func (h *Hub) populateTaskCard(c *nodeCard) {
 					continue
 				}
 				seenItems[item.Test] = true
-				c.TaskItems = append(c.TaskItems, nodeTaskItem{
+				produced = append(produced, kindItem{kind: t.Kind, item: nodeTaskItem{
 					Label: benchLabel(item.Test), OK: item.OK, Err: item.Err,
 					Fields: benchFields(item.Test, item.Data),
-				})
+				}})
 			}
 		} else {
 			for _, row := range cardTaskSummaryRows(t.Summary) {
 				if strings.HasPrefix(row, "回程 ") {
 					taskRouteRows = append(taskRouteRows, row)
-				} else if strings.Contains(row, "IP质量") && ipSummary == "" {
+				} else if strings.HasPrefix(row, "IP质量") && ipSummary == "" {
 					ipSummary = row
 				}
 			}
@@ -418,16 +453,37 @@ func (h *Hub) populateTaskCard(c *nodeCard) {
 	}
 	routes := routeSummaryByCarrier(routeSummary)
 	for _, isp := range []string{"电信", "联通", "移动"} {
-		value := routes[isp]
-		if value == "" {
-			value = "—"
+		v4, v6 := "—", "—"
+		if familyRoutes["IPv4"] != nil {
+			v4 = firstNonEmpty(familyRoutes["IPv4"][isp], "—")
+		} else if _, seen := familyRoutes["IPv4"]; !seen {
+			v4 = firstNonEmpty(cardBackboneName(routes[isp]), "—")
 		}
-		rows = append(rows, "回程 "+isp+" "+value)
+		if familyRoutes["IPv6"] != nil {
+			v6 = firstNonEmpty(familyRoutes["IPv6"][isp], "—")
+		}
+		rows = append(rows, "回程 "+isp+" V4 "+v4+" V6 "+v6)
 	}
-	if ipSummary == "" {
-		ipSummary = "IP质量 —"
+	if len(familyIPRows) > 0 {
+		for _, family := range []string{"IPv4", "IPv6"} {
+			if row := familyIPRows[family]; row != "" {
+				rows = append(rows, row)
+			}
+		}
+	} else {
+		if ipSummary == "" {
+			ipSummary = "IP质量 —"
+		}
+		rows = append(rows, ipSummary)
 	}
-	rows = append(rows, ipSummary)
+	// 条目按类型排序后再交给模板：系统硬件 → 三网质量 → IP 质量。
+	// 任务列表是时间倒序，照原样铺出来会让"最后跑的"排最前面。
+	sort.SliceStable(produced, func(i, j int) bool {
+		return taskKindRank(produced[i].kind) < taskKindRank(produced[j].kind)
+	})
+	for _, p := range produced {
+		c.TaskItems = append(c.TaskItems, p.item)
+	}
 	c.TaskSummary = strings.Join(rows, "\n")
 	c.TaskSummaryRows = makeTaskSummaryRows(rows)
 }
@@ -465,8 +521,10 @@ func routeSummaryByCarrier(rows []string) map[string]string {
 }
 
 type taskSummaryRow struct {
-	Label string
-	Value string
+	Label  string
+	Value  string
+	Badges []routeBadge
+	Route  bool
 }
 
 func makeTaskSummaryRows(rows []string) []taskSummaryRow {
@@ -474,7 +532,7 @@ func makeTaskSummaryRows(rows []string) []taskSummaryRow {
 	for _, row := range rows {
 		label, value := "", row
 		for _, prefix := range []struct{ text, label string }{
-			{"CPU 跑分", "CPU"}, {"内存读写", "内存"}, {"磁盘读写", "磁盘"},
+			{"IPv4 IP质量", "IPv4"}, {"IPv6 IP质量", "IPv6"}, {"CPU 跑分", "CPU"}, {"内存读写", "内存"}, {"磁盘读写", "磁盘"},
 			{"磁盘读取", "磁盘"}, {"磁盘写入", "磁盘"}, {"回程", "回程"}, {"IP质量", "IP 质量"},
 		} {
 			if strings.HasPrefix(row, prefix.text) {
@@ -486,7 +544,15 @@ func makeTaskSummaryRows(rows []string) []taskSummaryRow {
 		if label == "" {
 			label, value = "结果", strings.TrimSpace(row)
 		}
-		out = append(out, taskSummaryRow{Label: label, Value: value})
+		summary := taskSummaryRow{Label: label, Value: value}
+		if dual, ok := dualRouteCardRow(row); ok {
+			out = append(out, dual)
+			continue
+		}
+		if label == "回程" {
+			summary.Badges = cardRouteBadges(value)
+		}
+		out = append(out, summary)
 	}
 	return out
 }
@@ -553,7 +619,9 @@ type nodeCard struct {
 	LoadLv               string
 	SparkLine            string // 网络面积图的折线路径
 	SparkArea            string // 面积图的填充路径
-	// SparkPeak 是这段曲线（近 1 小时）里的上下行峰值（B/s），
+	SparkRange           string // 节点小图当前时间范围，与首页总览同步
+	SparkInfo            string // 数据不足或无流量时的说明
+	// SparkPeak 是所选时间范围里的上下行峰值（B/s），
 	// 给卡片标注个刻度——光一条曲线不写量级，看不出"这算大还是小"。
 	// 用 int64 是为了直接喂 fmtRate（跟卡片上其它速率一个格式）。
 	SparkPeak   int64
@@ -579,6 +647,8 @@ type nodeCard struct {
 	// 空串表示没填到期日 —— 那就不显示这个标签（没填 ≠ 永久）。
 	ExpireText string
 	ExpireLv   string
+	RenewText  string // 固定续费标签，未填写时显示「¥- /年」。
+	RenewEmpty bool   // 空值与已填写资料使用不同的标签样式。
 
 	// ---- 三网延迟 + 流量（卡片上那两行）----
 	//
@@ -650,7 +720,6 @@ type articleView struct {
 	ID      string
 	Title   string
 	Summary string
-	HTML    template.HTML // 渲染好的正文，只给弹窗用（已消毒，见 RenderMarkdown）
 	When    string
 }
 
@@ -856,9 +925,12 @@ type rangeOpt struct {
 }
 
 // rangeOptions 是走势图可切换的时间窗（顺序即按钮顺序）。
+// 详情页「历史趋势」和首页「总览」共用这一套 —— 按钮上写什么、
+// 解析认哪些 key，两处永远一致。
 var rangeOptions = []rangeOpt{
 	{"1h", "1 小时"},
 	{"6h", "6 小时"},
+	{"12h", "12 小时"},
 	{"1d", "1 天"},
 	{"7d", "7 天"},
 	{"30d", "30 天"},
@@ -880,6 +952,8 @@ func netqWindow(key string) rangeWindow {
 	switch key {
 	case "6h":
 		return rangeWindow{"6h", 6 * time.Hour, 180}
+	case "12h":
+		return rangeWindow{"12h", 12 * time.Hour, 180}
 	case "1d":
 		return rangeWindow{"1d", 24 * time.Hour, 288}
 	case "7d":
@@ -903,9 +977,8 @@ type nodePageData struct {
 	Points   []pointAlias
 	Year     int
 
-	Votes    model.VoteCount // 这台小鸡的赞/踩
-	Comments []commentView
-	CommentN int
+	Votes        model.VoteCount // 这台小鸡的赞/踩
+	CommentCount int
 
 	CommentErr string // 提交留言失败的原因
 	CommentOK  bool   // 刚提交成功
@@ -934,7 +1007,7 @@ type nodePageData struct {
 	// Articles 是这台机器的文章列表。
 	// 列表里只显示标题+摘要，全文在弹窗里 —— 不把全文铺在页面上，
 	// 几篇几千字的文章会让详情页变得又长又难滚。
-	Articles []articleView
+	ArticleCount int
 
 	// Owner 是站长名片。挂在详情页底部，让"这台小鸡是谁在卖"有归属——
 	// 后台那句提示一直写着"会显示在首页顶部与每台小鸡的页面底部"，
@@ -1090,6 +1163,7 @@ type adminData struct {
 
 	// ---- 面板主机自身（原来在 /dashboard 上，那个页面删掉后并到这儿）----
 	Host        *model.Metrics
+	HostNodeID  string
 	HostMemPct  float64
 	HostDiskPct float64
 	HostNote    string
@@ -1140,6 +1214,91 @@ func (h *Hub) handleSearch(w http.ResponseWriter, r *http.Request) {
 	h.renderHome(w, r, strings.TrimSpace(r.URL.Query().Get("q")))
 }
 
+type homeCardSeriesResponse struct {
+	Line string `json:"line"`
+	Area string `json:"area"`
+	Peak string `json:"peak"`
+	Info string `json:"info"`
+}
+
+// handleHomeCardSeries refreshes only one public node card's sparkline. The
+// overview range remains page-wide; this endpoint keeps per-card ranges local.
+func (h *Hub) handleHomeCardSeries(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	key := r.URL.Query().Get("range")
+	if id == "" {
+		http.Error(w, "missing node id", http.StatusBadRequest)
+		return
+	}
+	validRange := false
+	for _, opt := range rangeOptions {
+		if key == opt.Key {
+			validRange = true
+			break
+		}
+	}
+	if !validRange {
+		http.Error(w, "invalid range", http.StatusBadRequest)
+		return
+	}
+	nodes, err := h.store.ListNodes(false)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	public := false
+	for _, n := range nodes {
+		if n.ID == id {
+			public = true
+			break
+		}
+	}
+	if !public {
+		http.NotFound(w, r)
+		return
+	}
+	win := netqWindow(key)
+	to := time.Now().UnixMilli()
+	from := to - win.dur.Milliseconds()
+	ids := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		ids = append(ids, node.ID)
+	}
+	series, err := h.store.NetSeriesByNode(ids, from, to, win.maxPoints)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	points := series[id]
+	line, area := sparkPathsInWindowScale(points, from, to, sparkSeriesWindowMax(series, from, to))
+	response := homeCardSeriesResponse{Line: line, Area: area}
+	if len(points) == 0 {
+		response.Info = "暂无数据"
+	} else if len(points) < 2 {
+		response.Info = "数据不足"
+	} else if line == "" {
+		response.Info = "暂无流量"
+	}
+	var peak int64
+	for _, p := range points {
+		if v := int64(p.Up); v > peak {
+			peak = v
+		}
+		if v := int64(p.Down); v > peak {
+			peak = v
+		}
+	}
+	response.Peak = FmtRate(peak)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(response)
+}
+
 func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 	nodes, err := h.store.ListNodes(false)
 	// 到期倒计时要用名片里的 expire_at。**一次批量查**，别在循环里逐个查。
@@ -1162,19 +1321,23 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 			log.Printf("[hub] 搜索节点失败: %v", err)
 		}
 	}
-	snap := h.latestSnapshot()
-
-	// 网络曲线：一次查询拿全部节点最近 1 小时的 5 分钟点，
-	// 而不是每台节点查一次 History——首页会同时渲染所有节点。
-	series, _ := h.store.RecentNetSeries(time.Now().Add(-time.Hour).UnixMilli())
-
-	// 卡片底部的互动数据，**一次批量取完**再按节点分发。
-	// 每张卡各查三次的话，几十台就是一二百次往返。
-	voter := h.voterID(w, r)
+	rangeWin := netqWindow(r.URL.Query().Get("range"))
 	ids := make([]string, 0, len(nodes))
 	for _, n := range nodes {
 		ids = append(ids, n.ID)
 	}
+	snap := h.latestSnapshot()
+
+	// 节点卡片和总览共用所选时间范围。一次批量查询并按时间分桶，
+	// 避免逐节点读取，也避免把少量样本拉伸到整条图表宽度。
+	seriesTo := now.UnixMilli()
+	seriesFrom := seriesTo - rangeWin.dur.Milliseconds()
+	series, _ := h.store.NetSeriesByNode(ids, seriesFrom, seriesTo, dashMaxPoints)
+	sparkScale := sparkSeriesWindowMax(series, seriesFrom, seriesTo)
+
+	// 卡片底部的互动数据，**一次批量取完**再按节点分发。
+	// 每张卡各查三次的话，几十台就是一二百次往返。
+	voter := h.voterID(w, r)
 	voteAll, _ := h.store.VoteCounts("node", ids, voter)
 	artCnt, _ := h.store.CountByNode("node_articles", "")
 	cmtCnt, _ := h.store.CountByNode("comments", "status = 'approved'")
@@ -1183,7 +1346,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 	online := 0
 	for _, n := range nodes {
 		m := snap[n.ID]
-		c := nodeCard{Node: n, Latest: m, FlagCode: flagCode(&n)}
+		c := nodeCard{Node: n, Latest: m, FlagCode: flagCode(&n), SparkRange: dashSpanPrefix(rangeWin.key)}
 		if v, ok := voteAll[n.ID]; ok {
 			c.VoteUp, c.VoteDown = v.Up, v.Down
 			c.MineUp, c.MineDown = v.MineUp(), v.MineDown()
@@ -1202,9 +1365,18 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 			c.LoadLv = levelClass(c.LoadPct)
 		}
 		if m != nil {
-			c.SparkLine, c.SparkArea = sparkPaths(series[n.ID])
+			points := series[n.ID]
+			c.SparkLine, c.SparkArea = sparkPathsInWindowScale(points, seriesFrom, seriesTo, sparkScale)
+			switch {
+			case len(points) == 0:
+				c.SparkInfo = "暂无数据"
+			case len(points) < 2:
+				c.SparkInfo = "数据不足"
+			case c.SparkLine == "":
+				c.SparkInfo = "暂无流量"
+			}
 			// 曲线量级：取窗口内的上下行峰值当刻度标注
-			for _, p := range series[n.ID] {
+			for _, p := range points {
 				if up := int64(p.Up); up > c.SparkPeak {
 					c.SparkPeak = up
 				}
@@ -1237,6 +1409,11 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		// （没填 ≠ 永久，站长可能只是还没填）。
 		if pr := profiles[n.ID]; pr != nil {
 			c.ExpireText, c.ExpireLv = expireTag(pr.ExpireAt)
+			c.RenewText = formatPrice(pr.Price)
+		}
+		if c.RenewText == "" {
+			c.RenewEmpty = true
+			c.RenewText = "¥- /年"
 		}
 
 		// 三网延迟：固定按 电信 → 联通 → 移动 排，缺哪个就少哪个
@@ -1265,7 +1442,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		globe = globeData{}
 		globeJSON = []byte(`{"places":[]}`)
 	}
-	dash := h.buildDashboard()
+	dash := h.buildDashboard(rangeWin)
 	// 波动图数据：字段名压到最短（1 分钟一个点、60 个点，
 	// 全写成 {timestamp, up_bytes_per_sec} 会让 HTML 白胖一圈）
 	dashJSON, err := json.Marshal(ratePointsJSON(dash.Points))
@@ -1645,45 +1822,14 @@ func (h *Hub) renderNodePage(w http.ResponseWriter, r *http.Request, slug, comme
 	}
 
 	// 赞/踩：小鸡自己一票，每条评论各一票，一次查询批量取
-	ids := []string{node.ID}
-	comments, _ := h.store.ListComments(node.ID, !isAdmin)
-	byID := make(map[string]string, len(comments)) // 评论 ID -> 作者，供「回复 @某人」显示
-	for _, c := range comments {
-		ids = append(ids, c.ID)
-		byID[c.ID] = c.Author
-	}
 	if counts, err := h.store.VoteCounts("node", []string{node.ID}, voter); err == nil {
 		data.Votes = counts[node.ID]
 	}
-	ccounts, _ := h.store.VoteCounts("comment", ids[1:], voter)
-	for _, c := range comments {
-		cv := commentView{Comment: c, Votes: ccounts[c.ID]}
-		if c.ParentID != "" {
-			if a, ok := byID[c.ParentID]; ok {
-				cv.ReplyTo = a
-			}
-		}
-		// 联系方式只给主人看
-		if !isAdmin {
-			cv.Contact = ""
-		}
-		data.Comments = append(data.Comments, cv)
-	}
-	data.CommentN = len(comments)
+	data.CommentCount, _ = h.store.CountComments(node.ID, !isAdmin)
 	data.NetQ = h.LoadNetQRange(node.ID, r.URL.Query().Get("netq_range"))
 	data.Tasks = h.nodeTasks(node.ID, 6)
 	data.Uptime = h.loadUptime(node.ID)
-	if arts, err := h.store.ListArticles(node.ID); err == nil {
-		for _, a := range arts {
-			data.Articles = append(data.Articles, articleView{
-				ID:      a.ID,
-				Title:   firstNonEmpty(a.Title, "无标题"),
-				Summary: a.Summary,
-				HTML:    RenderMarkdown(a.ContentMD),
-				When:    relativeTime(a.CreatedAt),
-			})
-		}
-	}
+	data.ArticleCount, _ = h.store.CountArticles(node.ID)
 
 	// 访问统计（粗粒度：PV 每次 +1）
 	profile.PV++
@@ -2235,7 +2381,7 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 	// 面板主机自身（Hub 所在机器）的资源占用。
 	// 原来在 /dashboard 上，那个页面删掉后并到后台 ——
 	// "面板会不会先撑不住"是站长该关心的事，跟访客无关。
-	data.Host, data.HostNote = h.collectHostSelf()
+	data.HostNodeID, data.Host, data.HostNote = h.hostSelfSnapshot(nodes)
 	if data.Host != nil {
 		data.HostMemPct = Pct(float64(data.Host.Mem.Used), float64(data.Host.Mem.Total))
 		data.HostDiskPct = Pct(float64(data.Host.Disk.Used), float64(data.Host.Disk.Total))
@@ -2474,7 +2620,7 @@ func (h *Hub) handleAdminTokens(w http.ResponseWriter, r *http.Request) {
 		}
 		ttlH, _ := strconv.Atoi(r.FormValue("ttl_hours"))
 		uses, _ := strconv.Atoi(r.FormValue("max_uses"))
-		if _, err := h.CreateInstallToken(label, time.Duration(ttlH)*time.Hour, uses); err != nil {
+		if _, err := h.CreateInstallToken(label, time.Duration(ttlH)*time.Hour, uses, label); err != nil {
 			log.Printf("[hub] 创建安装令牌失败: %v", err)
 		}
 		_ = h.store.AddAudit("admin", "token.create", label, "")
@@ -2483,7 +2629,7 @@ func (h *Hub) handleAdminTokens(w http.ResponseWriter, r *http.Request) {
 		_ = h.store.SetSetting(tokenKeyPrefix+tok, "")
 		_ = h.store.AddAudit("admin", "token.revoke", tok, "")
 	}
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin#sys", http.StatusSeeOther)
 }
 
 // handleAdminGroups 创建分组、移动节点或删除分组。
@@ -2557,10 +2703,15 @@ func (h *Hub) handleAdminGroups(w http.ResponseWriter, r *http.Request) {
 
 // handleAdminNodes 后台节点操作：改名、改可见性、删除。
 func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
+	wantsJSON := strings.Contains(r.Header.Get("Accept"), "application/json")
 	if !h.adminAuthed(r) {
 		// 抽干 body 再跳转：否则带 body 的 POST 会因未读数据触发 RST，
 		// 连 303 都发不出去，浏览器只看到"连接被重置"。
 		drainBody(w, r)
+		if wantsJSON {
+			writeErr(w, http.StatusUnauthorized, "登录已过期，请重新进入后台")
+			return
+		}
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
@@ -2576,11 +2727,39 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 	id := r.FormValue("id")
 	node, err := h.store.GetNode(id)
 	if err != nil || node == nil {
+		if wantsJSON {
+			writeErr(w, http.StatusNotFound, "节点不存在")
+			return
+		}
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
 
 	switch r.FormValue("action") {
+	case "sort_order":
+		sortOrder, parseErr := strconv.Atoi(strings.TrimSpace(r.FormValue("sort_order")))
+		if parseErr != nil || sortOrder < -1000000 || sortOrder > 1000000 {
+			if wantsJSON {
+				writeErr(w, http.StatusBadRequest, "排序 ID 需为 -1000000 到 1000000 之间的整数")
+			} else {
+				http.Redirect(w, r, "/admin#nodes", http.StatusSeeOther)
+			}
+			return
+		}
+		if err := h.store.SetNodeSortOrder(node.ID, sortOrder); err != nil {
+			if wantsJSON {
+				writeErr(w, http.StatusInternalServerError, "保存排序 ID 失败，请重试")
+			} else {
+				http.Error(w, "保存排序 ID 失败", http.StatusInternalServerError)
+			}
+			return
+		}
+		_ = h.store.AddAudit("admin", "node.sort_order", node.ID, strconv.Itoa(sortOrder))
+		if wantsJSON {
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": node.ID, "sort_order": sortOrder})
+			return
+		}
 	case "rename":
 		if name := strings.TrimSpace(r.FormValue("name")); name != "" {
 			node.Name = name
@@ -2600,9 +2779,12 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 		// 到期日 / 续费费用存在 node_profile 里（不是 nodes）——
 		// 它们是"站长填的资料"，不是机器上报的。
 		//
-		// ⚠️ 只在表单**真的带了这两个字段**时才写：这个 rename 分支
+		// ⚠️ 只在表单**真的带了资料字段**时才写：这个 rename 分支
 		// 还被别处复用（比如只改个名字），无脑覆盖会把已填的抹掉。
-		if _, has := r.Form["expire_at"]; has {
+		_, hasExpire := r.Form["expire_at"]
+		_, hasStructuredPrice := r.Form["price_amount"]
+		_, hasFreePrice := r.Form["price"]
+		if hasExpire || hasStructuredPrice || hasFreePrice {
 			prof, _ := h.store.GetProfile(node.ID)
 			if prof == nil {
 				prof = &model.NodeProfile{NodeID: node.ID}
@@ -2611,20 +2793,21 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 			//
 			// ⚠️ 勾了永久时浏览器**不会提交**被禁用的日期框，
 			// 所以不能只看 expire_at —— 会变成空串（= 没填）。
-			if r.FormValue("expire_forever") != "" {
-				prof.ExpireAt = expireForever
-			} else {
-				prof.ExpireAt = clampRunes(normalizeExpireDateInput(r.FormValue("expire_at")), 32)
+			if hasExpire {
+				if r.FormValue("expire_forever") != "" {
+					prof.ExpireAt = expireForever
+				} else {
+					prof.ExpireAt = clampRunes(normalizeExpireDateInput(r.FormValue("expire_at")), 32)
+				}
 			}
-			// 费用从弹窗的三件套拼出来。三件套都没带时（老表单）
-			// 退回读 price 原值，别把已填的清掉。
-			if _, has := r.Form["price_amount"]; has {
+			// 自由文本续费信息直接保存；旧版结构化表单仍兼容。
+			if hasFreePrice {
+				prof.Price = clampRunes(strings.TrimSpace(r.FormValue("price")), 64)
+			} else if hasStructuredPrice {
 				prof.Price = priceFromForm(
 					r.FormValue("price_amount"),
 					r.FormValue("price_cur"),
 					r.FormValue("price_per"))
-			} else if _, has := r.Form["price"]; has {
-				prof.Price = clampRunes(strings.TrimSpace(r.FormValue("price")), 64)
 			}
 			prof.UpdatedAt = time.Now().UnixMilli()
 			if err := h.store.SaveProfile(prof); err != nil {
@@ -2647,13 +2830,27 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 	case "toggle":
 		// 一键显示/隐藏：public <-> private。unlisted（不索引但仍可访问）算「显示」，
 		// 所以隐藏只认 private。
-		if node.Visibility == model.VisibilityPrivate {
+		if desired := r.FormValue("visibility"); desired == "public" || desired == "private" {
+			node.Visibility = model.Visibility(desired)
+		} else if node.Visibility == model.VisibilityPrivate {
 			node.Visibility = model.VisibilityPublic
 		} else {
 			node.Visibility = model.VisibilityPrivate
 		}
-		_ = h.store.UpdateNode(node)
+		if err := h.store.SetNodeVisibility(node.ID, node.Visibility); err != nil {
+			if wantsJSON {
+				writeErr(w, http.StatusInternalServerError, "保存展示状态失败，请重试")
+			} else {
+				http.Error(w, "保存展示状态失败", http.StatusInternalServerError)
+			}
+			return
+		}
 		_ = h.store.AddAudit("admin", "node.visibility", node.ID, string(node.Visibility))
+		if wantsJSON {
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": node.ID, "visibility": node.Visibility})
+			return
+		}
 	case "save_profile":
 		h.savePost(node, r.Form)
 		if r.FormValue("back") == "post" {

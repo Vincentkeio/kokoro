@@ -1,10 +1,39 @@
 package hub
 
 import (
+	"os"
+	"strings"
 	"time"
 
 	"github.com/Vincentkeio/kokoro/internal/model"
 )
+
+// Reuse the same Agent snapshot as the public panel. A page request must never
+// run a second collector or wait for a CPU sampling interval.
+func hostSelfSnapshot(hostname string, nodes []model.Node, snap map[string]*model.Metrics) (string, *model.Metrics, string) {
+	var id string
+	for _, node := range nodes {
+		if hostname == "" || !strings.EqualFold(node.Hostname, hostname) {
+			continue
+		}
+		if id != "" {
+			return "", nil, "存在同名主机，无法确定面板主机对应的节点"
+		}
+		id = node.ID
+	}
+	if id == "" {
+		return "", nil, "面板主机尚未接入 Agent"
+	}
+	if snap[id] == nil {
+		return id, nil, "等待面板主机的 Agent 上报"
+	}
+	return id, snap[id], ""
+}
+
+func (h *Hub) hostSelfSnapshot(nodes []model.Node) (string, *model.Metrics, string) {
+	hostname, _ := os.Hostname()
+	return hostSelfSnapshot(hostname, nodes, h.latestSnapshot())
+}
 
 // snapshotTTL 是"每节点最新指标"的内存缓存时长。
 //

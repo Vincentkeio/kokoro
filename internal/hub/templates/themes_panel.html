@@ -82,7 +82,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
   <section class="panel" data-atab="themes">
     <h3>主题</h3>
     <p class="th-intro">
-      面板现在提供「简洁、可爱、科技」三套完整主题。每套都有配套壁纸、图表配色和卡片细节；切换后，整站同步使用同一套视觉风格。
+      面板内置「简洁、纸间、朦胧、极夜」四套主题，分别搭配图表形态、卡片细节与配色；切换后整站同步应用。
     </p>
 
     {{if .Msg}}<p class="th-msg {{if hasPrefix .Msg "导入失败"}}{{"err"}}err{{else}}ok ok{{end}}">{{.Msg}}</p>{{end}}
@@ -130,7 +130,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
   <section class="panel" data-atab="themes">
     <h3>壁纸</h3>
     <p class="th-intro" style="margin-bottom:12px">
-      「简洁、可爱、科技」各自使用配套壁纸；这里的站点壁纸设置保留给导入的自定义主题。
+      内置主题使用各自的配套壁纸；这里的站点壁纸设置保留给导入的自定义主题。
     </p>
 
     {{if .Wallpaper.Err}}<p class="th-msg err">{{.Wallpaper.Err}}</p>{{end}}

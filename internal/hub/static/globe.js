@@ -421,6 +421,12 @@
     h.appendChild(this.glCanvas);
     h.appendChild(this.ovCanvas);
 
+    this.labelLayer = document.createElement('div');
+    this.labelLayer.className = 'globe-labels';
+    h.appendChild(this.labelLayer);
+    this.nodeLabels = {};
+    this.labelMode = 'labels';
+
     this.ctx2d = this.ovCanvas.getContext('2d');
   };
 
@@ -663,7 +669,12 @@
     // 半径留 6% 余量，航线弧顶会甩出球面一点，不然会被画布裁掉。
     // zoom 直接乘在半径上：点阵、球面、标记、航线全都走 R，
     // 所以缩放一处生效、各层不会错位。
-    this.R = Math.min(this.w, this.h) / 2 * 0.88 * this.zoom;
+    // Use the shared card body as the size reference in both annotation modes.
+    // Reserve the list's width even while labels are visible so toggling only
+    // moves the globe horizontally; it never changes its apparent diameter.
+    var body = this.host.closest('.globe-body');
+    var bodyWidth = body ? body.clientWidth : this.w;
+    this.R = Math.min(bodyWidth * .31, this.h * .42, bodyWidth * .28) * this.zoom;
 
     // ⚠️ 叠加层必须按 dpr 缩放。
     //
@@ -735,6 +746,17 @@
   };
 
   KokoroGlobe.prototype._step = function (reduce, now) {
+    // 低频兜底自检：ResizeObserver 不是万能的（浏览器还跑着缓存下来的
+    // 旧 JS、观察器被别的脚本断开、祖先元素高度变化都可能漏）。
+    // 每秒比对一次容器高度，对不上就重设分辨率 —— 只差一度也要修，
+    // 宁可偶尔多算一次，也不能让画布停在旧尺寸上被裁掉下半球。
+    if (!this._sizeCheckAt || now - this._sizeCheckAt > 1000) {
+      this._sizeCheckAt = now;
+      if (this.host && this.host.clientHeight !== this._lastHostH) {
+        this._lastHostH = this.host.clientHeight;
+        this._resize();
+      }
+    }
     // 松手后的惯性 + 静止时的自动旋转
     var moved = false;
     if (!this.dragging) {
@@ -866,6 +888,7 @@
           var route = this._arc(this.hub, place, 72);
           if (!route.segs.length) continue;
           var end = this._project(place.lat, place.lon);
+          if (!isFinite(hp.x) || !isFinite(hp.y) || !isFinite(end.x) || !isFinite(end.y)) continue;
           var onlineRoute = place.online !== false;
           g.save();
           g.lineCap = 'round';
@@ -914,6 +937,8 @@
       g.fill();
     }
 
+    this._drawNodeLabels(g, c);
+
     // 主机用单圈细描边标记；强调位置，但保持全图静止。
     if (this.hub) {
       var hp2 = this._project(this.hub.lat, this.hub.lon);
@@ -929,6 +954,62 @@
         g.fill();
       }
     }
+  };
+
+  KokoroGlobe.prototype.setLabelMode = function (mode) {
+    this.labelMode = mode === 'list' ? 'list' : 'labels';
+    this.labelLayer.hidden = this.labelMode === 'list';
+    this._resize();
+    this._render();
+  };
+
+  // Leader lines stay attached to projected locations. Back-facing locations
+  // attach at the horizon with dashed lines, keeping every node discoverable.
+  KokoroGlobe.prototype._drawNodeLabels = function (g, colors) {
+    if (this.labelMode === 'list') return;
+    var self = this, sides = [[], []], active = {};
+    this.places.forEach(function (place) {
+      if (place.lat == null || place.lon == null) return;
+      var p = self._project(place.lat, place.lon);
+      var dx = p.x-self.cx, dy=p.y-self.cy, length=Math.hypot(dx,dy)||1;
+      if (p.z<=0) { p.x=self.cx+dx/length*self.R; p.y=self.cy+dy/length*self.R; }
+      var side = dx<0 ? 0 : 1;
+      sides[side].push({place:place,p:p});
+    });
+    sides.forEach(function (points, side) {
+      points.sort(function(a,b){ return a.p.y-b.p.y || String(a.place.key).localeCompare(String(b.place.key)); });
+      var gap=Math.min(30,(self.h-30)/Math.max(1,points.length));
+      points.forEach(function (entry,index) {
+        var place=entry.place, p=entry.p, key=place.key;
+        active[key]=true;
+        var label=self.nodeLabels[key];
+        if (!label) {
+          label=document.createElement('div'); label.className='globe-node-label';
+          var original=document.querySelector('.globe-node-entry[data-node-key="'+CSS.escape(key)+'"] .flag');
+          if (original) label.appendChild(original.cloneNode(true));
+          var text=document.createElement('span'); text.textContent=place.city||place.sub||place.name;
+          label.appendChild(text); label.title=place.name+' · '+text.textContent;
+          self.labelLayer.appendChild(label); self.nodeLabels[key]=label;
+        }
+        var previous=index ? points[index-1].y : 8-gap;
+        var y=clamp(p.y-10,previous+gap,self.h-22-(points.length-index-1)*gap);
+        entry.y=y;
+        var width=Math.min(104,Math.max(72,self.w*.25));
+        var x=side ? self.w-width-5 : 5;
+        label.style.width=width+'px';
+        label.style.transform='translate('+x+'px,'+y+'px)';
+        label.classList.toggle('is-behind',p.z<=0);
+        g.save(); g.strokeStyle=colors.arc; g.lineWidth=.7;
+        g.globalAlpha=p.z<=0 ? .35 : .7;
+        if (p.z<=0) g.setLineDash([2,3]);
+        g.beginPath(); g.moveTo(p.x,p.y);
+        g.lineTo(side ? x-8 : x+width+8,y+10);
+        g.lineTo(side ? x : x+width,y+10); g.stroke(); g.restore();
+      });
+    });
+    Object.keys(this.nodeLabels).forEach(function(key){
+      if (!active[key]) { self.nodeLabels[key].remove(); delete self.nodeLabels[key]; }
+    });
   };
 
   // 把流光限制在球面正面：不会穿过地球，也不画轨道或整圈脉冲。

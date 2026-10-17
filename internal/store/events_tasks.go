@@ -298,6 +298,39 @@ created_at, started_at, finished_at FROM node_tasks`
 	return out, rows.Err()
 }
 
+// ListTaskCardTasks 只取卡片需要的内容：所有待执行任务，以及每种测试最近
+// 一条已结束结果。历史 detail 可能包含很大的 JSON，首页无需重复读取几十条。
+func (s *Store) ListTaskCardTasks(nodeID string) ([]model.NodeTask, error) {
+	const active = `status IN (?, ?)`
+	q := `WITH latest AS (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY kind ORDER BY created_at DESC, rowid DESC) AS rn
+    FROM node_tasks WHERE node_id = ? AND status IN (?, ?)
+)
+SELECT id, node_id, kind, title, cmd, status, summary, detail, error,
+       created_at, started_at, finished_at
+FROM node_tasks
+WHERE node_id = ? AND (` + active + ` OR id IN (SELECT id FROM latest WHERE rn = 1))
+ORDER BY created_at DESC, rowid DESC LIMIT 30`
+	queued, running := string(model.TaskQueued), string(model.TaskRunning)
+	rows, err := s.db.Query(q, nodeID, string(model.TaskDone), string(model.TaskFailed), nodeID, queued, running)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.NodeTask
+	for rows.Next() {
+		var t model.NodeTask
+		var status string
+		if err := rows.Scan(&t.ID, &t.NodeID, &t.Kind, &t.Title, &t.Cmd, &status, &t.Summary,
+			&t.Detail, &t.Error, &t.CreatedAt, &t.StartedAt, &t.FinishedAt); err != nil {
+			return nil, err
+		}
+		t.Status = model.TaskStatus(status)
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // RunningTaskCount 统计某台机器正在跑的任务数，卡片上显示"测试中"用。
 func (s *Store) RunningTaskCount(nodeID string) (int, error) {
 	var n int

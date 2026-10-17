@@ -47,6 +47,16 @@ func (s *Store) ListArticles(nodeID string) ([]*model.Article, error) {
 	return out, rows.Err()
 }
 
+// CountArticles counts article records without loading their Markdown bodies.
+func (s *Store) CountArticles(nodeID string) (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM node_articles WHERE node_id = ?`, nodeID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("统计文章失败: %w", err)
+	}
+	return count, nil
+}
+
 // GetArticle 按 id 取一篇。
 func (s *Store) GetArticle(id string) (*model.Article, error) {
 	row := s.db.QueryRow(`SELECT `+articleCols+` FROM node_articles WHERE id = ?`, id)

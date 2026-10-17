@@ -233,6 +233,7 @@ func kindFor(name string) tokenKind {
 		strings.HasPrefix(name, "--kokoro-chart-tooltip-"):
 		return kindColor
 	case name == "--kokoro-globe-route" || name == "--kokoro-globe-flow" ||
+		name == "--kokoro-globe-lit-day" || name == "--kokoro-globe-lit-night" ||
 		name == "--kokoro-globe-flow-core" || name == "--kokoro-globe-node-online" ||
 		name == "--kokoro-globe-node-offline" ||
 		name == "--kokoro-clock-color" || name == "--kokoro-clock-muted" ||
@@ -321,6 +322,8 @@ var Singles = map[string]string{
 	"--kokoro-globe-rim":                    "rgba(47, 111, 235, .18)",
 	"--kokoro-globe-route":                  "var(--kokoro-color-primary)",
 	"--kokoro-globe-flow":                   "var(--kokoro-color-primary)",
+	"--kokoro-globe-lit-day":                "var(--kokoro-globe-flow)",
+	"--kokoro-globe-lit-night":              "var(--kokoro-globe-flow)",
 	"--kokoro-globe-flow-core":              "#f5fff9",
 	"--kokoro-globe-node-online":            "var(--kokoro-status-online)",
 	"--kokoro-globe-node-offline":           "var(--kokoro-color-text-faint)",

@@ -184,7 +184,18 @@ func (h *Hub) netqProvinces() []string {
 		log.Printf("[hub] netq_provinces 解析失败，退回默认: %v", err)
 		return append([]string(nil), netqDefaultProvinces...)
 	}
-	return sanitizeNetQProvinces(list)
+	return requiredNetQProvinces(list)
+}
+
+// Shanghai is the mandatory baseline, including for legacy empty selections.
+func requiredNetQProvinces(list []string) []string {
+	clean := sanitizeNetQProvinces(list)
+	for _, p := range clean {
+		if p == "上海" {
+			return clean
+		}
+	}
+	return append([]string{"上海"}, clean...)
 }
 
 // sanitizeNetQProvinces 去掉不在内置表里的省份、去重、排序。
@@ -211,10 +222,9 @@ func sanitizeNetQProvinces(in []string) []string {
 	return out
 }
 
-// netqSaveProvinces 校验并保存省份选择。**空数组是合法值** —— 全不选，
-// agent 收到后一轮都不跑（分省探测整体关闭）。
+// netqSaveProvinces 校验并保存范围，上海基准始终保留。
 func (h *Hub) netqSaveProvinces(list []string) ([]string, error) {
-	clean := sanitizeNetQProvinces(list)
+	clean := requiredNetQProvinces(list)
 	buf, err := json.Marshal(clean)
 	if err != nil {
 		return nil, err

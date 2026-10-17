@@ -118,12 +118,21 @@ func TestStickyHeaderNeverTransparent(t *testing.T) {
 	var bad []string
 	for _, m := range ruleRe.FindAllStringSubmatch(string(main), -1) {
 		sel, block := m[1], m[2]
-		// 只盯瞄准 .top 自身的规则；.top-owner / .top-clock / .top-tools 不算
+		// 只盯瞄准 .top 自身的规则；.top-owner / .top-clock / .top-tools 不算。
+		// 判据是每条选择器的**主语**（逗号分开、取最后一个复合选择器）：
+		//  `.top .top-owner` 的主语是 .top-owner（名牌里的元素），
+		// 把它当成"顶栏变透明"是误伤 —— 顶栏本体仍由主语为 .top 的规则守。
 		hit := false
-		for _, part := range strings.FieldsFunc(sel, func(r rune) bool {
-			return r == ',' || r == '>' || r == '+' || r == '~' || r == ' '
-		}) {
-			if strings.TrimSpace(part) == ".top" {
+		for _, one := range strings.Split(sel, ",") {
+			parts := strings.FieldsFunc(one, func(r rune) bool {
+				return r == '>' || r == '+' || r == '~' || r == ' ' || r == '\t' || r == '\n'
+			})
+			if len(parts) == 0 {
+				continue
+			}
+			subject := strings.TrimSpace(parts[len(parts)-1])
+			if subject == ".top" || strings.HasPrefix(subject, ".top.") ||
+				strings.HasPrefix(subject, ".top:") || strings.HasPrefix(subject, ".top[") {
 				hit = true
 			}
 		}

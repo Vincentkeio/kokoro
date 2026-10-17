@@ -296,6 +296,7 @@ func (m *Manager) fire(ctx context.Context, sender notify.Notifier, rule model.A
 		Body:     detailBody(rule, node, value, sustained, false),
 		Level:    levelOf(rule),
 		NodeID:   node.ID,
+		NodeName: node.Name,
 		NodeURL:  m.nodeURL(node),
 		Channels: rule.Channels,
 	})
@@ -325,6 +326,7 @@ func (m *Manager) resolve(ctx context.Context, sender notify.Notifier, rule mode
 		Body:     detailBody(rule, node, value, 0, true),
 		Level:    notify.LevelInfo,
 		NodeID:   node.ID,
+		NodeName: node.Name,
 		NodeURL:  m.nodeURL(node),
 		Channels: rule.Channels,
 	})
@@ -851,6 +853,27 @@ func (m *Manager) HandleNotifyConfig(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, "读取通知配置失败")
 			return
 		}
+		if strings.EqualFold(p.str("action"), "test") {
+			channel := strings.ToLower(strings.TrimSpace(p.str("channel")))
+			ctx, cancel := context.WithTimeout(r.Context(), sendTimeout)
+			defer cancel()
+			var testErr error
+			if channel == "" {
+				testErr = notify.Test(ctx, cfg)
+			} else {
+				testErr = notify.TestChannel(ctx, cfg, channel)
+			}
+			if testErr != nil {
+				log.Printf("[alert] 测试通知失败: %v", testErr)
+				_ = m.st.AddAudit("admin", "notify.test", channel, "失败: "+testErr.Error())
+				writeJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "test_ok": false, "error": testErr.Error()})
+				return
+			}
+			_ = m.st.AddAudit("admin", "notify.test", channel, "已发送测试通知")
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "test_ok": true, "channel": channel})
+			return
+		}
+
 		changed := applyPayload(&cfg, p)
 		if changed {
 			if err := notify.SaveConfig(m.st, cfg); err != nil {
@@ -859,21 +882,6 @@ func (m *Manager) HandleNotifyConfig(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			_ = m.st.AddAudit("admin", "notify.config.save", "notify.config", "")
-		}
-		if strings.EqualFold(p.str("action"), "test") {
-			ctx, cancel := context.WithTimeout(r.Context(), sendTimeout)
-			defer cancel()
-			if err := notify.Test(ctx, cfg); err != nil {
-				log.Printf("[alert] 测试通知失败: %v", err)
-				_ = m.st.AddAudit("admin", "notify.test", "", "失败: "+err.Error())
-				writeJSON(w, http.StatusBadGateway, map[string]any{
-					"ok": true, "saved": changed, "test_ok": false, "error": err.Error(),
-				})
-				return
-			}
-			_ = m.st.AddAudit("admin", "notify.test", "", "已发送测试通知")
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "saved": changed, "test_ok": true})
-			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "saved": changed, "config": masked(cfg)})
 

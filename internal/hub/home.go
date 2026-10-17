@@ -94,12 +94,14 @@ func startOfMonth() int64 {
 
 // globePlace 是地球上的一个点。字段名即前端 JSON 的键，改名字要同步改 globe.js。
 type globePlace struct {
-	Key    string  `json:"key"`
-	Name   string  `json:"name"`
-	Sub    string  `json:"sub"`
-	Lat    float64 `json:"lat"`
-	Lon    float64 `json:"lon"`
-	Online bool    `json:"online"`
+	Country string  `json:"country,omitempty"`
+	City    string  `json:"city,omitempty"`
+	Key     string  `json:"key"`
+	Name    string  `json:"name"`
+	Sub     string  `json:"sub"`
+	Lat     float64 `json:"lat"`
+	Lon     float64 `json:"lon"`
+	Online  bool    `json:"online"`
 }
 
 type globeData struct {
@@ -130,12 +132,14 @@ func (h *Hub) buildGlobe(cards []nodeCard) globeData {
 			continue
 		}
 		g.Places = append(g.Places, globePlace{
-			Key:    c.ID,
-			Name:   c.Name,
-			Sub:    c.RegionLabel(),
-			Lat:    c.Lat,
-			Lon:    c.Lon,
-			Online: c.Online,
+			Country: c.FlagCode,
+			City:    firstNonEmpty(c.City, c.RegionLabel(), c.Name),
+			Key:     c.ID,
+			Name:    c.Name,
+			Sub:     c.RegionLabel(),
+			Lat:     c.Lat,
+			Lon:     c.Lon,
+			Online:  c.Online,
 		})
 		// FlagCode 已经是 ISO alpha-2（列表画国旗用的那份），直接拿它当
 		// 点亮用的国家码，不去猜 Country 字段的文本格式。
@@ -226,6 +230,81 @@ func sparkPaths(points []store.NetPoint) (line, area string) {
 	}
 	fmt.Fprintf(&a, " L%.1f %.1f L0 %.1f Z", sparkW, sparkH, sparkH)
 	return b.String(), a.String()
+}
+
+// sparkSeriesWindowMax gives every node chart in the same view a shared
+// vertical scale. Scaling each card against its own peak made sparse or
+// low-traffic nodes look as busy as the busiest node.
+func sparkSeriesWindowMax(series map[string][]store.NetPoint, from, to int64) float64 {
+	maxV := 0.0
+	for _, points := range series {
+		for _, p := range points {
+			if p.Bucket < from || p.Bucket > to {
+				continue
+			}
+			if v := p.Up + p.Down; v > maxV {
+				maxV = v
+			}
+		}
+	}
+	return maxV
+}
+
+// sparkPathsInWindow maps samples to their real position inside a fixed time
+// window. Sparse or late-starting data therefore stays sparse instead of
+// stretching the first and last sample across the whole chart.
+func sparkPathsInWindow(points []store.NetPoint, from, to int64) (line, area string) {
+	return sparkPathsInWindowScale(points, from, to, sparkSeriesWindowMax(map[string][]store.NetPoint{"node": points}, from, to))
+}
+
+func sparkPathsInWindowScale(points []store.NetPoint, from, to int64, maxV float64) (line, area string) {
+	if len(points) < 2 || to <= from {
+		return "", ""
+	}
+	if maxV <= 0 {
+		return "", ""
+	}
+	type point struct{ x, y float64 }
+	var segments [][]point
+	var segment []point
+	gapMS := (to - from) / int64(dashMaxPoints) * 3
+	if gapMS < int64(time.Minute/time.Millisecond) {
+		gapMS = int64(time.Minute / time.Millisecond)
+	}
+	prev := int64(0)
+	const pad = 3.0
+	for _, p := range points {
+		if p.Bucket < from || p.Bucket > to {
+			continue
+		}
+		if len(segment) > 0 && p.Bucket-prev > gapMS {
+			segments = append(segments, segment)
+			segment = nil
+		}
+		x := float64(p.Bucket-from) / float64(to-from) * sparkW
+		v := (p.Up + p.Down) / maxV
+		y := sparkH - pad - v*(sparkH-2*pad)
+		segment = append(segment, point{x: x, y: y})
+		prev = p.Bucket
+	}
+	if len(segment) > 0 {
+		segments = append(segments, segment)
+	}
+	var lines, areas strings.Builder
+	for _, seg := range segments {
+		if len(seg) < 2 {
+			continue
+		}
+		fmt.Fprintf(&lines, "M%.1f %.1f", seg[0].x, seg[0].y)
+		fmt.Fprintf(&areas, "M%.1f %.1f", seg[0].x, seg[0].y)
+		for _, p := range seg[1:] {
+			fmt.Fprintf(&lines, " L%.1f %.1f", p.x, p.y)
+			fmt.Fprintf(&areas, " L%.1f %.1f", p.x, p.y)
+		}
+		last, first := seg[len(seg)-1], seg[0]
+		fmt.Fprintf(&areas, " L%.1f %.1f L%.1f %.1f Z", last.x, sparkH, first.x, sparkH)
+	}
+	return lines.String(), areas.String()
 }
 
 // levelClass 把占用率映射成配色档位。颜色表达状态，别让人去算数字。
@@ -367,7 +446,7 @@ func specDisk(total int64) string {
 // 改了 CSS/JS 必须同步 +1：宝塔默认给 js/css 设 12 小时缓存，
 // URL 不变浏览器就吃旧文件，表现成"代码改了但页面没变"。
 // 加 ?v= 是唯一能让缓存立即失效的办法。
-const staticVer = "69"
+const staticVer = "73"
 
 // staticAssetURL 给静态资源拼上版本号。
 func staticAssetURL(name string) string {

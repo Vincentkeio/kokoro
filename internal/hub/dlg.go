@@ -61,6 +61,7 @@ type dlgResp struct {
 
 // handleNodeArticles 处理 /n/<slug>/articles.json?page=N
 func (h *Hub) handleNodeArticles(w http.ResponseWriter, r *http.Request, slug string) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	node, err := h.store.GetNodeBySlug(slug)
 	if err != nil || node == nil {
 		writeErr(w, http.StatusNotFound, "节点不存在")
@@ -100,6 +101,7 @@ func (h *Hub) handleNodeArticles(w http.ResponseWriter, r *http.Request, slug st
 
 // handleNodeComments 处理 /n/<slug>/comments.json?page=N
 func (h *Hub) handleNodeComments(w http.ResponseWriter, r *http.Request, slug string) {
+	w.Header().Set("Cache-Control", "private, no-store")
 	node, err := h.store.GetNodeBySlug(slug)
 	if err != nil || node == nil {
 		writeErr(w, http.StatusNotFound, "节点不存在")
@@ -113,20 +115,23 @@ func (h *Hub) handleNodeComments(w http.ResponseWriter, r *http.Request, slug st
 
 	// 访客只看已审核的；管理员能看到全部（含待审），
 	// 否则他在弹窗里没法判断"这条该不该放出去"。
-	cs, err := h.store.ListComments(node.ID, !admin)
+	total, err := h.store.CountComments(node.ID, !admin)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "读取评论失败")
 		return
 	}
 
-	page, pages := pagedIndex(r, len(cs), drawerCommentPage)
-	resp := dlgResp{OK: true, Total: len(cs), Page: page, Pages: pages, IsAdmin: admin}
+	page, pages := pagedIndex(r, total, drawerCommentPage)
+	cs, err := h.store.ListCommentsPage(node.ID, !admin, drawerCommentPage, (page-1)*drawerCommentPage)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "读取评论失败")
+		return
+	}
+	resp := dlgResp{OK: true, Total: total, Page: page, Pages: pages, IsAdmin: admin}
 	if admin {
 		resp.ManageURL = "/admin#comments"
 	}
-	start := (page - 1) * drawerCommentPage
-	for i := start; i < start+drawerCommentPage && i < len(cs); i++ {
-		c := cs[i]
+	for _, c := range cs {
 		item := drawerComment{
 			Author:  firstNonEmpty(c.Author, "匿名"),
 			Content: c.Content,

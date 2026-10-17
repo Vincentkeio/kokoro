@@ -107,6 +107,11 @@ type netqProvHitRate struct {
 // （2026-10-12 实测 28+ 个格子 0%）。勾选范围时给站长看到真实通率，
 // 0% 的省直接在后台标灰，不用勾了才发现整页红叉。
 func (h *Hub) netqProvHitRates() map[string]netqProvHitRate {
+	h.netqHitMu.Lock()
+	defer h.netqHitMu.Unlock()
+	if h.netqHitData != nil && time.Since(h.netqHitAt) < time.Minute {
+		return h.netqHitData
+	}
 	out := map[string]netqProvHitRate{}
 	rows, err := h.store.DB().Query(
 		`SELECT province, COUNT(*), SUM(ok) FROM net_quality
@@ -127,6 +132,9 @@ func (h *Hub) netqProvHitRates() map[string]netqProvHitRate {
 			continue
 		}
 		out[prov] = netqProvHitRate{N: n, Pct: float64(okn) * 100 / float64(n)}
+	}
+	if rows.Err() == nil {
+		h.netqHitData, h.netqHitAt = out, time.Now()
 	}
 	return out
 }

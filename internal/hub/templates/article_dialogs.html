@@ -1,0 +1,38 @@
+{{define "article-dialogs.html"}}
+<div class="dlg-scrim" id="dlg-scrim" hidden>
+
+<div class="dlg" id="d-art" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="文章">
+    <header class="dlg-head">
+      <b class="dlg-title">文章</b>
+      <span class="dlg-admin" id="d-art-admin"></span>
+      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body" id="d-art-body"></div>
+  </div>
+
+  <div class="dlg" id="d-cmt" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="评论">
+    <header class="dlg-head">
+      <b class="dlg-title">评论</b>
+      <span class="dlg-admin" id="d-cmt-admin"></span>
+      <button type="button" class="dlg-x" data-dlgclose aria-label="关闭">✕</button>
+    </header>
+    <div class="dlg-body" id="d-cmt-body"></div>
+    {{/* 留言表单：**卡片弹窗里直接发**。详情页的留言区已下线，
+          这里是唯一入口。提交走 JSON（原地刷新列表），不跳页。 */}}
+    <form class="dcmt-form" id="d-cmt-form" hidden>
+      <div class="row">
+        <input name="author" placeholder="昵称（可留空）" maxlength="32">
+        <input name="contact" placeholder="联系方式，可选 —— 只有站长看得到" maxlength="120">
+      </div>
+      <textarea name="content" rows="3" maxlength="2000"
+                placeholder="说点什么… 想收 / 出这台机器也可以直接写在这里"></textarea>
+      <div class="row">
+        <button class="btn small" type="submit">发出留言</button>
+        <span class="hint" id="d-cmt-msg"></span>
+      </div>
+    </form>
+    <footer class="dlg-foot" id="d-cmt-foot"></footer>
+  </div>
+
+</div>
+{{end}}

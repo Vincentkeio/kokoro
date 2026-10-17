@@ -47,6 +47,24 @@ func TestArticleDialogAndJSON(t *testing.T) {
 	}
 }
 
+func TestNodeArticleActionsOpenSharedDialog(t *testing.T) {
+	h, st := newTestHub(t)
+	n := mkNode(t, st, "节点文章测试", "JP", "日本", "")
+	bodyText := strings.Repeat("这是只允许在弹窗中读取的正文。", 50)
+	if err := st.SaveArticle(&model.Article{NodeID: n.ID, Title: "使用记录", Summary: "配置与使用体验", ContentMD: bodyText}); err != nil {
+		t.Fatal(err)
+	}
+	page := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/n/"+n.Slug, nil))
+	for _, want := range []string{`class="node-content-actions"`, `data-dlg="` + n.Slug + `"`, `aria-controls="d-art"`, `id="d-art"`, "1 篇节点文章"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("detail page missing %q", want)
+		}
+	}
+	if strings.Contains(page, bodyText) {
+		t.Error("full article should be fetched only after opening its dialog")
+	}
+}
+
 // TestSaveArticleKeepsOnePerNode 产品规范是**一台鸡一篇文章**：
 // 再存一次是同篇覆盖，不是新增。数据层由 SaveArticle 的 upsert 保证。
 func TestSaveArticleKeepsOnePerNode(t *testing.T) {

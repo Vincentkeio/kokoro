@@ -56,32 +56,27 @@ func seedMetrics(t *testing.T, st *store.Store, nodeID string) {
 	}
 }
 
-// TestHomeHasClockAndStats 时钟条与统计卡必须渲染出来。
+// TestHomeHasClockAndStats 时钟条与总览卡必须渲染出来。
 func TestHomeHasClockAndStats(t *testing.T) {
 	h, st := newTestHub(t)
 	mkNode(t, st, "测试节点 JP", "JP", "日本 · 东京", "")
 
 	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
 
-	// 时钟现在只显示**主机自己的时间**：用 data-offset（固定 UTC 偏移）算，
-	// 不再是本地/UTC/东京…那一排多时区。断言改成认这个。
-	for _, want := range []string{"hub-clock", "主机时间", "data-offset="} {
+	// 时钟只显示**主机自己的时间**：用 data-offset（固定 UTC 偏移）算，
+	// 不再是本地/UTC/东京…那一排多时区。钟面文案是 UTC±HH:MM 偏移
+	// （"主机时间"字样已按设计去掉，不再断言它）。
+	for _, want := range []string{"hub-clock", "data-offset="} {
 		if !strings.Contains(body, want) {
 			t.Errorf("首页缺少主机时钟的 %s", want)
 		}
 	}
-	// 总览整行也拆了（boss 要求）：节点总数/在线/离线/覆盖地区现在
-	// **首页一处都不显示** —— 机器数在每张卡片的规格里、在线状态在卡片
-	// 角和实时指标里都有，摆一排汇总反而让访客看两遍同样的数字。
-	// 今日/本月流量归「全网速率」卡，仍然在。
-	for _, want := range []string{"今日流量", "本月流量"} {
+	// 「服务器总览」侧栏卡：机器数汇总 + 今日/本月流量。
+	// 2026-10-17 起总览卡回归（boss 要求在这里也能看到总流量），
+	// 旧的"整行拆掉、首页不许出现总览"约束随之作废。
+	for _, want := range []string{"服务器总览", "台服务器", "点亮地区", "今日流量", "本月流量", "总流量"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("首页缺少「%s」", want)
-		}
-	}
-	for _, gone := range []string{"节点总数", "覆盖地区", "总览"} {
-		if strings.Contains(body, gone) {
-			t.Errorf("「%s」应该已从首页删除（总览整行已拆）", gone)
 		}
 	}
 	// 探测点按 boss 要求删掉了
@@ -298,6 +293,31 @@ func TestNetQWavePaths(t *testing.T) {
 	// 上下各留 15% 余量：最值不该顶到 pad 边界
 	if ys[1] < 2 || ys[1] > netqWaveH-2-(netqWaveH-4)*0.15 {
 		t.Errorf("峰值太贴边了: %.1f", ys[1])
+	}
+}
+
+// Missing renewal metadata must retain a visible placeholder with its own style.
+func TestRenewalTagMissingAndFilled(t *testing.T) {
+	for _, tc := range []struct {
+		name, price, class, text string
+	}{
+		{"missing", "", `class="tag renewal-slot renew-empty"`, "¥- /年"},
+		{"filled", "¥100/月", `class="tag renewal-slot"`, "¥100/月"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, st := newTestHub(t)
+			n := mkNode(t, st, "续费标签", "JP", "日本", "")
+			if err := st.SaveProfile(&model.NodeProfile{NodeID: n.ID, Price: tc.price}); err != nil {
+				t.Fatal(err)
+			}
+			body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
+			if !strings.Contains(body, tc.class) || !strings.Contains(body, tc.text) {
+				t.Fatalf("renewal tag did not render its %s state", tc.name)
+			}
+			if tc.price != "" && strings.Contains(body, "renew-empty") {
+				t.Fatal("a filled renewal tag must not use the empty state")
+			}
+		})
 	}
 }
 
@@ -582,7 +602,8 @@ func TestDashResPointsAveragesAcrossNodes(t *testing.T) {
 		}
 	}
 
-	pts := h.dashResPoints([]string{a.ID, b.ID})
+	pts := h.dashResPoints([]string{a.ID, b.ID}, netqWindow("1h"),
+		map[string]int64{a.ID: 4 << 30, b.ID: 4 << 30})
 	if len(pts) != 1 {
 		t.Fatalf("同一分钟桶应合成 1 个点，实际 %d", len(pts))
 	}
@@ -595,7 +616,92 @@ func TestDashResPointsAveragesAcrossNodes(t *testing.T) {
 	}
 
 	// 没有节点时不该查库（ids 为空会拼出 IN () 的错 SQL）
-	if got := h.dashResPoints(nil); got != nil {
+	if got := h.dashResPoints(nil, netqWindow("1h"), nil); got != nil {
 		t.Errorf("空 ids 应返回 nil，实际 %v", got)
+	}
+}
+
+// ---- 总览卡时间窗切换 ----
+
+// activeRangeIs 判断总览卡切换器里 key 对应的按钮是否是高亮态
+// （取 "range-btn on" 那个 <a> 的内容，确认它就是目标窗）。
+func activeRangeIs(body, key string) bool {
+	i := strings.Index(body, `class="range-btn on"`)
+	if i < 0 {
+		return false
+	}
+	seg := body[i:]
+	if j := strings.Index(seg, "</a>"); j >= 0 {
+		seg = seg[:j]
+	}
+	return strings.Contains(seg, "range="+key+`"`)
+}
+
+// TestHomeOverviewRangeSwitch 总览卡的时间窗切换：?range= 选中的按钮高亮、
+// 时段说明与两条曲线的数据都跟随所选窗口；长窗从 rollup 层读（不是截断）。
+// 认不出的值退回 1 小时 —— 宁可按默认画，也不能因为一个错参数就空着。
+func TestHomeOverviewRangeSwitch(t *testing.T) {
+	h, st := newTestHub(t)
+	n := mkNode(t, st, "测试节点 JP", "JP", "日本 · 东京", "")
+
+	// 三小时前与两小时前各一个分钟（已闭合窗口，能进 1m 汇总表）：CPU 40%、内存 50%。
+	// 两点跨一小时 —— 时段说明的 from/to 必须真的不同（桶序号伪装成时间戳的
+	// bug 会让两端显示成同一分钟，2026-10-17 线上真出过）。
+	now := time.Now().UnixMilli()
+	for i := 0; i < 2; i++ {
+		if err := st.InsertMetrics(n.ID, &model.Metrics{
+			V: 1, Ts: now - int64(180-i*60)*60*1000, Seq: int64(i),
+			CPU: model.CPUStat{Usage: 40},
+			Mem: model.MemStat{Total: 4 << 30, Used: 2 << 30},
+			Net: model.NetStat{Up: 1000, Down: 2000},
+		}); err != nil {
+			t.Fatalf("写入指标失败: %v", err)
+		}
+	}
+	if err := st.AggregateRollups(); err != nil {
+		t.Fatalf("生成 rollup 失败: %v", err)
+	}
+
+	// 默认：1 小时按钮亮；这段没有数据，走"采样点还不够"的空态
+	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !activeRangeIs(body, "1h") {
+		t.Error("默认应高亮 1 小时按钮")
+	}
+	if strings.Contains(body, `id="rate-data"`) {
+		t.Error("1 小时窗内没有数据，不该渲染速率曲线")
+	}
+	// 档位齐全：每个 rangeOption 都要有按钮（含 2026-10-17 新增的 12 小时）
+	if c := strings.Count(body, `class="range-btn`); c != len(rangeOptions) {
+		t.Errorf("总览切换器有 %d 个按钮，应为 %d 个（rangeOptions）", c, len(rangeOptions))
+	}
+	if !strings.Contains(body, "range=12h") {
+		t.Error("总览切换器缺少 12 小时档")
+	}
+
+	// 切到 6 小时：按钮亮、说明与图例都写"近 6 小时"，数据从 1m 汇总表来
+	body6 := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/?range=6h", nil))
+	if !activeRangeIs(body6, "6h") {
+		t.Error("?range=6h 应高亮 6 小时按钮")
+	}
+	if !strings.Contains(body6, "近 6 小时 · ") {
+		t.Error("时段说明应写「近 6 小时 · …」")
+	}
+	if !strings.Contains(body6, `id="rate-data"`) {
+		t.Error("6 小时窗内应有数据：速率曲线数据块缺失（长窗没读 rollup？）")
+	}
+	if !strings.Contains(body6, `id="res-data"`) {
+		t.Error("6 小时窗内应有数据：占用率曲线数据块缺失")
+	}
+
+	// 认不出的 range 值退回 1 小时
+	bodyX := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/?range=999d", nil))
+	if !activeRangeIs(bodyX, "1h") {
+		t.Error("非法 range 值应退回 1 小时")
+	}
+
+	// 切换链接不许带 #锚点：带锚点时每次点按钮都会把总览滚到视口顶端，
+	// 和初始状态的版面位置对不上（boss 2026-10-17 报过）。
+	if strings.Contains(body6, "#speed") {
+		t.Error("总览切换链接不应带 #speed 锚点（会引入滚动跳变）")
 	}
 }

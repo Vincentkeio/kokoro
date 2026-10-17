@@ -34,6 +34,44 @@ type benchReport struct {
 	Structured bool
 }
 
+// taskKindRank 是"测试结果"的展示顺序：先系统硬件，再三网质量，最后 IP 质量。
+// 谁先跑完不该决定谁排前面 —— 先看清机器什么配置，再看线路，最后看 IP 质量，
+// 跟人的阅读顺序一致（boss 2026-10-17）。认不出的类型排在最后。
+func taskKindRank(kind string) int {
+	switch {
+	case kind == "bench" || kind == "swap":
+		return 0
+	case strings.HasPrefix(kind, "netquality"):
+		return 1
+	case strings.HasPrefix(kind, "ipquality"):
+		return 2
+	default:
+		return 3
+	}
+}
+
+// benchErrorDuplicated 判断任务级错误是否已被某个条目的错误覆盖。
+//
+// Hub 会把失败条目的原因同时写进任务级 Error（finishTaskFromResult），
+// 两处都渲染就是同一句话说两遍 —— 悬浮面板里曾出现"IP 质量与解锁 失败 /
+// IPv6 质量与解锁：…" 连着两遍（boss 2026-10-17 报过）。
+func benchErrorDuplicated(items []benchItem, msg string) bool {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return false
+	}
+	for _, it := range items {
+		e := strings.TrimSpace(it.Err)
+		if e == "" {
+			continue
+		}
+		if e == msg || strings.Contains(e, msg) || strings.Contains(msg, e) {
+			return true
+		}
+	}
+	return false
+}
+
 // parseBenchNDJSON 逐行解析脚本输出。
 //
 // 认不出来的行**直接跳过**：脚本可能中途打印别的东西，
@@ -120,21 +158,31 @@ func summarizeBench(rep *benchReport) string {
 	// 理由：下行多少 Mbps 是测速那一刻的瞬时值，受测速节点和当时网络影响很大，
 	// 放卡片上参考价值低；而"这 IP 干不干净、是机房还是家宽"才是买家
 	// 扫一眼就要判断的事。带宽数字在详情页和浮窗里仍然看得到。
-	if d := rep.get("ip"); d != nil {
-		// IP 质量等级放最前面 —— 这是买家扫一眼卡片最想知道的事，
-		// 从最安全的绿到最坏的屏蔽。
-		if g := gradeIP(d); g != nil {
-			parts = append(parts, ipGradeEmoji(g.Level)+" IP质量:"+g.Label)
-		}
-		if u, ok := d["unlocked"].([]any); ok {
-			total := 0
-			if t, ok := numOf(d, "unlock_total"); ok {
-				total = int(t)
+	for _, test := range []string{"ip", "ip4", "ip6"} {
+		if d := rep.get(test); d != nil {
+			firstPart := len(parts)
+			// IP 质量等级放最前面 —— 这是买家扫一眼卡片最想知道的事，
+			// 从最安全的绿到最坏的屏蔽。
+			if g := gradeIP(d); g != nil {
+				parts = append(parts, ipGradeEmoji(g.Level)+" IP质量:"+g.Label)
 			}
-			parts = append(parts, fmt.Sprintf("流媒体解锁:%d/%d", len(u), total))
-		}
-		if t := firstNonEmpty(strOf(d, "usage"), strOf(d, "ip_type")); t != "" {
-			parts = append(parts, "性质: "+t)
+			if u, ok := d["unlocked"].([]any); ok {
+				total := 0
+				if t, ok := numOf(d, "unlock_total"); ok {
+					total = int(t)
+				}
+				parts = append(parts, fmt.Sprintf("流媒体解锁:%d/%d", len(u), total))
+			}
+			if t := firstNonEmpty(strOf(d, "usage"), strOf(d, "ip_type")); t != "" {
+				parts = append(parts, "性质: "+t)
+			}
+			if test != "ip" && len(parts) > firstPart {
+				family := "IPv4"
+				if test == "ip6" {
+					family = "IPv6"
+				}
+				parts = append(parts[:firstPart], family+" "+strings.Join(parts[firstPart:], " "))
+			}
 		}
 	}
 	if d := rep.get("route"); d != nil {
@@ -175,7 +223,8 @@ func summarizeBenchCard(rep *benchReport) string {
 		return ""
 	}
 	var routeLines []string
-	var ipLine, cpuLine, diskLine, memoryLine string
+	var cpuLine, diskLine, memoryLine string
+	var ipLines []string
 	hasHardwareTest := false
 	for _, item := range rep.Items {
 		switch item.Test {
@@ -189,28 +238,47 @@ func summarizeBenchCard(rep *benchReport) string {
 	if d := rep.get("route"); d != nil {
 		for _, isp := range []string{"电信", "联通", "移动"} {
 			sub, _ := d[isp].(map[string]any)
-			if line := compactCardRoute(strings.TrimSpace(strOf(sub, "line"))); line != "" {
+			if line := cardBackboneName(strings.TrimSpace(strOf(sub, "line"))); line != "" {
 				line = strings.TrimSpace(strings.TrimPrefix(line, isp))
 				routeLines = append(routeLines, "回程 "+isp+" "+line)
 			}
 		}
 	}
-	if d := rep.get("ip"); d != nil {
-		var parts []string
-		if grade := gradeIP(d); grade != nil {
-			parts = append(parts, "IP质量 "+grade.Label)
-		}
-		if unlocked, ok := d["unlocked"].([]any); ok {
-			total := 0
-			if value, ok := numOf(d, "unlock_total"); ok {
-				total = int(value)
+	for _, test := range []string{"ip", "ip4", "ip6"} {
+		if d := rep.get(test); d != nil {
+			var parts []string
+			if grade := gradeIP(d); grade != nil {
+				parts = append(parts, "IP质量 "+grade.Label)
 			}
-			parts = append(parts, fmt.Sprintf("解锁 %d/%d", len(unlocked), total))
+			if unlocked, ok := d["unlocked"].([]any); ok {
+				total := 0
+				if value, ok := numOf(d, "unlock_total"); ok {
+					total = int(value)
+				}
+				parts = append(parts, fmt.Sprintf("解锁 %d/%d", len(unlocked), total))
+			}
+			if usage := firstNonEmpty(strOf(d, "usage"), strOf(d, "ip_type")); usage != "" {
+				parts = append(parts, usage)
+			}
+			prefix := ""
+			if test == "ip4" {
+				prefix = "IPv4 "
+			}
+			if test == "ip6" {
+				prefix = "IPv6 "
+			}
+			ipLines = append(ipLines, prefix+strings.Join(parts, " · "))
+		} else if test != "ip" {
+			for _, item := range rep.Items {
+				if item.Test == test && !item.OK {
+					family := "IPv4"
+					if test == "ip6" {
+						family = "IPv6"
+					}
+					ipLines = append(ipLines, family+" IP质量 检测失败 / 不可用")
+				}
+			}
 		}
-		if usage := firstNonEmpty(strOf(d, "usage"), strOf(d, "ip_type")); usage != "" {
-			parts = append(parts, usage)
-		}
-		ipLine = strings.Join(parts, " · ")
 	}
 	if d := rep.get("cpu"); d != nil {
 		var scores []string
@@ -268,34 +336,39 @@ func summarizeBenchCard(rep *benchReport) string {
 		rows = append(rows, diskLine)
 	}
 	rows = append(rows, routeLines...)
-	if ipLine != "" {
-		rows = append(rows, ipLine)
-	}
+	rows = append(rows, ipLines...)
 	return strings.Join(rows, "\n")
 }
 
-// City-by-city trace details belong in the popover. The card keeps distinct
-// observed backbones and any uncertainty, without repeating identical paths.
+// City-by-city trace details belong in the popover. Each carrier's card shows
+// the first optimized backbone, falling back to its first recognized value.
 func compactCardRoute(line string) string {
 	parts := strings.Split(line, " / ")
 	if len(parts) < 2 {
+		if unknownCardRoute(line) {
+			return "未知"
+		}
 		return line
 	}
-	hasCity := false
 	var compact []string
 	for _, part := range parts {
-		for _, city := range []string{"北京 ", "上海 ", "深圳 "} {
+		for _, city := range []string{"北京 ", "上海 ", "深圳 ", "广东 "} {
 			if strings.HasPrefix(part, city) {
-				hasCity = true
 				part = strings.TrimPrefix(part, city)
 				break
 			}
+		}
+		if unknownCardRoute(part) {
+			compact = append(compact, "未知")
+			continue
 		}
 		switch {
 		case strings.Contains(part, "GT/GIA未确认"):
 			part = "CN2（GT/GIA未确认）"
 		case strings.HasPrefix(part, "CN2 GT"):
 			part = "CN2 GT"
+		case strings.HasPrefix(part, "CN2 GIA"):
+			part = "CN2 GIA"
 		case strings.HasPrefix(part, "163 骨干"):
 			part = "163 骨干"
 		case strings.HasPrefix(part, "联通 4837/169"):
@@ -311,10 +384,32 @@ func compactCardRoute(line string) string {
 		}
 		compact = append(compact, part)
 	}
-	if !hasCity {
-		return line
+	known := []string{}
+	for _, value := range uniqStrings(compact) {
+		if !strings.Contains(value, "未识别") && !strings.Contains(value, "未知") && value != "—" {
+			known = append(known, value)
+		}
 	}
-	return strings.Join(uniqStrings(compact), " / ")
+	if len(known) > 0 {
+		for _, value := range known {
+			upper := strings.ToUpper(value)
+			if strings.Contains(upper, "CN2") || strings.Contains(upper, "9929") || strings.Contains(upper, "CMIN2") {
+				return value
+			}
+		}
+		return known[0]
+	}
+	return "未知"
+}
+
+// Keep diagnostic sentences in the detailed report, not the compact card.
+func unknownCardRoute(line string) bool {
+	for _, phrase := range []string{"未能定位", "未定位到", "未识别", "无法识别", "未知", "ASN 不足", "ASN 不可见"} {
+		if strings.Contains(line, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func firstMemoryRate(data map[string]any, memoryTest bool, direction string) (float64, bool) {
@@ -350,8 +445,16 @@ func benchLabel(test string) string {
 		return "CPU 跑分"
 	case "net":
 		return "网络测速"
+	case "ip4":
+		return "IPv4 质量与解锁"
+	case "ip6":
+		return "IPv6 质量与解锁"
 	case "ip":
 		return "IP 质量与解锁"
+	case "route4":
+		return "IPv4 回程路由"
+	case "route6":
+		return "IPv6 回程路由"
 	case "route":
 		return "回程路由"
 	}
@@ -366,7 +469,10 @@ func benchFields(test string, d map[string]any) [][2]string {
 	if d == nil {
 		return nil
 	}
-	if test == "route" {
+	if test == "ip4" || test == "ip6" {
+		test = "ip"
+	}
+	if test == "route" || test == "route4" || test == "route6" {
 		if fields := routeBenchFields(d); len(fields) > 0 {
 			return fields
 		}

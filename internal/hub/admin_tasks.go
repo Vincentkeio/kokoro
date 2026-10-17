@@ -137,8 +137,39 @@ func (h *Hub) handleAdminTasks(w http.ResponseWriter, r *http.Request, authed bo
 		// 浏览器预取或爬虫碰到就会误跑，跑分还特别吃 CPU。
 		id := strings.TrimSpace(r.FormValue("node"))
 		kind := strings.TrimSpace(r.FormValue("kind"))
+		ipKind := "ipquality"
+		if r.FormValue("ip_family_selection") == "1" {
+			families := r.PostForm["ip_family"]
+			v4, v6 := false, false
+			for _, family := range families {
+				if family == "4" {
+					v4 = true
+				} else if family == "6" {
+					v6 = true
+				} else {
+					http.Error(w, "未知 IP 协议", http.StatusBadRequest)
+					return
+				}
+			}
+			if !v4 && !v6 {
+				http.Redirect(w, r, "/admin/tasks?node="+urlQueryEscape(id)+"&err="+urlQueryEscape("请至少选择 IPv4 或 IPv6"), http.StatusSeeOther)
+				return
+			}
+			if !v6 {
+				ipKind = "ipquality4"
+			}
+			if !v4 {
+				ipKind = "ipquality6"
+			}
+		}
+		if kind == "netquality" && ipKind != "ipquality" {
+			kind = "netquality" + strings.TrimPrefix(ipKind, "ipquality")
+		}
+		if kind == "ipquality" {
+			kind = ipKind
+		}
 		if kind == "selected-nodes" || kind == "all-nodes" {
-			nodes, queued, err := h.DispatchSelectedNodes(r.PostForm["node_ids"])
+			nodes, queued, err := h.dispatchSelectedIP(r.PostForm["node_ids"], ipKind)
 			msg := fmt.Sprintf("已为选中的 %d 台服务器排入 %d 项测试；每台服务器的三项测试会依次执行", nodes, queued)
 			if err != nil {
 				if nodes == 0 {
@@ -159,7 +190,7 @@ func (h *Hub) handleAdminTasks(w http.ResponseWriter, r *http.Request, authed bo
 		}
 		to := "/admin/tasks?node=" + id
 		if kind == "all" {
-			n, err := h.DispatchAll(id)
+			n, err := h.dispatchAllIP(id, ipKind)
 			if err != nil && n == 0 {
 				to += "&err=" + urlQueryEscape(err.Error())
 			} else {

@@ -1582,7 +1582,7 @@ Response 200: { "id":"neon-dream","version":"1.2.0","status":"staged","report":{
 |---|---|---|
 | 极夜（已实现） | 深蓝极夜、极光壁纸、冰青阶梯图与银蓝时间格 | `mode.default:dark`；图表 `step`；列表 `card` |
 | 终端 | 纯黑 + 磷光绿 + 等宽字体，零圆角 | 列表 `compact` + `inlineBars` + `density:compact`；`usageBarStyle:segmented`；`tagStyle:text`；图表 `area`、`smooth:false` |
-| 纸间（已实现） | 暖纸纹理、衬线字体、朱砂强调色与柱状图 | `mode.supportsDark:false`；图表 `bar`；列表 `card` |
+| 纸页（已实现） | 暖纸纹理、衬线字体、朱砂强调色与柱状图 | `mode.supportsDark:false`；图表 `bar`；列表 `card` |
 | 朦胧（已实现） | 淡雾海岸、磨砂玻璃、平滑曲线与点阵条 | `backdrop-blur:28px`；卡片白色底色透明度约 28%～30%；图表 `line`、`smooth:true`；在线率 `dots` |
 | 霓虹 | 深紫底 + 青品红发光，毛玻璃展示型 | `radius-lg:22px`；`backdrop-blur:8px`、`header.variant:blur`；`statusDotStyle:glow`；`tagStyle:pill`；Hero `gradient` |
 

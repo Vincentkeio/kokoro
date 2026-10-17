@@ -98,8 +98,9 @@ func (e *retryAfterError) Unwrap() error { return e.err }
 
 // Agent 是一台子机上的运行时实例。
 type Agent struct {
-	cfg       *model.AgentConfig
-	collector Collector
+	connectivity *model.IPConnectivity
+	cfg          *model.AgentConfig
+	collector    Collector
 
 	hub        string // 规范化后的 Hub 地址（含 scheme、无结尾斜杠）
 	hubHost    string // Hub 主机名，用于证书校验
@@ -315,6 +316,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	go a.taskResultLoop(ctx)
 	// 三网探测是独立循环：低频、重活，失败不影响指标上报
 	go a.netqLoop(ctx)
+	go a.connectivityLoop(ctx)
 	defer func() { cancelRun(); a.shutdown() }()
 
 	logger.Printf("已启动：hub=%s interval=%s token=%s…", a.hub, a.interval, maskToken(a.token()))
@@ -485,6 +487,7 @@ func (a *Agent) collectOnce() {
 
 	a.mu.Lock()
 	a.seq++
+	m.Connectivity = a.connectivity
 	m.Seq = a.seq
 	// 静态信息（虚拟化/CPU/加速）一直带在每条上报里，**直到 Hub 确认收到**。
 	//

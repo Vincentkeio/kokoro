@@ -39,8 +39,6 @@
 .script-card .go .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 11px color-mix(in srgb, var(--accent) 16%, transparent); }
 .script-card .go .btn:active { transform: translateY(0); box-shadow: none; }
 .script-card .go .btn:focus-visible { outline: 2px solid var(--ring-c); outline-offset: 3px; }
-body[data-k-theme="kokoro.tech"] .script-card .go .btn { border-color: color-mix(in srgb, var(--accent) 70%, #fff); box-shadow: inset 0 1px rgba(255,255,255,.16); }
-body[data-k-theme="kokoro.tech"] .script-card .go .btn:hover { background: #bad8bf; box-shadow: 0 4px 12px rgba(115, 177, 138, .16), inset 0 1px rgba(255,255,255,.24); }
 .tip-ok, .tip-err { border-radius: var(--r-sm); padding: var(--s2) var(--s3); font-size: 13px; margin-bottom: var(--s3); }
 .tip-ok { background: color-mix(in srgb, var(--ok) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent); }
 .tip-err { background: color-mix(in srgb, var(--bad) 12%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); }
@@ -74,7 +72,7 @@ body[data-k-theme="kokoro.tech"] .script-card .go .btn:hover { background: #bad8
     <a class="brand" href="/">{{.SiteName}} 后台</a>
     <div class="top-tools">
       <a class="btn ghost small" href="/admin">← 后台</a>
-      {{if .Theme.ShowSwitch}}<button class="btn ghost small mode-toggle" type="button" data-toggle-mode>{{if eq .Theme.Mode "dark"}}☀{{else}}☾{{end}}</button>{{end}}
+
       <a class="btn ghost small" href="/n/{{.Node.Slug}}" target="_blank" rel="noopener">看详情页 ↗</a>
     </div>
   </div>
@@ -101,6 +99,7 @@ body[data-k-theme="kokoro.tech"] .script-card .go .btn:hover { background: #bad8
   <form method="post" action="/admin/tasks" class="all-bar">
     <input type="hidden" name="node" value="{{.Node.ID}}">
     <input type="hidden" name="kind" value="all">
+    <fieldset class="ip-family-options"><legend>IP 协议</legend><input type="hidden" name="ip_family_selection" value="1"><label><input type="checkbox" name="ip_family" value="4" checked>IPv4</label><label><input type="checkbox" name="ip_family" value="6" checked>IPv6</label></fieldset>
     <button class="btn" type="submit">一键全部测试</button>
     <span class="hint" style="margin:0">三项依次跑，前一项跑完才轮到下一项；总耗时约 20~40 分钟。</span>
   </form>
@@ -117,6 +116,7 @@ body[data-k-theme="kokoro.tech"] .script-card .go .btn:hover { background: #bad8
       <form class="go" method="post" action="/admin/tasks">
         <input type="hidden" name="node" value="{{$.Node.ID}}">
         <input type="hidden" name="kind" value="{{.Kind}}">
+        {{if or (eq .Kind "ipquality") (eq .Kind "netquality")}}<fieldset class="ip-family-options"><legend>IP 协议</legend><input type="hidden" name="ip_family_selection" value="1"><label><input type="checkbox" name="ip_family" value="4" checked>IPv4</label><label><input type="checkbox" name="ip_family" value="6" checked>IPv6</label></fieldset>{{end}}
         <button class="btn small" type="submit">下发</button>
       </form>
     </div>
@@ -130,7 +130,7 @@ body[data-k-theme="kokoro.tech"] .script-card .go .btn:hover { background: #bad8
 
 </main>
 
-<script src="/static/app.js?v=125"></script>
+<script src="/static/app.js?v=140"></script>
 </body>
 </html>
 {{end}}

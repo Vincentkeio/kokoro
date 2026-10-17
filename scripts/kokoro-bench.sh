@@ -429,9 +429,17 @@ test_net() {
 # 自己实现很容易失效。所以这里**复用 xykt 的 IPQuality**（社区事实标准），
 # 但把它那坨彩色输出里的 JSON 抠出来，转成我们的事件格式 ——
 # 我们只做"翻译"，不做"重新发明"。
+test_ip4() { test_ip_family 4; }
+test_ip6() { test_ip_family 6; }
 test_ip() {
+  test_ip_family 4
+  test_ip_family 6
+}
+
+test_ip_family() {
+  local family=$1 item="ip$1"
   if ! have python3; then install_pkg python3 || true; fi
-  if ! have python3; then ev_error ip "IPQuality 结果解析需要 python3，自动安装失败"; return; fi
+  if ! have python3; then ev_error "$item" "IPQuality 结果解析需要 python3，自动安装失败"; return; fi
   if ! have curl || ! have jq || ! have bc || ! have dig || ! have nc || ! have ip; then
     local ip_packages=(curl jq bc)
     if have apk; then ip_packages+=(bind-tools netcat-openbsd iproute2)
@@ -439,18 +447,18 @@ test_ip() {
     else ip_packages+=(bind-utils nmap-ncat iproute); fi
     install_pkg "${ip_packages[@]}" || true
     for component in curl jq bc dig nc ip; do
-      if ! have "$component"; then ev_error ip "IPQuality 所需组件 $component 自动安装失败"; return; fi
+      if ! have "$component"; then ev_error "$item" "IPQuality 所需组件 $component 自动安装失败"; return; fi
     done
   fi
-  ev_progress ip 10 "拉取 IP 质量脚本"
+  ev_progress "$item" 10 "拉取 IP 质量脚本"
   local work js rc
-  work=$(mktemp -d) || { ev_error ip "无法创建 IPQuality 临时目录"; return; }
+  work=$(mktemp -d) || { ev_error "$item" "无法创建 IPQuality 临时目录"; return; }
   if ! fetch_verified "https://raw.githubusercontent.com/xykt/IPQuality/87397e2c3196ec796f5477c83343c2354df601ea/ip.sh" \
     "b30df5a3c2204276c54e99dcc5080b46f8a627667730aee7de63b109b8ecaecf" "$work/ipquality.sh" || \
     ! fetch_verified "https://raw.githubusercontent.com/xykt/IPQuality/87397e2c3196ec796f5477c83343c2354df601ea/ref/dnsbl.list" \
     "a92ca482843310167309c82f05cb7e208d7decc7f8bb7eada0f96af42f1143ad" "$work/dnsbl.list"; then
     rm -rf -- "$work"
-    ev_error ip "无法下载并校验固定版本的 IPQuality 组件"
+    ev_error "$item" "无法下载并校验固定版本的 IPQuality 组件"
     return
   fi
   # IPQuality interpolates its DNSBL catalog in bash -c. Use the verified local
@@ -475,19 +483,19 @@ p.write_text(text, encoding="utf-8")
 PY
   then
     rm -rf -- "$work"
-    ev_error ip "无法安全配置固定版本的 IPQuality 组件"
+    ev_error "$item" "无法安全配置固定版本的 IPQuality 组件"
     return
   fi
   say "运行 IPQuality（约 2~5 分钟）"
-  ev_progress ip 30 "检测 IP 数据库与流媒体解锁"
+  ev_progress "$item" 30 "检测 IP 数据库与流媒体解锁"
 
   # Use IPQuality's documented JSON file interface. Private mode disables
   # uploading a public report; progress/advertisements never enter our parser.
-  KOKORO_IPQUALITY_DNSBL="$work/dnsbl.list" bash "$work/ipquality.sh" -j -y -p -o "$work/result.json" >"$work/console.log" 2>&1
+  KOKORO_IPQUALITY_DNSBL="$work/dnsbl.list" bash "$work/ipquality.sh" "-$family" -j -y -p -o "$work/result.json" >"$work/console.log" 2>&1
   rc=$?
   if [ ! -s "$work/result.json" ]; then
     rm -rf -- "$work"
-    ev_error ip "IPQuality 未生成 JSON 结果文件（退出码 $rc），请检查依赖和网络后重试"
+    ev_error "$item" "IPv$family 不可用或 IPQuality 未生成 JSON 结果文件（退出码 $rc），请检查依赖和网络后重试"
     return
   fi
   js=$(cat "$work/result.json")
@@ -503,8 +511,8 @@ PY
 import json,re,sys
 IPRE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 try:
-    # Upstream appends IPv4 then IPv6 as separate JSON documents to one file.
-    d,end=json.JSONDecoder().raw_decode(sys.stdin.read().lstrip())
+    # Each invocation is restricted to one address family.
+    d=json.load(sys.stdin)
     if not isinstance(d,dict): raise ValueError("report is not an object")
 except Exception:
     sys.exit(1)
@@ -558,23 +566,36 @@ out={
   "unlock_total": len(media),
 }
 txt=json.dumps(out,ensure_ascii=False)
-print(IPRE.sub("[已隐去]", txt))
+txt=IPRE.sub("[已隐去]", txt)
+# Redact IPv6 literals as well, including compressed addresses.
+import ipaddress
+def redact6(match):
+    try: ipaddress.IPv6Address(match.group(0)); return "[已隐去]"
+    except ValueError: return match.group(0)
+print(re.sub(r"[0-9a-fA-F:]*:[0-9a-fA-F:]+(?:%[\w.-]+)?", redact6, txt))
 ' 2>/dev/null)
 
   if [ -z "$brief" ]; then
-    ev_error ip "IPQuality 的 JSON 结构不认识（脚本可能改版了）"
+    ev_error "$item" "IPQuality 的 JSON 结构不认识（脚本可能改版了）"
     return
   fi
-  ev_result ip true "$brief"
+  ev_result "$item" true "$brief"
 }
 
 # 6) 回程线路：沿用 NodeQuality/NetQuality 的三地运营商专用目标和判定方法。
 # NetQuality 使用北京、上海、广东的 CT/CU/CM 专用域名，通过 NextTrace TCP 80
 # 跟踪；线路类型按首个中国大陆路由跳分类，首跳不明确时再按整条路径 ASN 兜底。
-test_route() {
+test_route4() { test_route_family 4; }
+test_route6() { test_route_family 6; }
+test_route() { test_route_family 4; test_route_family 6; }
+test_route_family() {
+  local family=$1 item="route$1"
+  if [ "$family" = 6 ] && ! ip -6 route get 2606:4700:4700::1111 >/dev/null 2>&1; then
+    ev_result "$item" true '{"available":false,"note":"无 IPv6"}'; return
+  fi
   if ! have python3; then install_pkg python3 || true; fi
-  if ! have python3; then ev_error route "回程路由解析需要 python3，自动安装失败"; return; fi
-  ev_progress route 10 "准备回程线路检测"
+  if ! have python3; then ev_error "$item" "回程路由解析需要 python3，自动安装失败"; return; fi
+  ev_progress "$item" 10 "准备回程线路检测"
   local nexttrace_bin=""
   if have nexttrace; then
     nexttrace_bin=$(command -v nexttrace)
@@ -598,7 +619,7 @@ test_route() {
     fi
   fi
   if [ -z "$nexttrace_bin" ]; then
-    ev_error route "NextTrace 安装失败：软件源或官方安装器不可用，回程线路未检测"
+    ev_error "$item" "NextTrace 安装失败：软件源或官方安装器不可用，回程线路未检测"
     return
   fi
 
@@ -606,31 +627,45 @@ test_route() {
   # 组目标域名和 NextTrace 参数；下方分类按 get_route_mode 的 ASN 规则实现。
   # 目标由域名维护，避免静态公共 DNS IP 与运营商回程线路不匹配。
   local targets=(
-    "北京:电信:bj-ct-v4.ip.zstaticcdn.com" "北京:联通:bj-cu-v4.ip.zstaticcdn.com" "北京:移动:bj-cm-v4.ip.zstaticcdn.com"
-    "上海:电信:sh-ct-v4.ip.zstaticcdn.com" "上海:联通:sh-cu-v4.ip.zstaticcdn.com" "上海:移动:sh-cm-v4.ip.zstaticcdn.com"
-    "广东:电信:gd-ct-v4.ip.zstaticcdn.com" "广东:联通:gd-cu-v4.ip.zstaticcdn.com" "广东:移动:gd-cm-v4.ip.zstaticcdn.com"
+    "北京:电信:bj-ct-v${family}.ip.zstaticcdn.com" "北京:联通:bj-cu-v${family}.ip.zstaticcdn.com" "北京:移动:bj-cm-v${family}.ip.zstaticcdn.com"
+    "上海:电信:sh-ct-v${family}.ip.zstaticcdn.com" "上海:联通:sh-cu-v${family}.ip.zstaticcdn.com" "上海:移动:sh-cm-v${family}.ip.zstaticcdn.com"
+    "广东:电信:gd-ct-v${family}.ip.zstaticcdn.com" "广东:联通:gd-cu-v${family}.ip.zstaticcdn.com" "广东:移动:gd-cm-v${family}.ip.zstaticcdn.com"
   )
   local route_tmp
-  route_tmp=$(mktemp -d "$SCRIPT_DIR/route.XXXXXX") || { ev_error route "无法创建回程路由临时目录"; return; }
-  local i=0 telecom="" unicom="" mobile=""
+  route_tmp=$(mktemp -d "$SCRIPT_DIR/route.XXXXXX") || { ev_error "$item" "无法创建回程路由临时目录"; return; }
+  local i=0 telecom="" unicom="" mobile="" route_pids=()
   trace_nexttrace() (
-    local index=$1 host=$2 nexttrace=$3 output_dir=$4 out="" attempt=0
-    while (( attempt < 10 )); do
-      out=$(timeout -s SIGKILL 50 "$nexttrace" -p 80 -q 8 -4 --tcp --psize 1400 "$host" 2>/dev/null)
-      if [[ "$out" == *"traceroute to"* && "$out" != *"*please try again later*"* ]]; then break; fi
-      attempt=$((attempt + 1))
-      if (( attempt < 10 )); then sleep 5; fi
+    local index=$1 host=$2 nexttrace=$3 output_dir=$4 out="" best="" score=0 best_score=-1 protocol
+    # Raw records are stable across terminal/table formatting changes. Current
+    # NextTrace prints "source -> target", not the old "traceroute to" header.
+    # Try ICMP only when TCP cannot expose a mainland/backbone hop. Keep the
+    # stronger partial result instead of replacing it with an empty retry.
+    for protocol in tcp icmp; do
+      local protocol_args=()
+      [ "$protocol" != tcp ] || protocol_args=(--tcp -p 80)
+      out=$(timeout -k 2 55 "$nexttrace" "-$family" "${protocol_args[@]}" --raw --no-color -q 3 --psize 1400 "$host" 2>/dev/null || true)
+      score=$(printf '%s\n' "$out" | awk -F'|' '$1 ~ /^[0-9]+$/ && $2 != "*" && $2 != "" {n++; if ($5 ~ /^[0-9]+$/) n+=3; if ($6 == "中国" && $7 !~ /香港|澳门|台湾/) n+=5} END {print n+0}')
+      if (( score > best_score )); then best=$out; best_score=$score; fi
+      if printf '%s\n' "$out" | awk -F'|' '$1 ~ /^[0-9]+$/ && $2 != "*" && (($6 == "中国" && $7 !~ /香港|澳门|台湾/) || $2 ~ /^59\.43\./ || $5 ~ /^(4134|4837|4809|23764|9929|10099|58453|58807|9808)$/) {ok=1} END {exit !ok}'; then break; fi
+      [ "$protocol" != tcp ] || sleep 1
     done
-    printf '%s' "$out" > "$output_dir/$index"
+    printf '%s' "$best" > "$output_dir/$index"
   )
   for target in "${targets[@]}"; do
     IFS=: read -r city nm host <<< "$target"
     say "回程线路 → ${city}${nm}"
-    ev_progress route $(( 10 + i * 9 )) "TCP 探测 ${city}${nm} 回程"
+    ev_progress "$item" $(( 10 + i * 9 )) "TCP 探测 ${city}${nm} 回程"
     trace_nexttrace "$i" "$host" "$nexttrace_bin" "$route_tmp" &
+    route_pids+=("$!")
     i=$((i + 1))
+    # Nine simultaneous GeoIP/API clients can all get throttled. Three routes
+    # at a time still run concurrently without flooding the data provider.
+    if (( ${#route_pids[@]} >= 3 )); then
+      for route_pid in "${route_pids[@]}"; do wait "$route_pid" || true; done
+      route_pids=()
+    fi
   done
-  wait
+  for route_pid in "${route_pids[@]}"; do wait "$route_pid" || true; done
   i=0
   for target in "${targets[@]}"; do
     IFS=: read -r city nm host <<< "$target"
@@ -652,7 +687,22 @@ def field(obj, *names):
 raw_output = sys.stdin.read()
 target_isp = sys.argv[1] if len(sys.argv) > 1 else "中国运营商"
 
-if not raw_output.lstrip().startswith("{"):
+if re.search(r"(?m)^\s*\d+\|", raw_output):
+    # NextTrace --raw: hop|ip|rdns|rtt|asn|country|province|city|...|owner.
+    # Each hop may have several probes; prefer an answered probe with ASN.
+    by_hop = {}
+    for line in raw_output.splitlines():
+        cols = [x.strip() for x in re.sub(r"\x1b\[[0-9;]*m", "", line).split("|")]
+        if len(cols) < 6 or not cols[0].isdigit() or cols[1] in ("", "*"):
+            continue
+        cols += [""] * max(0, 10-len(cols))
+        match = re.fullmatch(r"(?:AS)?(\d+)", cols[4], re.I)
+        hop = {"hop": int(cols[0]), "ip": cols[1], "asn": match.group(1) if match else "", "region": " ".join(cols[5:8]), "owner": cols[9]}
+        previous = by_hop.get(hop["hop"])
+        if previous is None or (not previous["asn"] and hop["asn"]):
+            by_hop[hop["hop"]] = hop
+    hops = [by_hop[n] for n in sorted(by_hop)]
+elif not raw_output.lstrip().startswith("{"):
     # NodeQuality invokes NetQuality -R, whose route-mode parser reads the
     # normal NextTrace table: hop, IP, ASN token and remaining location text.
     # It preserves the same first-China-hop classification rule.
@@ -707,9 +757,9 @@ else:
 
 for h in hops:
     if h["ip"].startswith("59.43."): h["asn"] = "4809"
-    if "CTGNet" in h["owner"]: h["asn"] = "23764"
+    if "ctgnet" in h["owner"].lower(): h["asn"] = "23764"
 all_asns = [h["asn"] for h in hops if h["asn"]]
-cn_hop = next((i for i, h in enumerate(hops) if "中国" in h["region"] and not any(x in h["region"] for x in ("香港", "澳门", "台湾"))), None)
+cn_hop = next((i for i, h in enumerate(hops) if ("中国" in h["region"] or re.search(r"\b(?:China|CN)\b", h["region"], re.I)) and not any(x.lower() in h["region"].lower() for x in ("香港", "澳门", "台湾", "Hong Kong", "Macao", "Taiwan"))), None)
 all_set = set(all_asns)
 label = ""
 hidden = cn_hop is None or cn_hop >= len(hops)-1
@@ -746,9 +796,19 @@ if not label:
     evidence_hops = hops[cn_hop:] if cn_hop is not None else hops
     evidence = next(("AS" + h["asn"] + (" (" + h["owner"] + ")" if h["owner"] else "") for h in evidence_hops if h["asn"]), "")
     if hidden:
-        label = ("未定位到中国大陆路由；仅识别到 " + evidence) if evidence else "未能定位中国大陆路由，线路 ASN 不可见"
+        if not hops:
+            label = "未收到有效路由响应（目标过滤或探测超时）"
+        else:
+            label = ("未定位到中国大陆路由；仅识别到 " + evidence) if evidence else "路由有响应，但 ASN 数据缺失"
     else:
         label = ("仅识别到路径 " + evidence + "；未匹配到" + target_isp + "线路 ASN") if evidence else "路径有响应，但 ASN 信息缺失"
+# Preserve the observed international transit, as NetQuality does. Never infer
+# an upstream from the destination ISP or from a completely hidden path.
+transits = {"174":"Cogent", "1299":"Arelion", "2914":"NTT", "3356":"Level3", "3257":"GTT", "3491":"PCCW", "6939":"HE", "6453":"Tata", "2497":"IIJ", "17676":"Softbank", "4637":"Telstra", "12956":"Telxius", "5511":"Orange"}
+if cn_hop is not None and label and not label.startswith(("未", "仅", "路径", "路由")):
+    transit = next((transits[h["asn"]] for h in reversed(hops[:cn_hop]) if h["asn"] in transits), "")
+    if transit:
+        label = transit + " → " + label
 print(label)
 ' "$nm" 2>/dev/null)
     [ -n "$brief" ] || brief='路径未识别'
@@ -764,8 +824,8 @@ print(label)
   # 构造字段 JSON 时直接用 python 做转义，防止线路字符串导致 JSON 损坏。
   local route_json
   route_json=$(python3 -c 'import json,sys; print(json.dumps({"电信":{"line":sys.argv[1]},"联通":{"line":sys.argv[2]},"移动":{"line":sys.argv[3]}},ensure_ascii=False,separators=(",",":")))' "$telecom" "$unicom" "$mobile")
-  if [ -z "$route_json" ]; then ev_error route "回程路由结果无法编码为 JSON"; return; fi
-  ev_result route true "$route_json"
+  if [ -z "$route_json" ]; then ev_error "$item" "回程路由结果无法编码为 JSON"; return; fi
+  ev_result "$item" true "$route_json"
 }
 
 # ---------- 调度 ----------
@@ -828,7 +888,7 @@ if [ -n "$ONLY" ]; then
   IFS=',' read -ra want <<< "$ONLY"
   for w in "${want[@]}"; do
     w=$(printf '%s' "$w" | tr -d ' ')
-    for t in $ALL_TESTS; do
+    for t in $ALL_TESTS ip4 ip6 route4 route6; do
       [ "$w" = "$t" ] && RUN="$RUN $t"
     done
   done

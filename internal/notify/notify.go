@@ -62,11 +62,12 @@ type Config struct {
 
 // Message 一条待投递的通知。
 type Message struct {
-	Title   string
-	Body    string
-	Level   string // info | warning | critical
-	NodeID  string
-	NodeURL string
+	Title    string
+	Body     string
+	Level    string // info | warning | critical
+	NodeID   string
+	NodeName string
+	NodeURL  string
 	// Channels 限定投递渠道（telegram / webhook）；为空表示全部已启用渠道。
 	Channels []string
 }
@@ -190,11 +191,21 @@ type telegramSender struct {
 // telegramRequest 是 sendMessage 的请求体。
 // disable_notification 对应「静音发送」，disable_web_page_preview 关掉链接预览让消息更紧凑。
 type telegramRequest struct {
-	ChatID                string `json:"chat_id"`
-	Text                  string `json:"text"`
-	ParseMode             string `json:"parse_mode"`
-	DisableWebPagePreview bool   `json:"disable_web_page_preview"`
-	DisableNotification   bool   `json:"disable_notification"`
+	ChatID                string               `json:"chat_id"`
+	Text                  string               `json:"text"`
+	ParseMode             string               `json:"parse_mode"`
+	DisableWebPagePreview bool                 `json:"disable_web_page_preview"`
+	DisableNotification   bool                 `json:"disable_notification"`
+	ReplyMarkup           *telegramReplyMarkup `json:"reply_markup,omitempty"`
+}
+
+type telegramReplyMarkup struct {
+	InlineKeyboard [][]telegramInlineButton `json:"inline_keyboard"`
+}
+
+type telegramInlineButton struct {
+	Text string `json:"text"`
+	URL  string `json:"url"`
 }
 
 type telegramResponse struct {
@@ -218,6 +229,7 @@ func (t *telegramSender) post(ctx context.Context, m Message, silent bool) error
 		ParseMode:             "HTML",
 		DisableWebPagePreview: true,
 		DisableNotification:   silent,
+		ReplyMarkup:           telegramReplyMarkupFor(m),
 	})
 	if err != nil {
 		return fmt.Errorf("序列化 telegram 请求失败: %w", err)
@@ -253,43 +265,225 @@ func (t *telegramSender) post(ctx context.Context, m Message, silent bool) error
 	return nil
 }
 
-// buildText 拼装 HTML 排版的消息正文。
-// 标题加粗；正文含换行时用 <pre> 等宽排版（对齐的数值更好读）；末尾附节点链接。
+// buildText 拼装层次清晰的 Telegram 通知：来源、标题、节点和字段分组。
 func (t *telegramSender) buildText(m Message) string {
-	var sb strings.Builder
-
 	title := strings.TrimSpace(m.Title)
 	if title == "" {
 		title = "Kokoro 通知"
 	}
-	if !hasIconPrefix(title) {
-		// 标题自带图标（告警引擎的文案已经带了）就不再重复。
-		sb.WriteString(levelIcon(m.Level))
-		sb.WriteString(" ")
+	title = stripNotificationIcon(title)
+	if isPurchaseInquiry(m) {
+		return buildPurchaseText(m, title)
 	}
+	var sb strings.Builder
+	sb.WriteString("<code>KOKORO / ")
+	sb.WriteString(telegramLevelLabel(m.Level))
+	sb.WriteString("</code>")
+	sb.WriteByte('\n')
 	sb.WriteString("<b>")
 	sb.WriteString(escapeHTML(title))
 	sb.WriteString("</b>")
 
-	if body := strings.TrimSpace(m.Body); body != "" {
-		sb.WriteString("\n")
-		if strings.Contains(body, "\n") {
-			sb.WriteString("<pre>")
-			sb.WriteString(escapeHTML(body))
-			sb.WriteString("</pre>")
-		} else {
-			sb.WriteString(escapeHTML(body))
-		}
-	}
-	if m.NodeID != "" {
-		sb.WriteString("\n<code>")
+	if nodeName := strings.TrimSpace(m.NodeName); nodeName != "" {
+		sb.WriteString("\n\n<code>节点</code>\n<b>")
+		sb.WriteString(escapeHTML(telegramNodeTitle(nodeName, m.Body)))
+		sb.WriteString("</b>")
+	} else if strings.TrimSpace(m.NodeID) != "" {
+		sb.WriteString("\n\n<code>节点</code>\n<code>")
 		sb.WriteString(escapeHTML(m.NodeID))
 		sb.WriteString("</code>")
 	}
-	if u, ok := safeLink(m.NodeURL); ok {
-		sb.WriteString("\n<a href=\"" + u + "\">查看节点</a>")
+
+	if body := telegramDetailLines(m.Body, m.NodeName); body != "" {
+		sb.WriteString("\n\n────────────\n")
+		sb.WriteString(body)
 	}
 	return sb.String()
+}
+
+// buildPurchaseText puts the buyer's contact and message first; node details are
+// retained as compact context after the divider.
+func buildPurchaseText(m Message, title string) string {
+	var sb strings.Builder
+	sb.WriteString("<code>KOKORO / ")
+	sb.WriteString(telegramLevelLabel(m.Level))
+	sb.WriteString("</code>\n<code>● 购买意向 · 需要跟进</code>\n<b>")
+	sb.WriteString(escapeHTML(title))
+	sb.WriteString("</b>")
+
+	fields := telegramFields(m.Body, m.NodeName)
+	var metadata []telegramField
+	for _, field := range fields {
+		switch field.label {
+		case "联系方式":
+			if field.value != "" {
+				appendTelegramPurchaseField(&sb, field, true)
+			}
+		case "留言":
+			if field.value != "" {
+				appendTelegramPurchaseField(&sb, field, true)
+			}
+		default:
+			metadata = append(metadata, field)
+		}
+	}
+
+	if name := strings.TrimSpace(m.NodeName); name != "" {
+		metadata = append([]telegramField{{label: "节点", value: name}}, metadata...)
+	} else if id := strings.TrimSpace(m.NodeID); id != "" {
+		metadata = append([]telegramField{{label: "节点", value: id}}, metadata...)
+	}
+	if len(metadata) > 0 {
+		sb.WriteString("\n\n────────────")
+		for _, field := range metadata {
+			appendTelegramPurchaseField(&sb, field, false)
+		}
+	}
+	return sb.String()
+}
+
+func telegramLevelLabel(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case LevelCritical:
+		return "CRITICAL"
+	case LevelWarning:
+		return "WARNING"
+	default:
+		return "NOTICE"
+	}
+}
+
+func stripNotificationIcon(s string) string {
+	for _, prefix := range []string{"🚨", "⚠️", "⚠", "✅", "❌", "💰"} {
+		if strings.HasPrefix(s, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(s, prefix))
+		}
+	}
+	return strings.TrimSpace(s)
+}
+
+func telegramDetailLines(body, nodeName string) string {
+	var out strings.Builder
+	for _, field := range telegramFields(body, nodeName) {
+		if out.Len() > 0 {
+			out.WriteByte('\n')
+		}
+		if field.label == "" {
+			out.WriteString(escapeHTML(field.value))
+			continue
+		}
+		out.WriteString("<code>")
+		out.WriteString(escapeHTML(field.label))
+		out.WriteString("</code>  ")
+		out.WriteString("<b>")
+		out.WriteString(escapeHTML(field.value))
+		out.WriteString("</b>")
+	}
+	return out.String()
+}
+
+type telegramField struct{ label, value string }
+
+func telegramFields(body, nodeName string) []telegramField {
+	var fields []telegramField
+	for _, line := range strings.Split(strings.TrimSpace(body), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		label, value, ok := strings.Cut(line, "：")
+		if !ok {
+			label, value, ok = strings.Cut(line, ":")
+		}
+		if !ok {
+			fields = append(fields, telegramField{value: line})
+			continue
+		}
+		label, value = strings.TrimSpace(label), strings.TrimSpace(value)
+		if strings.EqualFold(label, "节点") && value == strings.TrimSpace(nodeName) {
+			continue
+		}
+		if label == "备注" {
+			label = "留言"
+		}
+		fields = append(fields, telegramField{label: label, value: value})
+	}
+	return fields
+}
+
+func appendTelegramPurchaseField(sb *strings.Builder, field telegramField, prominent bool) {
+	if prominent {
+		sb.WriteString("\n\n<code>")
+		sb.WriteString(escapeHTML(field.label))
+		sb.WriteString("</code>\n<b>")
+		sb.WriteString(escapeHTML(field.value))
+		sb.WriteString("</b>")
+		return
+	}
+	sb.WriteByte('\n')
+	if field.label != "" {
+		sb.WriteString("<code>")
+		sb.WriteString(escapeHTML(field.label))
+		sb.WriteString("</code>")
+		if field.value != "" {
+			sb.WriteString("  ")
+		}
+	}
+	sb.WriteString(escapeHTML(field.value))
+}
+
+func telegramReplyMarkupFor(m Message) *telegramReplyMarkup {
+	if u, ok := safeLink(m.NodeURL); ok {
+		if isPurchaseInquiry(m) {
+			if adminURL, ok := adminCommentsLink(m.NodeURL); ok {
+				return &telegramReplyMarkup{InlineKeyboard: [][]telegramInlineButton{{
+					{Text: "打开节点 ↗", URL: u},
+					{Text: "查看意向 ›", URL: adminURL},
+				}}}
+			}
+		}
+		return &telegramReplyMarkup{InlineKeyboard: [][]telegramInlineButton{{
+			{Text: "打开节点 ↗", URL: u},
+		}}}
+	}
+	return nil
+}
+
+func isPurchaseInquiry(m Message) bool {
+	return strings.TrimSpace(m.Title) == "有人想购买" || strings.TrimSpace(m.Title) == "有人想买它"
+}
+
+func telegramNodeTitle(nodeName, body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		label, value, ok := strings.Cut(strings.TrimSpace(line), "：")
+		if !ok {
+			label, value, ok = strings.Cut(strings.TrimSpace(line), ":")
+		}
+		if ok && strings.TrimSpace(label) == "地区" {
+			region := strings.TrimSpace(value)
+			if region != "" && !strings.Contains(nodeName, region) {
+				return nodeName + " · " + region
+			}
+			break
+		}
+	}
+	return nodeName
+}
+
+func adminCommentsLink(nodeURL string) (string, bool) {
+	node, ok := safeLink(nodeURL)
+	if !ok {
+		return "", false
+	}
+	u, err := url.Parse(node)
+	if err != nil || u.Host == "" {
+		return "", false
+	}
+	u.Path = "/admin"
+	u.RawPath = ""
+	u.RawQuery = ""
+	u.Fragment = "buy-intents"
+	return u.String(), true
 }
 
 // ==================== Webhook ====================
@@ -352,8 +546,8 @@ func TestTelegram(ctx context.Context, cfg Config) error {
 	}
 	t := &telegramSender{cfg: cfg, client: &http.Client{Timeout: timeout}}
 	return t.Send(ctx, Message{
-		Title: "Kokoro 测试消息",
-		Body:  "如果你看到这条消息，说明通知渠道配置正确。\n时间: " + time.Now().Format("2006-01-02 15:04:05"),
+		Title: "✅ Kokoro · Telegram",
+		Body:  "测试消息已送达 · " + time.Now().Format("2006-01-02 15:04:05"),
 		Level: LevelInfo,
 	})
 }
@@ -365,10 +559,25 @@ func TestWebhook(ctx context.Context, cfg Config) error {
 	}
 	w := &webhookSender{cfg: cfg, client: &http.Client{Timeout: timeout}}
 	return w.Send(ctx, Message{
-		Title: "Kokoro 测试消息",
-		Body:  "如果你收到这条消息，说明通知渠道配置正确。",
+		Title: "Kokoro · Webhook 测试",
+		Body:  "Webhook 测试消息 · " + time.Now().Format("2006-01-02 15:04:05"),
 		Level: LevelInfo,
 	})
+}
+
+// TestChannel 对指定渠道发测试消息，不受免打扰时段限制。
+func TestChannel(ctx context.Context, cfg Config, channel string) error {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case ChannelTelegram:
+		if !cfg.TelegramOK() {
+			return errors.New("telegram 未启用或配置不完整")
+		}
+		return TestTelegram(ctx, cfg)
+	case ChannelWebhook:
+		return TestWebhook(ctx, cfg)
+	default:
+		return errors.New("不支持的通知渠道")
+	}
 }
 
 // Test 对全部已启用渠道发测试消息（不受免打扰限制）。
@@ -444,28 +653,6 @@ func MaskToken(tok string) string {
 }
 
 // ==================== 内部工具 ====================
-
-// levelIcon 按级别返回前缀图标。
-func levelIcon(level string) string {
-	switch strings.ToLower(strings.TrimSpace(level)) {
-	case LevelCritical:
-		return "🚨"
-	case LevelWarning:
-		return "⚠️"
-	default:
-		return "✅"
-	}
-}
-
-// hasIconPrefix 判断标题是否已经带级别图标，避免渲染出两个图标。
-func hasIconPrefix(s string) bool {
-	for _, p := range []string{"⚠", "✅", "🚨", "❌"} {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	return false
-}
 
 // escapeHTML 转义 Telegram HTML 模式下的特殊字符，否则会 400。
 func escapeHTML(s string) string {

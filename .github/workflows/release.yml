@@ -1,0 +1,50 @@
+name: Release Kokoro Hub and Agent
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Build Linux releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          for arch in amd64 arm64; do
+            asset="kokoro-linux-${arch}"
+            agent_asset="kokoro-agent-linux-${arch}"
+            GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build \
+              -trimpath \
+              -ldflags "-s -w -X main.Version=${GITHUB_REF_NAME}" \
+              -o "release/${asset}" ./cmd/kokoro
+            (cd release && sha256sum "$asset" > "${asset}.sha256")
+            cp "release/${asset}" "release/${agent_asset}"
+            (cd release && sha256sum "$agent_asset" > "${agent_asset}.sha256")
+          done
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          args=("$GITHUB_REF_NAME" release/kokoro-linux-* release/kokoro-agent-linux-* --title "$GITHUB_REF_NAME" --generate-notes)
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"
