@@ -29,6 +29,9 @@ type themeCard struct {
 	Swatch  []template.CSS
 	Active  bool
 	Builtin bool
+	// Selected 表示"后台正在编辑这套主题的壁纸" —— 只是选中，不等于启用：
+	// 站点默认主题和访客看到的主题都不受影响。
+	Selected bool
 	// Source 是这份主题的来源地址（一键获取或贴 GitHub 链接时记下）。
 	// 只作追溯用：主题拉到本地后与来源断开关联，不检查更新。
 	Source string
@@ -43,28 +46,37 @@ type themeCard struct {
 func (h *Hub) fillThemePanel(d *adminData, r *http.Request) {
 	d.Msg = strings.TrimSpace(r.URL.Query().Get("msg"))
 	d.ActiveID = h.ActiveThemeID()
+	// 选中的主题只影响后台面板（壁纸编辑的对象），**不动站点设置**：
+	// 站长可以挨个点主题卡片，分别给每套设壁纸，站点默认主题保持不动。
+	// ?theme= 必须是已注册的主题，认不出（含空值）就退回站点主题。
+	selected := strings.TrimSpace(r.URL.Query().Get("theme"))
+	if h.themes == nil || h.themes.Get(selected) == nil {
+		selected = d.ActiveID
+	}
+	d.SelectedID = selected
 	if h.themes != nil {
 		for _, m := range h.themes.List() {
 			d.Themes = append(d.Themes, themeCard{
-				ID:      m.ID,
-				Name:    m.Name,
-				Desc:    m.Description,
-				Author:  m.Author,
-				Version: m.Version,
-				License: m.License,
-				Tags:    m.Tags,
-				Swatch:  swatchesCSS(m.Swatches),
-				Active:  m.ID == d.ActiveID,
-				Builtin: m.Builtin,
-				Source:  m.SourceURL,
-				Summary: themeSummary(m),
+				ID:       m.ID,
+				Name:     m.Name,
+				Desc:     m.Description,
+				Author:   m.Author,
+				Version:  m.Version,
+				License:  m.License,
+				Tags:     m.Tags,
+				Swatch:   swatchesCSS(m.Swatches),
+				Active:   m.ID == d.ActiveID,
+				Selected: m.ID == d.SelectedID,
+				Builtin:  m.Builtin,
+				Source:   m.SourceURL,
+				Summary:  themeSummary(m),
 			})
 		}
 	}
 	d.TokenNames = theme.AllowedTokenNames()
-	// 壁纸面板跟着**当前启用主题**走：显示和保存的都是这个主题那一套，
-	// 换主题就换一套，换回来还是原来那张。
-	d.Wallpaper = h.wallpaperFor(d.ActiveID, strings.TrimSpace(r.URL.Query().Get("wperr")))
+	// 壁纸面板跟着**选中的主题**走（默认就是站点主题）：点别的卡片只是换编辑对象，
+	// 不会把站点默认主题改掉。
+	d.Wallpaper = h.wallpaperFor(selected, strings.TrimSpace(r.URL.Query().Get("wperr")))
 	// 三网分省探测范围：跟主题同一个填充入口，免得"进后台漏填"。
 	d.NetQProvinces = h.netqProvinces()
 	sel := make(map[string]bool, len(d.NetQProvinces))

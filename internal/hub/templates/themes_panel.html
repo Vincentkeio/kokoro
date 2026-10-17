@@ -17,6 +17,10 @@
 }
 .th-card:hover { transform: translateY(-2px); }
 .th-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+/* 「选中」= 后台正在给这套设壁纸（点卡片切换），**不等于**启用：
+   用左侧色条区分，别和右上角那个「使用中」徽标混成一回事。 */
+.th-card.sel { border-color: color-mix(in srgb, var(--accent) 52%, var(--line)); box-shadow: inset 3px 0 0 var(--accent); }
+.th-card.sel .th-name b::after { content: "· 设置壁纸中"; color: var(--accent); font-size: 11px; font-weight: 500; margin-left: 6px; }
 .th-swatch { display: flex; gap: 0; height: 34px; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--line); }
 .th-swatch i { flex: 1; }
 .th-name { display: flex; align-items: baseline; gap: var(--s2); }
@@ -78,18 +82,31 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
 }
 .wp-prev-side { display: flex; flex-direction: column; gap: var(--s3); align-items: flex-start; }
 .wp-prev-side .hint { margin: 0; line-height: 1.65; }
+
+/* 主题多起来时，窄屏上一行一张地纵向堆会拖得很长；横着滑一屏就能扫完，
+   卡片宽度也稳定。宽屏仍然走网格换行，不浪费空间。 */
+@media (max-width: 900px) {
+  .th-grid {
+    display: flex; gap: var(--s3); overflow-x: auto; padding-bottom: var(--s2);
+    scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+  }
+  .th-card { flex: 0 0 260px; scroll-snap-align: start; }
+}
 </style>
   <section class="panel" data-atab="themes">
     <h3>主题</h3>
     <p class="th-intro">
-      面板内置「简洁、纸页、朦胧、极夜」四套主题，分别搭配图表形态、卡片细节与配色；切换后整站同步应用。
+      面板内置「简洁、纸页、朦胧、极夜」四套主题，分别搭配图表形态、卡片细节与配色。
+      <b>点卡片只是选中</b>它（用来给这套主题设壁纸），要整站生效请点卡片上的「启用这套」。
+      壁纸按主题分别保存，换到别的主题再换回来，原来的设置还在。
     </p>
 
     {{if .Msg}}<p class="th-msg {{if hasPrefix .Msg "导入失败"}}{{"err"}}err{{else}}ok ok{{end}}">{{.Msg}}</p>{{end}}
 
     <div class="th-grid">
       {{range .Themes}}
-      <article class="th-card{{if .Active}} on{{end}}">
+      <article class="th-card{{if .Active}} on{{end}}{{if .Selected}} sel{{end}}"
+               data-pick="/admin?theme={{.ID}}#themes">
         {{if .Active}}<span class="th-on">使用中</span>{{end}}
         <div class="th-swatch" aria-hidden="true">
           {{range .Swatch}}<i style="background:{{.}}"></i>{{end}}
@@ -127,11 +144,29 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
     </div>
   </section>
 
+  <script>
+  /* 点主题卡片 = 选中它（只换后台面板显示与壁纸编辑对象）。
+     真正改站点默认主题的只有卡片上那个「启用这套」按钮。
+     放这里而不是 app.js：这段只服务后台主题页，跟着面板走最不容易漏。 */
+  (function () {
+    var grid = document.querySelector('.th-grid');
+    if (!grid) return;
+    grid.addEventListener('click', function (ev) {
+      // 按钮、链接、表单控件这些自带行为，别抢。
+      if (ev.target.closest('a, button, input, select, textarea, summary, label')) return;
+      var card = ev.target.closest('.th-card');
+      if (!card) return;
+      var pick = card.getAttribute('data-pick');
+      if (pick) location.href = pick;
+    });
+  })();
+  </script>
+
   <section class="panel" data-atab="themes">
     <h3>壁纸</h3>
     <p class="th-intro" style="margin-bottom:12px">
-      壁纸<b>按主题分开存</b>，这里设的是当前启用主题{{if .Wallpaper.ThemeName}}「{{.Wallpaper.ThemeName}}」{{end}}的壁纸。
-      停用后会回落到该主题自带的背景图；换到别的主题再换回来，原来的设置还在。
+      壁纸<b>按主题分开存</b>，这里设的是上面<b>选中</b>的主题{{if .Wallpaper.ThemeName}}「{{.Wallpaper.ThemeName}}」{{end}} ——
+      点主题卡片就能切换选中，不必先启用它。停用后会回落到该主题自带的背景图。
     </p>
 
     {{if .Wallpaper.Err}}<p class="th-msg err">{{.Wallpaper.Err}}</p>{{end}}

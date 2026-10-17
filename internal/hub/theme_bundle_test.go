@@ -641,6 +641,52 @@ func TestThemeSwitchClearsVisitorCookie(t *testing.T) {
 	}
 }
 
+// TestAdminThemePanelSelectionDoesNotEnable 点主题卡片只是"选中"（换掉后台面板
+// 与壁纸编辑的对象），**不能**顺手把站点默认主题改掉 —— 否则想给每套主题分别设
+// 壁纸，就得反复启用/切回来，"点卡片切壁纸"这件事根本做不成。
+func TestAdminThemePanelSelectionDoesNotEnable(t *testing.T) {
+	h, st := newThemeTestHub(t)
+	cookies := []*http.Cookie{loginCookie(t, h, st)}
+	before := h.ActiveThemeID()
+
+	// 挑一个**不是**当前默认的主题来选中。
+	target := ""
+	for _, id := range h.themes.ListIDs() {
+		if id != before {
+			target = id
+			break
+		}
+	}
+	if target == "" {
+		t.Skip("测试环境只有一套主题，跳过")
+	}
+
+	req := withCookies(httptest.NewRequest(http.MethodGet, "/admin?theme="+target, nil), cookies)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("后台页面 = %d", rec.Code)
+	}
+	if got := h.ActiveThemeID(); got != before {
+		t.Errorf("选中不该改站点默认主题：%s → %s", before, got)
+	}
+	// 壁纸面板要跟着选中的主题走：表单里的 theme 字段就是它。
+	if !strings.Contains(rec.Body.String(), `name="theme" value="`+target+`"`) {
+		t.Errorf("壁纸面板没有切到选中主题 %s", target)
+	}
+
+	// 未知/异常 theme 参数要退回站点主题，别把面板带跑偏。
+	req2 := withCookies(httptest.NewRequest(http.MethodGet, "/admin?theme=../bogus", nil), cookies)
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("带未知 theme 的后台页面 = %d", rec2.Code)
+	}
+	if !strings.Contains(rec2.Body.String(), `name="theme" value="`+before+`"`) {
+		t.Error("未知 theme 参数应退回站点主题")
+	}
+}
+
 // ---- 极简 zip 写入辅助 ----
 
 // zipEntries 按给定条目造一个 zip 字节流。键是条目名，值是内容。

@@ -1082,8 +1082,11 @@ type adminBuyMessage struct {
 }
 
 type adminData struct {
-	Theme         themeView
-	SiteName      string
+	Theme    themeView
+	SiteName string
+	// SelectedID 是后台主题页"正在编辑哪套主题"（点卡片切换，不等于启用）：
+	// 壁纸面板按它取数据，站点默认主题不受影响。
+	SelectedID    string
 	Nodes         []model.Node
 	NodeGroups    []adminNodeGroup
 	Groups        []store.NodeGroup

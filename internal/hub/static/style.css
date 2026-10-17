@@ -2998,13 +2998,15 @@ body[data-k-bar="striped"] .bar i { border-radius:1px; background-image:repeatin
 body[data-k-bar="dotted"] .bar { height:8px; border-radius:0; -webkit-mask-image:radial-gradient(circle at 4px 50%,#000 3px,transparent 3.2px); mask-image:radial-gradient(circle at 4px 50%,#000 3px,transparent 3.2px); -webkit-mask-size:10px 100%; mask-size:10px 100%; }
 
 /* 简洁：淡灰渐变作柔光底，没设壁纸时就是它。
-   ⚠️ 这里**必须**消费 --kokoro-bg-image 那一组变量：早先这行把 background-image
-   写死成渐变，注入的站点壁纸被整个盖掉，表现成"设了壁纸，前台还是空白" ——
-   其它主题都引用了这组变量，所以只有简洁主题换不了壁纸。 */
+   ⚠️ 这里**必须**消费 --kokoro-bg-image —— 早先这行把 background-image 写死成
+   渐变，注入的站点壁纸被整个盖掉，表现成"设了壁纸，前台还是空白"。
+   ⚠️ 但尺寸/平铺那几项**不能**跟着读变量：主题默认映射给的是
+   --kokoro-bg-size:auto / --kokoro-bg-repeat:repeat，照读会把图铺成一片拼贴
+   （看起来像两张图叠在一起），而不是整屏一张。 */
 body[data-k-theme="kokoro.simple"] {
   background-image: var(--kokoro-bg-image, linear-gradient(145deg, #f5f6f8 0%, #edf0f4 100%));
-  background-size: var(--kokoro-bg-size, cover); background-position: center;
-  background-repeat: var(--kokoro-bg-repeat, no-repeat); background-attachment: var(--kokoro-bg-attachment, fixed);
+  background-size: cover; background-position: center;
+  background-repeat: no-repeat; background-attachment: fixed;
 }
 body[data-k-theme="kokoro.cute"] {
   background-image: linear-gradient(rgba(255,249,246,.74), rgba(255,249,246,.74)),
