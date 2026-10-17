@@ -466,7 +466,7 @@
       </div>
       <div class="card-column card-secondary">
 
-      {{if .Uptime}}{{template "uptime.html" .Uptime}}{{else}}<div class="uptime-empty" aria-label="等待在线历史"><span>在线率历史采集中</span><b>—</b></div>{{end}}
+      <div id="uptime-{{.ID}}">{{template "uptime.html" .Uptime}}</div>
 
       {{/* ---- 检测摘要 ----
            展示回程、IP 质量和上报到的硬件跑分；完整字段保留在浮窗。
@@ -617,7 +617,7 @@
 {{template "kglobe.html" .}}
 {{end}}
 
-<script src="/static/app.js?v=153"></script>
+<script src="/static/app.js?v=154"></script>
 </body>
 </html>
 {{end}}

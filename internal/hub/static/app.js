@@ -676,7 +676,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
   var liveStreams = [];
   var streamOpenedOnce = false, needsFragmentSync = document.hidden, fragmentSyncController = null;
   function syncPanelFragments() {
-    if (!document.querySelector('[id^="task-card-"], [id^="netq-rows-"], #nq-detail')) return;
+    if (!document.querySelector('[id^="uptime-"], [id^="task-card-"], [id^="netq-rows-"], #nq-detail')) return;
     if (fragmentSyncController) fragmentSyncController.abort();
     var controller = window.AbortController ? new AbortController() : null;
     fragmentSyncController = controller;
@@ -690,7 +690,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       .then(function (html) {
         if (document.hidden || fragmentSyncController !== controller) return;
         var fresh = new DOMParser().parseFromString(html, 'text/html');
-        document.querySelectorAll('[id^="task-card-"], [id^="netq-rows-"], #nq-detail').forEach(function (current) {
+        document.querySelectorAll('[id^="uptime-"], [id^="task-card-"], [id^="netq-rows-"], #nq-detail').forEach(function (current) {
           var next = fresh.getElementById(current.id);
           if (next && current.id === 'nq-detail' && current.querySelector('.nq-extra:not(.nq-hidden)')) {
             next.querySelectorAll('.nq-extra').forEach(function (row) { row.classList.remove('nq-hidden'); });
@@ -774,6 +774,16 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       if (!d.node || !d.card) return;
       var card = document.getElementById('task-card-' + d.node);
       if (card) card.outerHTML = d.card;
+      var uptime = document.getElementById('uptime-' + d.node);
+      if (uptime && d.uptime) uptime.innerHTML = d.uptime;
+    });
+    es.addEventListener('uptime', function (ev) {
+      var data;
+      try { data = JSON.parse(ev.data); } catch (e) { return; }
+      Object.keys(data).forEach(function (id) {
+        var box = document.getElementById('uptime-' + id);
+        if (box && data[id] && box.innerHTML !== data[id]) box.innerHTML = data[id];
+      });
     });
     es.addEventListener('task_status', function (ev) {
       if (!document.body || !document.body.hasAttribute('data-admin')) return;

@@ -248,7 +248,7 @@ func (h *Hub) publicStreamMessage(r *http.Request, msg []byte) []byte {
 		return nil
 	}
 	switch event {
-	case "metrics", "node_status":
+	case "metrics", "node_status", "uptime":
 		for id := range data {
 			if !allowed[id] {
 				delete(data, id)
@@ -363,6 +363,8 @@ func (h *Hub) publishStatus(nodeID string, online bool) {
 func (h *Hub) startBroadcastLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	lastUptime := time.Time{}
+	known := make(map[string]bool)
 	for {
 		select {
 		case <-ctx.Done():
@@ -373,6 +375,29 @@ func (h *Hub) startBroadcastLoop(ctx context.Context) {
 				continue
 			}
 			h.publishSnapshot(snap)
+			// One shared refresh per minute, independent of visitor count.
+			fresh := make(map[string]bool, len(snap))
+			firstReport := false
+			for id := range snap {
+				fresh[id] = true
+				firstReport = firstReport || !known[id]
+			}
+			known = fresh
+			if firstReport || time.Since(lastUptime) >= time.Minute {
+				lastUptime = time.Now()
+				h.broker.mu.RLock()
+				viewers := len(h.broker.subs)
+				h.broker.mu.RUnlock()
+				if viewers > 0 {
+					updates := make(map[string]string)
+					for id := range snap {
+						if summary := h.loadUptime(id); summary != nil {
+							updates[id] = string(h.renderPartial("uptime.html", summary))
+						}
+					}
+					h.broker.broadcast("uptime", updates)
+				}
+			}
 		}
 	}
 }

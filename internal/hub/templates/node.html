@@ -126,7 +126,7 @@
   <section class="panel"><p class="empty">这台小鸡还没有上报数据。</p></section>
   {{end}}
 
-  {{if .Uptime}}<section class="panel">{{template "uptime.html" .Uptime}}</section>{{end}}
+  <section class="panel" id="uptime-{{.Node.ID}}">{{template "uptime.html" .Uptime}}</section>
 
   <section class="node-content-actions" aria-label="节点文章和评论">
     <button type="button" class="node-content-action" data-dlg="{{.Node.Slug}}" data-panel="art" aria-haspopup="dialog" aria-controls="d-art">
@@ -194,7 +194,7 @@
 window.__POINTS__ = [{{range .Points}}{"t":{{.Ts}},"cpu":{{.CPU}},"mu":{{.MemUsed}},"up":{{.NetUp}},"down":{{.NetDown}}},{{end}}];
 window.__SLUG__ = {{.Node.Slug | js}};
 </script>
-<script src="/static/app.js?v=153"></script>
+<script src="/static/app.js?v=154"></script>
 </body>
 </html>
 {{end}}

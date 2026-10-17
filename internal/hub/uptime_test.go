@@ -149,12 +149,12 @@ func TestUptimeEmptyDaysAreShown(t *testing.T) {
 	}
 }
 
-// TestUptimeNoDataReturnsNil 从没上报过的机器不该显示一条全灰的时间轴。
-func TestUptimeNoDataReturnsNil(t *testing.T) {
+// Newly registered nodes keep the full timeline while collecting samples.
+func TestUptimeNoDataShowsCollecting(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "新机器", "JP", "日本 · 东京", "")
-	if sum := h.loadUptime(n.ID); sum != nil {
-		t.Errorf("没上报过数据时不该渲染时间轴: %+v", sum)
+	if sum := h.loadUptime(n.ID); sum == nil || len(sum.Cells) != 30 || sum.Pct != "采集中" {
+		t.Errorf("新节点应显示完整时间轴和采集状态: %+v", sum)
 	}
 }
 

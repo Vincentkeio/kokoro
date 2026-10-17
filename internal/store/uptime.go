@@ -2,9 +2,8 @@ package store
 
 // 每日在线率统计 —— 「状态时间轴」（一天一格）的数据来源。
 //
-// 为什么用 metrics_5m 而不是 events：events 表是今天才建的，没有历史；
-// 而 metrics_5m 从装机那天就在攒，而且**它本身就是"这台机器有没有在报"
-// 的直接证据** —— 某一格有数据，说明那 5 分钟机器是活的。
+// 历史从 metrics_5m / uptime_buckets 读取，尚未汇总的部分用原始上报补齐，
+// 新接入节点无需等待首个五分钟窗口闭合。
 //
 // 为什么不是简单数格子：装机当天和今天都是**半天**，按整天算会显示成
 // 50% 在线，是假的。所以每天按**实际覆盖到的时间跨度**折算期望值。
@@ -63,10 +62,19 @@ type DayUptime struct {
 // tzOffsetMin 是相对 UTC 的分钟数（东八区 = 480）—— 用面板所在时区切天，
 // 跟首页那个主机时钟保持一致。
 func (s *Store) DailyUptime(nodeID string, days int, tzOffsetMin int) ([]DayUptime, error) {
+	// Keep rollup boundaries and raw samples in one read snapshot while the
+	// background compactor moves data between layers.
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
 	// 这台机器是从什么时候开始存在的。用来决定"这一天从几点开始
 	// 就应该有数据"—— 装机当天之前的时间不该算进分母。
 	var since int64
-	_ = s.db.QueryRow(`SELECT COALESCE(created_at, 0) FROM nodes WHERE id = ?`, nodeID).Scan(&since)
+	if err := tx.QueryRow(`SELECT COALESCE(created_at, 0) FROM nodes WHERE id = ?`, nodeID).Scan(&since); err != nil {
+		return nil, err
+	}
 	if days <= 0 {
 		days = 30
 	}
@@ -86,27 +94,53 @@ func (s *Store) DailyUptime(nodeID string, days int, tzOffsetMin int) ([]DayUpti
 	nowMS := now.UnixMilli()
 	baselineFrom := nowMS - int64(90*24*time.Hour/time.Millisecond)
 	var perBucket int
-	err := s.db.QueryRow(`WITH source AS (`+recentUptimeSourceSQL+`)
+	err = tx.QueryRow(`WITH source AS (`+recentUptimeSourceSQL+`)
 SELECT samples FROM (
   SELECT samples, ROW_NUMBER() OVER (ORDER BY samples) AS rn, COUNT(*) OVER () AS n
   FROM (SELECT samples FROM source WHERE samples>0 ORDER BY bucket DESC LIMIT 2016)
 ) WHERE rn=CAST(n*4/5 AS INTEGER)+1`,
 		nodeID, baselineFrom, nowMS, nodeID, baselineFrom, nowMS).Scan(&perBucket)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
+	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("取上报基准失败: %w", err)
 	}
+
+	// Read only the unaggregated tail. Once a five-minute bucket is written,
+	// its raw samples are excluded, so switching to rollups never counts twice.
+	var rawFrom int64
+	err = tx.QueryRow(`SELECT COALESCE(MAX(bucket)+300000,0) FROM (
+SELECT MAX(bucket) AS bucket FROM metrics_5m WHERE node_id=?
+UNION ALL SELECT MAX(bucket) FROM uptime_buckets WHERE node_id=?)`, nodeID, nodeID).Scan(&rawFrom)
+	if err != nil {
+		return nil, err
+	}
 	if perBucket <= 0 {
-		return nil, nil
+		var first, last sql.NullInt64
+		var count int64
+		err = tx.QueryRow(`SELECT MIN(ts),MAX(ts),COUNT(*) FROM (
+SELECT ts FROM metrics_raw WHERE node_id=? AND ts<=? ORDER BY ts DESC LIMIT 32)`, nodeID, nowMS+20000).Scan(&first, &last, &count)
+		if err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			interval := int64(2000) // Hub's initial reporting interval.
+			if count > 1 && last.Int64 > first.Int64 {
+				interval = (last.Int64 - first.Int64) / (count - 1)
+			}
+			if interval < 1000 {
+				interval = 1000
+			}
+			perBucket = int((300000 + interval/2) / interval)
+			if perBucket < 1 {
+				perBucket = 1
+			}
+		}
 	}
 
 	loc := time.FixedZone("hub", tzOffsetMin*60)
 	localNow := now.In(loc)
 	cutoff := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, -(days - 1)).UnixMilli()
 
-	rows, err := s.db.Query(`WITH source AS (`+uptimeSourceSQL+`)
+	rows, err := tx.Query(`WITH source AS (`+uptimeSourceSQL+`)
 SELECT CAST((bucket+?)/86400000 AS INTEGER) AS d,
        COUNT(*)              AS buckets,
        COALESCE(SUM(samples), 0) AS samples
@@ -116,13 +150,13 @@ ORDER BY d`, nodeID, cutoff, nowMS, nodeID, cutoff, nowMS, int64(tzOffsetMin)*60
 	if err != nil {
 		return nil, fmt.Errorf("查每日在线率失败: %w", err)
 	}
-	defer rows.Close()
 
 	got := map[string]DayUptime{}
 	for rows.Next() {
 		var day int64
 		var buckets, samples int
 		if err := rows.Scan(&day, &buckets, &samples); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		d := time.UnixMilli(day * bucket1d).UTC().Format("2006-01-02")
@@ -132,6 +166,34 @@ ORDER BY d`, nodeID, cutoff, nowMS, nodeID, cutoff, nowMS, int64(tzOffsetMin)*60
 		}
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	if rawFrom < cutoff {
+		rawFrom = cutoff
+	}
+	rawRows, err := tx.Query(`SELECT CAST((ts+?)/86400000 AS INTEGER),COUNT(*)
+FROM metrics_raw WHERE node_id=? AND ts>=? AND ts<=? GROUP BY 1`, int64(tzOffsetMin)*60000, nodeID, rawFrom, nowMS+20000)
+	if err != nil {
+		return nil, err
+	}
+	for rawRows.Next() {
+		var day int64
+		var samples int
+		if err := rawRows.Scan(&day, &samples); err != nil {
+			rawRows.Close()
+			return nil, err
+		}
+		key := time.UnixMilli(day * bucket1d).UTC().Format("2006-01-02")
+		du := got[key]
+		du.Date, du.HasData = key, true
+		du.Samples += samples
+		got[key] = du
+	}
+	err = rawRows.Err()
+	rawRows.Close()
+	if err != nil {
 		return nil, err
 	}
 
@@ -158,11 +220,39 @@ ORDER BY d`, nodeID, cutoff, nowMS, nodeID, cutoff, nowMS, int64(tzOffsetMin)*60
 		}
 		// 装机当天和今天都只覆盖半天，标出来免得被误读成"那天挂了一半"
 		du.ExpectedBuckets = dayExpectedBuckets(key, tzOffsetMin, since)
-		du.ExpectedSamples = int64(du.ExpectedBuckets) * int64(perBucket)
+		du.ExpectedSamples = dayExpectedSamples(key, tzOffsetMin, since, perBucket)
+		if du.ExpectedSamples > 0 {
+			du.Pct = float64(du.Samples) / float64(du.ExpectedSamples) * 100
+			if du.Pct > 100 {
+				du.Pct = 100
+			}
+		}
 		du.Partial = i == 0 || du.Buckets > 0 && du.Buckets < 280
 		out = append(out, du)
 	}
 	return out, nil
+}
+
+// Include only elapsed time, rather than charging a newly joined node for an
+// entire five-minute window before that time has elapsed.
+func dayExpectedSamples(key string, offset int, since int64, perBucket int) int64 {
+	loc := time.FixedZone("hub", offset*60)
+	start, err := time.ParseInLocation("2006-01-02", key, loc)
+	if err != nil || perBucket <= 0 {
+		return 0
+	}
+	end := start.AddDate(0, 0, 1).UnixMilli()
+	from := start.UnixMilli()
+	if since > from {
+		from = since
+	}
+	if now := time.Now().UnixMilli(); now < end {
+		end = now
+	}
+	if end <= from {
+		return 0
+	}
+	return (int64(perBucket)*(end-from) + 299999) / 300000
 }
 
 // dayPct 算某一天的在线率。

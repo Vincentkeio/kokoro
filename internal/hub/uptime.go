@@ -113,7 +113,7 @@ func (h *Hub) loadUptime(nodeID string) *uptimeSummary {
 		sum.Pct = fmt.Sprintf("%.2f%%", pct)
 		sum.Level = uptimeLevel(pct)
 	} else {
-		sum.Pct = "—"
+		sum.Pct = "采集中"
 		sum.Level = "none"
 	}
 	return sum

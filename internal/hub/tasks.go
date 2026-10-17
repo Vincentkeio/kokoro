@@ -445,8 +445,9 @@ func (h *Hub) broadcastTaskCard(nodeID string) {
 	card := nodeCard{Node: *node}
 	h.populateTaskCard(&card)
 	h.broker.broadcast("task", map[string]any{
-		"node": nodeID,
-		"card": h.renderPartial("task_card.html", &card),
+		"node":   nodeID,
+		"card":   h.renderPartial("task_card.html", &card),
+		"uptime": h.renderPartial("uptime.html", h.loadUptime(nodeID)),
 	})
 }
 
