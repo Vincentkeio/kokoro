@@ -106,3 +106,9 @@ go test ./...
 - [`docs/AGENT-COMMANDS.md`](docs/AGENT-COMMANDS.md)：Agent 指令和任务处理。
 - [`docs/FEATURE-MATRIX.md`](docs/FEATURE-MATRIX.md)：功能清单。
 - [`docs/THEME-FORMAT.md`](docs/THEME-FORMAT.md)：主题格式。
+
+## 许可证
+
+本项目采用 **GNU Affero General Public License v3.0（AGPL-3.0）**，Copyright (c) 2026 Vincentkeio。全文见 [`LICENSE`](LICENSE)。
+
+AGPL 的义务：若你把修改后的 Kokoro 部署成网络服务供他人使用，需要向使用者提供对应的完整源码。
