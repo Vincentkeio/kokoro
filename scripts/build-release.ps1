@@ -9,7 +9,7 @@ $installerPath = Join-Path $PSScriptRoot 'install-hub.sh'
 $installer = Get-Content -LiteralPath $installerPath -Raw
 $tagMatch = [regex]::Match($installer, 'RELEASE_TAG="([^"]+)"')
 if ([string]::IsNullOrWhiteSpace($Version) -and $tagMatch.Success) { $Version = $tagMatch.Groups[1].Value }
-if ($Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$') {
+if ($Version -notmatch '^(v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?|alpha[0-9]+(\.[0-9]+)+)$') {
     throw "Invalid release version: $Version"
 }
 if (-not $tagMatch.Success) {

@@ -35,7 +35,7 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 // Version is set from the CLI build version before serving registrations.
-var Version = "0.1.3-preview.1"
+var Version = "alpha1.0"
 
 // Hub 是一个运行中的主控实例。
 type Hub struct {

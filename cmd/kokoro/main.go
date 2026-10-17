@@ -38,7 +38,7 @@ import (
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。
-var Version = "0.1.3-preview.1"
+var Version = "alpha1.0"
 
 const usage = `kokoro - 每台小鸡都有一颗心
 
@@ -287,7 +287,7 @@ func updateAgent(reader *bufio.Reader) int {
 		fmt.Fprintf(os.Stderr, "检查 Agent 更新失败：%v\n", err)
 		return 1
 	}
-	if compareKokoroVersion(latest.Tag, Version) <= 0 {
+	if !releaseUpdateAvailable(latest, Version, releases) {
 		fmt.Println("当前探针程序已是最新版本，没有可用更新。")
 		return 0
 	}
@@ -377,7 +377,7 @@ func updateHubInstaller(reader *bufio.Reader) int {
 		return 1
 	}
 	currentTag := installerReleaseTag(currentScript)
-	if currentTag != "" && currentTag != "latest" && compareKokoroVersion(rel.Tag, currentTag) <= 0 {
+	if currentTag != "" && currentTag != "latest" && !releaseUpdateAvailable(rel, currentTag, releases) {
 		fmt.Println("Hub 分发的安装脚本已是最新版本，没有可用更新。")
 		return 0
 	}

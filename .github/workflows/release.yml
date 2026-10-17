@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+      - 'alpha*'
 
 permissions:
   contents: write
@@ -66,7 +67,7 @@ jobs:
         shell: bash
         run: |
           args=("$GITHUB_REF_NAME" release/* --title "$GITHUB_REF_NAME" --generate-notes)
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+          if [[ "$GITHUB_REF_NAME" == *-* || "$GITHUB_REF_NAME" == alpha* ]]; then
             args+=(--prerelease)
           fi
           gh release create "${args[@]}"
