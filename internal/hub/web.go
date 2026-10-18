@@ -3114,6 +3114,30 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 			}
 			_ = h.store.AddAudit("admin", "node.netq_ip_version", node.ID, *netqIPVersionUpdate)
 		}
+	case "netq_ip_version":
+		version := strings.TrimSpace(r.FormValue("netq_ip_version"))
+		if version != "v4" && version != "v6" {
+			if wantsJSON {
+				writeErr(w, http.StatusBadRequest, "三网探测协议需选择 IPv4 或 IPv6")
+			} else {
+				http.Error(w, "三网探测协议需选择 IPv4 或 IPv6", http.StatusBadRequest)
+			}
+			return
+		}
+		if err := h.store.SetNodeNetQIPVersion(node.ID, version); err != nil {
+			if wantsJSON {
+				writeErr(w, http.StatusInternalServerError, "保存三网探测协议失败，请重试")
+			} else {
+				http.Error(w, "保存三网探测协议失败，请重试", http.StatusInternalServerError)
+			}
+			return
+		}
+		_ = h.store.AddAudit("admin", "node.netq_ip_version", node.ID, version)
+		if wantsJSON {
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": node.ID, "netq_ip_version": version})
+			return
+		}
 	case "visibility":
 		switch r.FormValue("visibility") {
 		case "public", "unlisted", "private":

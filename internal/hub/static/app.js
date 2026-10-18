@@ -903,6 +903,32 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
   });
 })();
 
+// Save the network probe IP family as soon as the admin changes its select.
+(function () {
+  document.addEventListener('change', function (event) {
+    var select = event.target.closest('[data-node-netq-version]');
+    if (!select || !window.fetch) return;
+    var form = select.closest('[data-node-netq-version-form]');
+    if (!form || select.disabled) return;
+    var previous = select.getAttribute('data-saved-value') || 'v4';
+    var data = new URLSearchParams(new FormData(form));
+    select.disabled = true;
+    select.setAttribute('aria-busy', 'true');
+    fetch(form.getAttribute('action'), { method: 'POST', body: data, credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (response) {
+        return response.json().then(function (result) {
+          if (!response.ok || !result.ok) throw new Error(result.error || '保存三网探测协议失败，请重试');
+          select.setAttribute('data-saved-value', result.netq_ip_version);
+        });
+      })
+      .catch(function (error) {
+        select.value = previous;
+        document.dispatchEvent(new CustomEvent('kokoro:admin-feedback', { detail: { message: error.message || '网络异常，请重试', status: 'failed' } }));
+      })
+      .finally(function () { select.disabled = false; select.removeAttribute('aria-busy'); });
+  });
+})();
+
 // Save ordering IDs independently and keep the admin table in the same order
 // as the server's sort_order, name, id ordering without a full-page reload.
 (function () {
