@@ -3,7 +3,7 @@
 set -eu
 
 REPO="Vincentkeio/kokoro"
-RELEASE_TAG="v0.1.3-preview.43"
+RELEASE_TAG="v0.1.3-preview.44"
 INSTALL_DIR="/opt/kokoro"
 DATA_DIR="/var/lib/kokoro"
 SERVICE_FILE="/etc/systemd/system/kokoro-hub.service"
@@ -38,10 +38,12 @@ CADDY_BLOCK_END='# <<< Kokoro-Installer end <<<'
 CADDY_MODE=owned
 CADDY_CERT=""
 CADDY_KEY=""
+CADDY_REMOVE_OWN_CONFIG=0
 # Nginx 模式下如果域名已经由现有站点服务，就沿用它，Kokoro 不另建站点。
 NGINX_REUSE=0
 NGINX_DOMAIN_OWNER=""
 NGINX_DOMAIN_CONFLICT=0
+CADDY_KOKORO_SITE=1
 CADDY_HTTP_PORT=9080
 CADDY_HTTPS_PORT=9443
 
@@ -227,7 +229,44 @@ NGINX_CONFIG_LIST
         info "域名 $DOMAIN 已由 $NGINX_DOMAIN_OWNER 使用，Kokoro 没有改动它"
       fi
     fi
-    info "检测到 Nginx：保留 Nginx 作为公网入口，Caddy 将使用本地备用端口管理证书"
+    if [ "$NGINX_REUSE" -eq 1 ] && [ "$NGINX_DOMAIN_CONFLICT" -eq 0 ]; then
+      # 已有 Nginx 站点直接反代 Hub 时，不需要 Caddy 再为同一域名申请证书。
+      # 旧版安装可能留下了 Kokoro Caddy 块，稍后只移除自己的标记块。
+      CADDY_KOKORO_SITE=0
+      info "现有 Nginx 已直接反代 Kokoro：不再为该域名配置 Caddy 或申请证书"
+    fi
+    if [ "$CADDY_KOKORO_SITE" -eq 1 ]; then
+      info "检测到 Nginx：保留 Nginx 作为公网入口，Caddy 将使用本地备用端口管理证书"
+    else
+      info "检测到 Nginx：沿用已有站点，不为 Kokoro 配置 Caddy 证书"
+    fi
+  fi
+fi
+
+# 复用已直连 Hub 的 Nginx 时，Caddy 不再需要为 Kokoro 服务。
+# 只在发现 Kokoro 自己以前写入的配置时询问；其它 Caddy 站点从不覆盖或改写。
+caddy_has_own_config() {
+  [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ] || return 1
+  if grep -Fq "$CADDY_BLOCK_BEGIN" "$CADDY_FILE" \
+    && grep -Fq "$CADDY_BLOCK_END" "$CADDY_FILE"; then
+    return 0
+  fi
+  [ "$CADDY_MODE" = "replace" ] \
+    && head -n 3 "$CADDY_FILE" | grep -Fq 'Managed-By=Kokoro-Installer'
+}
+if [ "$CADDY_KOKORO_SITE" -eq 0 ] && caddy_has_own_config; then
+  if [ "$HAS_TTY" -eq 1 ]; then
+    printf '检测到 Kokoro 以前写入的 Caddy 配置。是否移除 Kokoro 自己的配置？同一文件中的其它站点会保留。 [y/N] ' >/dev/tty
+    IFS= read -r CADDY_REMOVE_REPLY </dev/tty || true
+    case "$CADDY_REMOVE_REPLY" in
+      y|Y|yes|YES)
+        CADDY_REMOVE_OWN_CONFIG=1
+        info "将备份并移除 Kokoro 自己的 Caddy 配置，保留其它站点"
+        ;;
+      *) info "保留现有 Kokoro Caddy 配置和其它站点" ;;
+    esac
+  else
+    info "检测到 Kokoro 自己的 Caddy 配置；当前没有交互终端，将保留原配置"
   fi
 fi
 
@@ -332,16 +371,20 @@ done
 download_verified install.sh
 download_verified kokoro-bench.sh
 
-info "安装 Caddy"
-install -d -m 0755 /usr/share/keyrings
-curl -fsSL --proto '=https' --tlsv1.2 https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
-  | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-chmod 0644 /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -fsSL --proto '=https' --tlsv1.2 https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
-  -o /etc/apt/sources.list.d/caddy-stable.list
-apt-get update
-apt-get install -y caddy
-install -d -o caddy -g caddy -m 0750 "$CADDY_STORAGE"
+if [ "$CADDY_KOKORO_SITE" -eq 1 ]; then
+  info "安装 Caddy"
+  install -d -m 0755 /usr/share/keyrings
+  curl -fsSL --proto '=https' --tlsv1.2 https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
+    | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  chmod 0644 /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -fsSL --proto '=https' --tlsv1.2 https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
+    -o /etc/apt/sources.list.d/caddy-stable.list
+  apt-get update
+  apt-get install -y caddy
+  install -d -o caddy -g caddy -m 0750 "$CADDY_STORAGE"
+else
+  info "现有 Nginx 站点已直连 Kokoro，跳过 Caddy 安装"
+fi
 
 if [ "$HAS_TTY" -eq 1 ]; then
   printf '管理员用户名 [%s]：' "$ADMIN_USER" >/dev/tty
@@ -578,6 +621,33 @@ write_caddyfile() {
   rm -f "$CADDY_MERGE_TMP"
 }
 
+# 已有 Nginx 直接服务面板时，只摘除 Kokoro 自己的 Caddy 标记块。
+# 如果文件里没有其它内容，就停用只为 Kokoro 安装的 Caddy；共用配置则保留运行。
+remove_kokoro_caddy_block() {
+  [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ] || return 0
+  if [ "$CADDY_MODE" = "replace" ] \
+    && head -n 3 "$CADDY_FILE" | grep -Fq 'Managed-By=Kokoro-Installer'; then
+    # 文件头标记确认整份旧配置都由 Kokoro 安装器生成，可以安全移除。
+    rm -f "$CADDY_FILE"
+    CADDY_CONFIG_WRITTEN=1
+    return 0
+  fi
+  CADDY_MERGE_TMP="$CADDY_FILE.kokoro-merge.$$"
+  awk -v b="$CADDY_BLOCK_BEGIN" -v e="$CADDY_BLOCK_END" '
+    { line = $0; sub(/[[:space:]]+$/, "", line)
+      if (line == b) { skip = 1; next }
+      if (line == e) { skip = 0; next }
+      if (!skip) print }
+  ' "$CADDY_FILE" > "$CADDY_MERGE_TMP" || { rm -f "$CADDY_MERGE_TMP"; fail "读取 $CADDY_FILE 失败"; }
+  if [ -n "$(tr -d ' \t\r\n' < "$CADDY_MERGE_TMP")" ]; then
+    cat "$CADDY_MERGE_TMP" > "$CADDY_FILE"
+  else
+    rm -f "$CADDY_FILE"
+  fi
+  rm -f "$CADDY_MERGE_TMP"
+  CADDY_CONFIG_WRITTEN=1
+}
+
 if [ "$NGINX_MODE" -eq 1 ] && [ "$NGINX_REUSE" -eq 0 ]; then
   cat >"$NGINX_CONFIG_FILE" <<EOF
 # Managed-By=Kokoro-Installer
@@ -597,9 +667,11 @@ server {
 }
 EOF
 fi
-write_caddyfile
-CADDY_CONFIG_WRITTEN=1
-if [ "$CADDY_SHARED" -eq 0 ] && [ "$NGINX_MODE" -eq 1 ]; then
+if [ "$CADDY_KOKORO_SITE" -eq 1 ]; then
+  write_caddyfile
+  CADDY_CONFIG_WRITTEN=1
+fi
+if [ "$CADDY_KOKORO_SITE" -eq 1 ] && [ "$CADDY_SHARED" -eq 0 ] && [ "$NGINX_MODE" -eq 1 ]; then
   # 整份配置归 Kokoro 时存储目录是我们指定的，证书路径确定；
   # 共用别人的配置时用不了自定义 storage，证书要去 Caddy 自己的存储里找。
   CADDY_CERT_DIR="$CADDY_STORAGE/certificates/acme-v02.api.letsencrypt.org-directory/$DOMAIN"
@@ -611,18 +683,36 @@ if [ -n "$NGINX_CONFIG_FILE" ]; then
   "$NGINX_BIN" -s reload || fail "无法加载 Nginx 临时 ACME 路由；请检查 Nginx 状态"
 fi
 
-chmod 0644 "$SERVICE_FILE" "$CADDY_FILE"
+chmod 0644 "$SERVICE_FILE"
 systemctl daemon-reload
 systemctl enable --now kokoro-update.path
 systemctl enable --now kokoro-hub
-systemctl enable caddy
-caddy validate --config "$CADDY_FILE" --adapter caddyfile
-# 不要盲目 restart：Caddy 已经在跑别人的站点，restart 失败会把它们一起弄下线。
-# 加载失败时退出，由 EXIT 陷阱把原配置还原回去。
-if systemctl is-active --quiet caddy; then
-  systemctl reload caddy || fail "Caddy 加载新配置失败；已还原原来的 Caddy 配置"
+if [ "$CADDY_KOKORO_SITE" -eq 1 ]; then
+  chmod 0644 "$CADDY_FILE"
+  systemctl enable caddy
+  caddy validate --config "$CADDY_FILE" --adapter caddyfile
+  # 不要盲目 restart：Caddy 已经在跑别人的站点，restart 失败会把它们一起弄下线。
+  # 加载失败时退出，由 EXIT 陷阱把原配置还原回去。
+  if systemctl is-active --quiet caddy; then
+    systemctl reload caddy || fail "Caddy 加载新配置失败；已还原原来的 Caddy 配置"
+  else
+    systemctl restart caddy || fail "Caddy 启动失败"
+  fi
 else
-  systemctl restart caddy || fail "Caddy 启动失败"
+  if [ "$CADDY_REMOVE_OWN_CONFIG" -eq 1 ]; then
+    remove_kokoro_caddy_block
+    if [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ]; then
+      chmod 0644 "$CADDY_FILE"
+      if command -v caddy >/dev/null 2>&1; then
+        caddy validate --config "$CADDY_FILE" --adapter caddyfile
+      fi
+      if systemctl is-active --quiet caddy; then
+        systemctl reload caddy || fail "清理 Kokoro Caddy 站点失败；已还原原来的 Caddy 配置"
+      fi
+    else
+      systemctl disable --now caddy >/dev/null 2>&1 || true
+    fi
+  fi
 fi
 
 # 找到 Caddy 为这个域名签下的证书。整份配置归 Kokoro 时路径是确定的；
