@@ -67,10 +67,10 @@
 </style>
 </head>
 <body {{.Theme.Attrs}} data-k-theme="{{.Theme.ID}}" data-admin="1">
-<header class="top">
+<header class="top admin-topbar">
   <div class="wrap">
-    <a class="brand" href="/">{{.SiteName}} 后台</a>
-    <div class="top-tools">
+    <a class="brand admin-brand" href="/">{{template "kokoro-mark" .}}<span>{{.SiteName}}</span></a>
+    <div class="admin-top-tools">
       <a class="btn ghost small" href="/admin">← 后台</a>
 
       <a class="btn ghost small" href="/n/{{.Node.Slug}}" target="_blank" rel="noopener">看详情页 ↗</a>

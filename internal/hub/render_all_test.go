@@ -18,6 +18,7 @@ package hub
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Vincentkeio/kokoro/internal/model"
@@ -66,6 +67,13 @@ func TestEveryTemplateRenders(t *testing.T) {
 		}
 		if len(body) < 500 {
 			t.Errorf("%s 只渲染出 %d 字节，像是中途截断了", p.tmpl, len(body))
+		}
+		if p.tmpl == "admin_tasks.html" {
+			for _, want := range []string{`class="brand admin-brand" href="/"`, `class="top-mark"`} {
+				if !strings.Contains(body, want) {
+					t.Errorf("测试页顶部品牌区缺少 %q", want)
+				}
+			}
 		}
 	}
 }
