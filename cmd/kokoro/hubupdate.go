@@ -39,9 +39,9 @@ const (
 
 	maxHubBinarySize   = 128 << 20
 	maxHubChecksumSize = 4096
-	maxHubReleaseBytes = 1 << 20
+	maxHubReleaseBytes = 4 << 20
 
-	hubReleasePageSize = 20
+	hubReleasePageSize = 100
 	hubBackupsToKeep   = 3
 
 	hubHealthAttempts = 10
@@ -57,10 +57,11 @@ type hubAsset struct {
 
 // hubRelease 是 GitHub Releases API 返回的一条已发布版本。
 type hubRelease struct {
-	Tag        string     `json:"tag_name"`
-	Draft      bool       `json:"draft"`
-	Prerelease bool       `json:"prerelease"`
-	Assets     []hubAsset `json:"assets"`
+	Tag         string     `json:"tag_name"`
+	Draft       bool       `json:"draft"`
+	Prerelease  bool       `json:"prerelease"`
+	PublishedAt time.Time  `json:"published_at"`
+	Assets      []hubAsset `json:"assets"`
 }
 
 // hubReleaseSource 抽象「列出发布版本 / 下载资产」，测试可用桩替换。
@@ -258,10 +259,11 @@ func (u *hubUpdater) Run(ctx context.Context) error {
 		return err
 	}
 
-	if compareKokoroVersion(rel.Tag, u.currentVersion) <= 0 {
+	if !hubReleaseNewerThanVersion(rel, u.currentVersion, releases) {
 		fmt.Fprintln(u.out, "当前面板已是最新版本，没有可用更新。")
 		return nil
 	}
+	fmt.Fprintf(u.out, "发现更新：%s\n", describeHubRelease(rel))
 	if !u.assumeYes && !confirmUpdate(u.in, u.out) {
 		fmt.Fprintln(u.out, "已取消。")
 		return nil
@@ -343,18 +345,49 @@ func (u *hubUpdater) Run(ctx context.Context) error {
 	return nil
 }
 
-// chooseRelease uses the version order understood by older Kokoro installations.
+// chooseRelease selects the most recently published non-draft release,
+// including prereleases. Older releases without timestamps fall back to tags.
 func (u *hubUpdater) chooseRelease(releases []hubRelease) (hubRelease, error) {
 	if len(releases) == 0 {
 		return hubRelease{}, errors.New("GitHub 上没有可用的已发布版本")
 	}
 	chosen := releases[0]
 	for _, rel := range releases[1:] {
-		if compareKokoroVersion(rel.Tag, chosen.Tag) > 0 {
+		if hubReleaseNewer(rel, chosen) {
 			chosen = rel
 		}
 	}
 	return chosen, nil
+}
+
+func hubReleaseNewer(a, b hubRelease) bool {
+	if !a.PublishedAt.IsZero() && !b.PublishedAt.IsZero() && !a.PublishedAt.Equal(b.PublishedAt) {
+		return a.PublishedAt.After(b.PublishedAt)
+	}
+	return compareKokoroVersion(a.Tag, b.Tag) > 0
+}
+
+func hubReleaseNewerThanVersion(target hubRelease, current string, releases []hubRelease) bool {
+	if target.Tag == current {
+		return false
+	}
+	for _, rel := range releases {
+		if rel.Tag == current {
+			return hubReleaseNewer(target, rel)
+		}
+	}
+	return compareKokoroVersion(target.Tag, current) > 0
+}
+
+func describeHubRelease(rel hubRelease) string {
+	label := rel.Tag
+	if rel.Prerelease {
+		label += "（预览版）"
+	}
+	if !rel.PublishedAt.IsZero() {
+		label += "，发布于 " + rel.PublishedAt.Local().Format("2006-01-02 15:04:05")
+	}
+	return label
 }
 
 func (u *hubUpdater) restartAndCheck(ctx context.Context) error {

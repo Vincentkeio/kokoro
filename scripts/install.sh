@@ -33,6 +33,7 @@ USE_GITHUB=0
 GH_REPO="${GH_REPO:-Vincentkeio/kokoro}"
 GH_PROXY="${GH_PROXY:-}"
 GH_TAG="${GH_TAG:-latest}"
+GH_INSTALLER_VERSION="${GH_INSTALLER_VERSION:-dev}"
 
 BIN_DIR="/usr/local/bin"
 BIN_NAME="kokoro-agent"
@@ -92,6 +93,7 @@ Kokoro agent 安装脚本
 环境变量:
   GH_REPO   GitHub 仓库，默认 Vincentkeio/kokoro
   GH_TAG     Release 标签，默认 latest
+  GH_INSTALLER_VERSION  此安装脚本所属版本（发布包会自动填写）
   GH_PROXY   下载前缀镜像，例如 https://ghproxy.net/
 EOF
 }
@@ -236,6 +238,47 @@ lower() {
     printf '%s' "$1" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz'
 }
 
+resolve_latest_release_tag() {
+    _api="https://api.github.com/repos/$GH_REPO/releases?per_page=100"
+    _json="$TMP_DIR/releases.json"
+    if ! fetch "$_api" "$_json"; then
+        if [ -n "$GH_PROXY" ] && fetch "$GH_PROXY$_api" "$_json"; then
+            :
+        else
+            die "无法读取 GitHub 发布列表；请检查网络或手动设置 GH_TAG"
+        fi
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        _tag=$(python3 - "$_json" <<'PY'
+import datetime, json, re, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    releases = json.load(f)
+tag_pattern = re.compile(r"^v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")
+valid = []
+for release in releases:
+    tag = release.get("tag_name", "")
+    published = release.get("published_at")
+    if release.get("draft") or not tag_pattern.fullmatch(tag) or not published:
+        continue
+    try:
+        stamp = datetime.datetime.fromisoformat(published.replace("Z", "+00:00"))
+    except ValueError:
+        continue
+    valid.append((stamp, tag))
+if valid:
+    print(max(valid)[1])
+PY
+        ) || die "无法解析 GitHub 发布列表"
+    elif command -v jq >/dev/null 2>&1; then
+        _tag=$(jq -r '[.[] | select(.draft == false and (.tag_name | test("^v?[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.-]+)?$")) and .published_at != null)] | sort_by(.published_at) | last | .tag_name // empty' "$_json")
+    else
+        die "自动选择最新发布需要 python3 或 jq；也可以手动设置 GH_TAG"
+    fi
+    [ -n "$_tag" ] || die "GitHub 上没有带有效发布时间的已发布版本"
+    GH_TAG="$_tag"
+    info "按发布时间选择最新发布: $GH_TAG"
+}
+
 # 下载制品与其 sha256，成功后把二进制留在 $TMP_DIR/$ASSET
 download_agent() {
     _ok=0
@@ -259,12 +302,10 @@ download_agent() {
             die "没有可用的下载源（Hub 不可用且未设置 GH_REPO）"
         fi
         if [ "$GH_TAG" = "latest" ]; then
-            _gh="https://github.com/$GH_REPO/releases/latest/download/$ASSET"
-            _gh_sha="https://github.com/$GH_REPO/releases/latest/download/$ASSET.sha256"
-        else
-            _gh="https://github.com/$GH_REPO/releases/download/$GH_TAG/$ASSET"
-            _gh_sha="https://github.com/$GH_REPO/releases/download/$GH_TAG/$ASSET.sha256"
+            resolve_latest_release_tag
         fi
+        _gh="https://github.com/$GH_REPO/releases/download/$GH_TAG/$ASSET"
+        _gh_sha="https://github.com/$GH_REPO/releases/download/$GH_TAG/$ASSET.sha256"
         if [ -n "$GH_PROXY" ]; then
             _gh="$GH_PROXY$_gh"
             _gh_sha="$GH_PROXY$_gh_sha"

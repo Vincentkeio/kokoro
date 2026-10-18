@@ -61,16 +61,12 @@ Write-Checksum $benchPath
 $installPath = Join-Path $outputPath 'install.sh'
 Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\install.sh') -Destination $installPath -Force
 $installSource = Get-Content -LiteralPath $installPath -Raw
-$latestTagDefault = 'GH_TAG="${GH_TAG:-latest}"'
-if (-not $installSource.Contains($latestTagDefault)) {
-    throw 'Could not find the default GH_TAG in install.sh'
+$installerVersionDefault = 'GH_INSTALLER_VERSION="${GH_INSTALLER_VERSION:-dev}"'
+if (-not $installSource.Contains($installerVersionDefault)) {
+    throw 'Could not find the default GH_INSTALLER_VERSION in install.sh'
 }
-$pinnedTagDefault = 'GH_TAG="${GH_TAG:-' + $Version + '}"'
-$installSource = $installSource.Replace($latestTagDefault, $pinnedTagDefault)
+$installSource = $installSource.Replace($installerVersionDefault, 'GH_INSTALLER_VERSION="${GH_INSTALLER_VERSION:-' + $Version + '}"')
 [IO.File]::WriteAllText($installPath, $installSource, [Text.UTF8Encoding]::new($false))
-if (-not (Select-String -LiteralPath $installPath -SimpleMatch $pinnedTagDefault -Quiet)) {
-    throw "Release install.sh is not pinned to $Version"
-}
 Write-Checksum $installPath
 
 Write-Output "Release assets built in $outputPath"

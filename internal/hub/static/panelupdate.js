@@ -6,6 +6,15 @@
   var target = '', hubAvailable = false, agentCount = 0, supported = false, busy = false, hubBusy = false, agentsBusy = false, polling = false;
   var names = { waiting: '等待上线', running: '更新中', completed: '更新完成', current: '无需更新', failed: '更新失败', unsupported: '需手动更新' };
   function say(text, bad) { feedback.textContent = text; feedback.classList.toggle('bad', !!bad); }
+  function releaseLabel(data) {
+    var label = data.target || target;
+    if (data.prerelease) label += '（预览版）';
+    if (data.published_at) {
+      var date = new Date(data.published_at);
+      if (!Number.isNaN(date.getTime())) label += '，发布于 ' + date.toLocaleString('zh-CN', { hour12: false });
+    }
+    return label;
+  }
   function buttons() { check.disabled = busy || hubBusy; hub.disabled = busy || hubBusy || !target || !hubAvailable || !supported; agents.disabled = busy || hubBusy || agentsBusy || !target || !agentCount; }
   async function request(action) {
     var opts = { credentials: 'same-origin', headers: { Accept: 'application/json' } };
@@ -33,9 +42,10 @@
   check.addEventListener('click', async function () {
     if (busy) return; busy = true; buttons(); say('正在检查更新…');
     try { var data = await request('check'); target = data.target; hubAvailable = data.hub_available; agentCount = data.agent_count; supported = data.supported;
-      hubMsg.textContent = !supported ? '当前服务环境不支持在线更新，请通过服务器管理菜单更新。' : hubAvailable ? '有可用更新。' : '当前面板已是最新版本。';
+      var release = releaseLabel(data);
+      hubMsg.textContent = !supported ? '当前服务环境不支持在线更新，请通过服务器管理菜单更新。' : hubAvailable ? '可更新至 ' + release + '。' : '目标版本 ' + release + '；当前面板已是最新版本。';
       var onlineCount = data.online_count || 0;
-      agentsMsg.textContent = onlineCount === 0 ? '没有在线的探针，无法下发更新。' : agentCount ? agentCount + ' 台在线探针有可用更新。' : '在线的探针都已是最新版本。'; say(hubAvailable || agentCount ? '检查完成，可选择需要更新的程序。' : '没有可用更新。');
+      agentsMsg.textContent = onlineCount === 0 ? '没有在线的探针，无法下发更新。' : agentCount ? agentCount + ' 台在线探针可更新至 ' + release + '。' : '目标版本 ' + release + '；在线探针都已是最新版本。'; say(hubAvailable || agentCount ? '检查完成，可选择需要更新的程序。' : '没有可用更新。');
     } catch (e) { say(e.message, true); } finally { busy = false; buttons(); }
   });
   async function start(action) {

@@ -25,9 +25,11 @@ type Asset struct {
 	Size int64  `json:"size"`
 }
 type Release struct {
-	Tag    string  `json:"tag_name"`
-	Draft  bool    `json:"draft"`
-	Assets []Asset `json:"assets"`
+	Tag         string    `json:"tag_name"`
+	Draft       bool      `json:"draft"`
+	Prerelease  bool      `json:"prerelease"`
+	PublishedAt time.Time `json:"published_at"`
+	Assets      []Asset   `json:"assets"`
 }
 
 var tagPattern = regexp.MustCompile(`^v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$`)
@@ -111,25 +113,37 @@ func releaseRequest(ctx context.Context, endpoint string, out any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("GitHub 返回 HTTP %d，请稍后重试", resp.StatusCode)
+		return releaseHTTPError{status: resp.StatusCode}
 	}
-	b, e := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
+	b, e := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
 	if e != nil {
 		return e
 	}
-	if len(b) > 1<<20 {
+	if len(b) > 4<<20 {
 		return errors.New("发布信息超过上限")
 	}
 	return json.Unmarshal(b, out)
 }
+
+type releaseHTTPError struct{ status int }
+
+func (e releaseHTTPError) Error() string {
+	return fmt.Sprintf("GitHub 返回 HTTP %d，请稍后重试", e.status)
+}
+
+func isReleaseNotFound(err error) bool {
+	var status releaseHTTPError
+	return errors.As(err, &status) && status.status == http.StatusNotFound
+}
+
 func Latest(ctx context.Context) (Release, error) {
 	var list []Release
-	if e := releaseRequest(ctx, "releases?per_page=30", &list); e != nil {
+	if e := releaseRequest(ctx, "releases?per_page=100", &list); e != nil {
 		return Release{}, e
 	}
 	var best Release
 	for _, r := range list {
-		if !r.Draft && ValidTag(r.Tag) && (best.Tag == "" || Compare(r.Tag, best.Tag) > 0) {
+		if !r.Draft && ValidTag(r.Tag) && (best.Tag == "" || releaseNewer(r, best)) {
 			best = r
 		}
 	}
@@ -137,6 +151,47 @@ func Latest(ctx context.Context) (Release, error) {
 		return best, errors.New("没有可用的已发布版本")
 	}
 	return best, nil
+}
+
+// IsNewer compares releases by GitHub's publication time. If GitHub does not
+// provide a timestamp for either tag (or the installed tag has been removed),
+// retain the semantic-version check as a safe fallback.
+func IsNewer(ctx context.Context, targetTag, currentTag string) (bool, error) {
+	if targetTag == currentTag {
+		return false, nil
+	}
+	target, err := ByTag(ctx, targetTag)
+	if err != nil {
+		return false, err
+	}
+	return IsNewerRelease(ctx, target, currentTag)
+}
+
+func IsNewerRelease(ctx context.Context, target Release, currentTag string) (bool, error) {
+	if target.Tag == currentTag {
+		return false, nil
+	}
+	if !ValidTag(currentTag) {
+		return Compare(target.Tag, currentTag) > 0, nil
+	}
+	current, err := ByTag(ctx, currentTag)
+	if err != nil {
+		if isReleaseNotFound(err) {
+			return Compare(target.Tag, currentTag) > 0, nil
+		}
+		return false, err
+	}
+	if !target.PublishedAt.IsZero() && !current.PublishedAt.IsZero() {
+		return target.PublishedAt.After(current.PublishedAt), nil
+	}
+	return Compare(target.Tag, currentTag) > 0, nil
+}
+
+func releaseNewer(a, b Release) bool {
+	if !a.PublishedAt.IsZero() && !b.PublishedAt.IsZero() && !a.PublishedAt.Equal(b.PublishedAt) {
+		return a.PublishedAt.After(b.PublishedAt)
+	}
+	return Compare(a.Tag, b.Tag) > 0
 }
 func ByTag(ctx context.Context, tag string) (Release, error) {
 	var r Release

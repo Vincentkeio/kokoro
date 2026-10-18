@@ -48,26 +48,28 @@ type Hub struct {
 	// 都走它，保证压缩行为在两条路径上一致。
 	handler http.Handler
 
-	broker           *broker
-	limiter          *limiter
-	loginThrottle    *loginThrottle
-	tokenMu          sync.Mutex
-	expiryReminderMu sync.Mutex
-	transferMu       sync.Mutex
-	restoreQueued    bool
-	restoreCh        chan string
-	restoreStage     string
-	onReady          func() error
-	migrationMu      sync.Mutex
-	migrationLoaded  bool
-	migrationPlan    *panelMigrationPlan
-	migrationSyncAt  time.Time
-	updateMu         sync.Mutex
-	updatePlan       *agentUpdatePlan
-	updateLoaded     bool
-	updateReleaseAt  time.Time
-	updateReleaseTag string
-	alerts           *alert.Manager
+	broker                   *broker
+	limiter                  *limiter
+	loginThrottle            *loginThrottle
+	tokenMu                  sync.Mutex
+	expiryReminderMu         sync.Mutex
+	transferMu               sync.Mutex
+	restoreQueued            bool
+	restoreCh                chan string
+	restoreStage             string
+	onReady                  func() error
+	migrationMu              sync.Mutex
+	migrationLoaded          bool
+	migrationPlan            *panelMigrationPlan
+	migrationSyncAt          time.Time
+	updateMu                 sync.Mutex
+	updatePlan               *agentUpdatePlan
+	updateLoaded             bool
+	updateReleaseAt          time.Time
+	updateReleaseTag         string
+	updateReleasePublishedAt time.Time
+	updateReleasePrerelease  bool
+	alerts                   *alert.Manager
 
 	// themes 是主题注册表（内置 + 导入），theme 缓存当前主题的渲染产物。
 	// 后台切主题只改内存 + settings 表，不需要重启。

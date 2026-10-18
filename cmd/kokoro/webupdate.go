@@ -143,7 +143,11 @@ func applyWebUpdate(ctx context.Context, role, target, data, config, health stri
 	if !panelupdate.Supported() {
 		return errors.New("当前环境不支持在线更新")
 	}
-	if panelupdate.Compare(target, Version) <= 0 {
+	newer, e := panelupdate.IsNewer(ctx, target, Version)
+	if e != nil {
+		return e
+	}
+	if !newer {
 		return nil
 	}
 	rel, e := panelupdate.ByTag(ctx, target)

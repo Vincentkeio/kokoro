@@ -141,6 +141,8 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 	h.updateMu.Lock()
 	tag := h.updateReleaseTag
 	at := h.updateReleaseAt
+	publishedAt := h.updateReleasePublishedAt
+	prerelease := h.updateReleasePrerelease
 	h.updateMu.Unlock()
 	if tag == "" || time.Since(at) > time.Minute {
 		rel, e := panelupdate.Latest(ctx)
@@ -149,11 +151,16 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		tag = rel.Tag
+		publishedAt = rel.PublishedAt
+		prerelease = rel.Prerelease
 		h.updateMu.Lock()
 		h.updateReleaseTag = tag
 		h.updateReleaseAt = time.Now()
+		h.updateReleasePublishedAt = publishedAt
+		h.updateReleasePrerelease = prerelease
 		h.updateMu.Unlock()
 	}
+	release := panelupdate.Release{Tag: tag, PublishedAt: publishedAt, Prerelease: prerelease}
 	nodes, e := h.store.ListNodes(true)
 	if e != nil {
 		writeErr(w, 500, "无法读取节点")
@@ -164,17 +171,32 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UnixMilli()
 	online := 0
 	count := 0
+	newerByVersion := map[string]bool{tag: false}
 	for _, n := range nodes {
 		if !nodeConsideredOnline(n, now) {
 			continue
 		}
 		online++
-		if panelupdate.Compare(tag, n.AgentVer) > 0 {
+		newer, ok := newerByVersion[n.AgentVer]
+		if !ok {
+			newer, e = panelupdate.IsNewerRelease(ctx, release, n.AgentVer)
+			if e != nil {
+				writeErr(w, 502, "无法读取当前探针版本的发布时间，请稍后重试")
+				return
+			}
+			newerByVersion[n.AgentVer] = newer
+		}
+		if newer {
 			count++
 		}
 	}
+	hubNewer, e := panelupdate.IsNewerRelease(ctx, release, Version)
+	if e != nil {
+		writeErr(w, 502, "无法读取当前面板版本的发布时间，请稍后重试")
+		return
+	}
 	if action == "check" {
-		writeJSON(w, 200, map[string]any{"ok": true, "target": tag, "hub_available": panelupdate.Compare(tag, Version) > 0, "agent_count": count, "online_count": online, "supported": panelupdate.HubSupported(h.cfg.DataDir)})
+		writeJSON(w, 200, map[string]any{"ok": true, "target": tag, "prerelease": prerelease, "published_at": publishedAt, "hub_available": hubNewer, "agent_count": count, "online_count": online, "supported": panelupdate.HubSupported(h.cfg.DataDir)})
 		return
 	}
 	if r.FormValue("target") != tag {
@@ -191,7 +213,7 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if action == "hub" {
-		if panelupdate.Compare(tag, Version) <= 0 {
+		if !hubNewer {
 			writeErr(w, 409, "当前面板没有可用更新")
 			return
 		}
@@ -232,7 +254,7 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			state, msg := "waiting", "等待节点接收更新"
-			if panelupdate.Compare(tag, n.AgentVer) <= 0 {
+			if !newerByVersion[n.AgentVer] {
 				state = "current"
 				msg = "已是最新版本"
 			}
@@ -281,7 +303,7 @@ func (h *Hub) updateCommand(n *model.Node, m *model.Metrics) *model.Command {
 				_ = h.saveUpdateLocked()
 			}
 		}
-		if panelupdate.ValidTag(m.AgentVersion) && panelupdate.Compare(m.AgentVersion, p.Target) >= 0 {
+		if panelupdate.ValidTag(m.AgentVersion) && m.AgentVersion == p.Target {
 			set("completed", "已更新并恢复上报")
 			return nil
 		}

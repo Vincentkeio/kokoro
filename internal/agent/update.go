@@ -24,7 +24,7 @@ func (a *Agent) upgrade(cmd model.Command) model.CommandResult {
 		res.Stderr = "更新请求无效"
 		return res
 	}
-	if panelupdate.Compare(target, Version) <= 0 {
+	if target == Version {
 		res.OK = true
 		res.Stdout = "探针已是最新版本"
 		return res

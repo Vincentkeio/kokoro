@@ -40,7 +40,7 @@ import (
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。
-var Version = "v0.1.3-preview.43"
+var Version = "v0.2.0-beta.1"
 
 const usage = `kokoro - 每台小鸡都有一颗心
 
@@ -298,10 +298,11 @@ func updateAgent(reader *bufio.Reader) int {
 		fmt.Fprintf(os.Stderr, "检查 Agent 更新失败：%v\n", err)
 		return 1
 	}
-	if compareKokoroVersion(latest.Tag, Version) <= 0 {
+	if !hubReleaseNewerThanVersion(latest, Version, releases) {
 		fmt.Println("当前探针程序已是最新版本，没有可用更新。")
 		return 0
 	}
+	fmt.Printf("发现 Agent 更新：%s\n", describeHubRelease(latest))
 	if !confirmUpdate(reader, os.Stdout) {
 		fmt.Println("已取消。")
 		return 0
@@ -388,10 +389,11 @@ func updateHubInstaller(reader *bufio.Reader) int {
 		return 1
 	}
 	currentTag := installerReleaseTag(currentScript)
-	if currentTag != "" && currentTag != "latest" && compareKokoroVersion(rel.Tag, currentTag) <= 0 {
+	if currentTag != "" && currentTag != "latest" && !hubReleaseNewerThanVersion(rel, currentTag, releases) {
 		fmt.Println("Hub 分发的安装脚本已是最新版本，没有可用更新。")
 		return 0
 	}
+	fmt.Printf("发现安装脚本更新：%s\n", describeHubRelease(rel))
 	if !confirmUpdate(reader, os.Stdout) {
 		fmt.Println("已取消。")
 		return 0
@@ -431,14 +433,18 @@ func updateHubInstaller(reader *bufio.Reader) int {
 }
 
 func installerReleaseTag(script []byte) string {
-	const prefix = `GH_TAG="${GH_TAG:-`
-	for _, line := range strings.Split(string(script), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, prefix) {
-			continue
+	for _, prefix := range []string{`GH_INSTALLER_VERSION="${GH_INSTALLER_VERSION:-`, `GH_TAG="${GH_TAG:-`} {
+		for _, line := range strings.Split(string(script), "\n") {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, prefix) {
+				continue
+			}
+			tag := strings.TrimSuffix(strings.TrimPrefix(line, prefix), `}"`)
+			tag = strings.TrimSpace(tag)
+			if tag != "" && tag != "dev" {
+				return tag
+			}
 		}
-		tag := strings.TrimSuffix(strings.TrimPrefix(line, prefix), `}"`)
-		return strings.TrimSpace(tag)
 	}
 	return ""
 }
