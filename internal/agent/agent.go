@@ -36,7 +36,7 @@ import (
 )
 
 // Version 是 agent 版本，注册时上报给 Hub。
-var Version = "v0.1.3-preview.39"
+var Version = "v0.1.3-preview.40"
 
 const logPrefix = "[kokoro-agent] "
 

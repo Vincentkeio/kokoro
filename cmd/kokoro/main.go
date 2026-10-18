@@ -40,7 +40,7 @@ import (
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。
-var Version = "v0.1.3-preview.39"
+var Version = "v0.1.3-preview.40"
 
 const usage = `kokoro - 每台小鸡都有一颗心
 
@@ -175,7 +175,7 @@ func menuItems() []menuItem {
 	}
 	items = append(items, menuItem{label: "查看最近日志", run: func(*bufio.Reader) int { showLogs(); return 0 }})
 	if hub {
-		items = append(items, menuItem{label: "卸载面板（可选连数据库一起删除）", run: uninstallHub})
+		items = append(items, menuItem{label: "卸载面板（可选保留配置与数据）", run: uninstallHub})
 	} else if leftovers {
 		items = append(items, menuItem{label: "清理面板残留（服务已不在）", run: uninstallHub})
 	}
@@ -880,6 +880,53 @@ func removeKokoroProgramMarkers(hubBinary string, purge bool) {
 	}
 }
 
+// removeKokoroMenuLib 收走 /usr/local/lib/kokoro 里的安装脚本。
+//
+// 只在本机没有 Agent 时做：那份 install.sh 也是 Agent 的卸载入口
+// （uninstallAgent 就靠它），Agent 还在时不能碰。
+func removeKokoroMenuLib(agentInstalled bool) {
+	if agentInstalled {
+		return
+	}
+	removed := false
+	for _, name := range []string{"install.sh", "uninstall-menu.sh"} {
+		if err := os.Remove(filepath.Join("/usr/local/lib/kokoro", name)); err == nil {
+			removed = true
+		}
+	}
+	if removed {
+		fmt.Println("已移除 /usr/local/lib/kokoro 下的安装脚本")
+	}
+	_ = os.Remove("/usr/local/lib/kokoro")
+}
+
+// removeKokoroSystemUser 彻底删除时收走安装器建的 kokoro 系统账户。
+//
+// 只认安装器建的那种（system 账户 + nologin shell）：shell 不是 nologin 就说明
+// 是别人手建的账户，一律保留。
+func removeKokoroSystemUser(purge bool) {
+	if !purge {
+		return
+	}
+	if err := exec.Command("id", "-u", "kokoro").Run(); err != nil {
+		return
+	}
+	if raw, err := os.ReadFile("/etc/passwd"); err == nil {
+		for _, line := range strings.Split(string(raw), "\n") {
+			fields := strings.Split(line, ":")
+			if len(fields) >= 7 && fields[0] == "kokoro" && fields[6] != "/usr/sbin/nologin" {
+				fmt.Printf("系统账户 kokoro 的登录 shell 是 %s，不是安装器建的，已保留\n", fields[6])
+				return
+			}
+		}
+	}
+	if err := exec.Command("userdel", "kokoro").Run(); err != nil {
+		fmt.Printf("删除系统账户 kokoro 失败：%v\n", err)
+		return
+	}
+	fmt.Println("已删除系统账户 kokoro")
+}
+
 func uninstallHub(reader *bufio.Reader) int {
 	hubBinary, hubData := installedHubPaths()
 	hubService := unitInstalled("kokoro-hub")
@@ -899,29 +946,34 @@ func uninstallHub(reader *bufio.Reader) int {
 		fmt.Println("已取消。")
 		return 0
 	}
-	// 第二步问"要不要连库一起删"，且默认保留：
-	// 第一步的 yes 只表示"卸面板"，不该顺手把数据库清了。
-	purge := false
-	fmt.Printf("\n面板数据（数据库、上传文件、SWAP）在：%s\n", hubData)
-	if promptLine(reader, "是否连数据一起彻底删除？（不可恢复）输入 purge 彻底删除，直接回车只卸载面板：") == "purge" {
-		purge = true
-	}
+	// 配置和数据分开问，因为这两件事的用途完全不同：
+	// 数据要留着迁移或重装，配置有时想跟着机器一起清掉。
+	// 默认值保持原来的安全取向——数据默认保留，配置默认删除。
+	fmt.Printf("\n面板数据（数据库、上传文件、备份、SWAP）在：%s\n", hubData)
+	purge := promptLine(reader, "是否彻底删除数据？（不可恢复）输入 delete 删除，直接回车保留：") == "delete"
+	fmt.Println("\n面板配置包括：服务单元（kokoro-hub / kokoro-update / kokoro-nginx-reload）、")
+	fmt.Printf("程序目录（%s）、反代配置、快捷命令和 kokoro 系统账户。\n", path.Dir(hubBinary))
+	keepConfig := promptLine(reader, "是否保留配置？（重装可直接复用）输入 keep 保留，直接回车删除：") == "keep"
 
 	if hubService {
 		runSystemctl("disable", "--now", "kokoro-hub")
 	}
-	if err := os.Remove("/etc/systemd/system/kokoro-hub.service"); err != nil && !os.IsNotExist(err) {
-		fmt.Printf("移除面板服务文件失败：%v\n", err)
-		return 1
-	}
-	runSystemctl("daemon-reload")
-	for _, path := range []string{
-		hubBinary,
-		hubBinary + ".new",
-	} {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			fmt.Printf("移除 %s 失败：%v\n", path, err)
+	if keepConfig {
+		fmt.Println("已停止并禁用面板服务；配置和程序按你的选择保留，重装时可直接复用。")
+	} else {
+		if err := os.Remove("/etc/systemd/system/kokoro-hub.service"); err != nil && !os.IsNotExist(err) {
+			fmt.Printf("移除面板服务文件失败：%v\n", err)
 			return 1
+		}
+		runSystemctl("daemon-reload")
+		for _, path := range []string{
+			hubBinary,
+			hubBinary + ".new",
+		} {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				fmt.Printf("移除 %s 失败：%v\n", path, err)
+				return 1
+			}
 		}
 	}
 
@@ -930,22 +982,36 @@ func uninstallHub(reader *bufio.Reader) int {
 			fmt.Printf("面板已卸载，但删除数据失败：%v\n", err)
 			return 1
 		}
-		fmt.Printf("Kokoro 面板与数据目录 %s 已彻底删除。\n", hubData)
+		fmt.Printf("数据目录 %s 已彻底删除。\n", hubData)
 	} else {
-		fmt.Printf("Kokoro 面板已卸载；%s 数据目录已保留（重装可复用）。\n", hubData)
+		fmt.Printf("数据目录 %s 已保留（重装可复用）。\n", hubData)
 	}
 
-	removeKokoroWebServerConfig(purge)
-	removeKokoroProgramMarkers(hubBinary, purge)
+	if !keepConfig {
+		removeKokoroWebServerConfig(purge)
+		removeKokoroProgramMarkers(hubBinary, purge)
+		removeKokoroSystemUser(purge)
 
-	if unitInstalled("kokoro-agent") {
-		if err := replaceMenuCommand("/usr/local/bin/kokoro-agent"); err != nil {
-			fmt.Printf("面板已卸载，但恢复 Agent 菜单命令失败：%v\n", err)
+		agentInstalled := unitInstalled("kokoro-agent")
+		if agentInstalled {
+			if err := replaceMenuCommand("/usr/local/bin/kokoro-agent"); err != nil {
+				fmt.Printf("面板已卸载，但恢复 Agent 菜单命令失败：%v\n", err)
+				return 1
+			}
+		} else if err := removeMenuCommand(); err != nil {
+			fmt.Printf("移除菜单命令失败：%v\n", err)
 			return 1
 		}
-	} else if err := removeMenuCommand(); err != nil {
-		fmt.Printf("移除菜单命令失败：%v\n", err)
-		return 1
+		removeKokoroMenuLib(agentInstalled)
+	}
+	// 有意保留的东西要讲明白，否则"卸载不干净"会变成下一次排查的起点。
+	fmt.Println("以下内容有意保留：")
+	fmt.Println("  - Caddy 软件包与其 apt 源（可能还有别的站点在用）")
+	if keepConfig {
+		fmt.Println("  - 面板配置（服务单元、程序、反代配置、快捷命令）：重装时可直接复用")
+	}
+	if !purge {
+		fmt.Printf("  - 数据目录 %s（重装可复用；要彻底删除请在卸载时输入 delete）\n", hubData)
 	}
 	return 0
 }
