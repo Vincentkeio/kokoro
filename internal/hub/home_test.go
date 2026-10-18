@@ -180,19 +180,28 @@ func TestHomeGlobeData(t *testing.T) {
 	}
 }
 
-// TestHomeGlobeHiddenWithoutCoord 认不出坐标时不渲染地球。
-//
-// 宁可整块不显示，也不要把节点画到错误的位置上。
-func TestHomeGlobeHiddenWithoutCoord(t *testing.T) {
+// TestHomeGlobeRendersWithoutCoord 没有可定位节点时仍显示空地球。
+func TestHomeGlobeRendersWithoutCoord(t *testing.T) {
 	h, st := newTestHub(t)
 	mkNode(t, st, "某处的小鸡", "", "不存在的地区", "")
 
 	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
-	if strings.Contains(body, `class="globe"`) {
-		t.Error("没有可定位的节点时不该渲染地球")
+	if !strings.Contains(body, `class="globe"`) {
+		t.Fatal("没有可定位的节点时也应显示空地球")
 	}
-	if strings.Contains(body, "globe-data") {
-		t.Error("没有可定位的节点时不该输出地球数据")
+	const open = `<script id="globe-data" type="application/json">`
+	i := strings.Index(body, open)
+	if i < 0 {
+		t.Fatal("空地球缺少初始化数据")
+	}
+	rest := body[i+len(open):]
+	j := strings.Index(rest, "</script>")
+	var g globeData
+	if err := json.Unmarshal([]byte(rest[:j]), &g); err != nil {
+		t.Fatalf("空地球 JSON 解析失败: %v", err)
+	}
+	if len(g.Places) != 0 {
+		t.Errorf("没有可定位节点时 places 应为空，实际 %d", len(g.Places))
 	}
 }
 
