@@ -40,7 +40,7 @@ import (
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。
-var Version = "v0.1.3-preview.37"
+var Version = "v0.1.3-preview.38"
 
 const usage = `kokoro - 每台小鸡都有一颗心
 
@@ -629,7 +629,8 @@ func showLogs() {
 // ---- 安装器产物的识别与回收 ----
 
 // installerMarker 是 install-hub.sh 写进它自己生成的配置里的标记行。
-// 卸载只认这个标记：没有标记的反代配置可能是别人的站点，一律不碰。
+// 只代表"这段是 Kokoro 写的"，不代表整份文件都归 Kokoro：安装器允许把 Kokoro
+// 的站点段合并进别人的 Caddyfile，别人的站点就在我们那段标记外面。
 const installerMarker = "Managed-By=Kokoro-Installer"
 
 // kokoroCaddyFile / kokoroCaddyStorage 与 install-hub.sh 的 CADDY_FILE、
@@ -638,6 +639,95 @@ const (
 	kokoroCaddyFile    = "/etc/caddy/Caddyfile"
 	kokoroCaddyStorage = "/var/lib/caddy/kokoro-caddy"
 )
+
+// caddyBlockBegin / caddyBlockEnd 与 install-hub.sh 的 CADDY_BLOCK_BEGIN、
+// CADDY_BLOCK_END 一致。安装器只占这两个标记之间的一段，别人的站点在标记外面。
+const (
+	caddyBlockBegin = "# >>> Kokoro-Installer begin >>>"
+	caddyBlockEnd   = "# <<< Kokoro-Installer end <<<"
+)
+
+// stripKokoroCaddyBlock 摘掉标记之间的 Kokoro 站点段，返回剩余内容与是否命中。
+// 别人的站点都在标记外面，所以摘完只剩空白，就说明这份文件原本只属于 Kokoro。
+func stripKokoroCaddyBlock(content string) (string, bool) {
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines))
+	found := false
+	skip := false
+	for _, line := range lines {
+		switch strings.TrimRight(line, " \t\r") {
+		case caddyBlockBegin:
+			// 我们自己那段前面可能留了一个分隔空行，一并收走：
+			// 这样"合并再摘除"之后，别人的配置和装之前逐字节一致。
+			if n := len(out); n > 0 && strings.TrimSpace(out[n-1]) == "" {
+				out = out[:n-1]
+			}
+			skip = true
+			found = true
+			continue
+		case caddyBlockEnd:
+			skip = false
+			continue
+		}
+		if !skip {
+			out = append(out, line)
+		}
+	}
+	if !found {
+		return content, false
+	}
+	return strings.Join(out, "\n"), true
+}
+
+// isLegacyKokoroCaddyFile 判断这份 Caddyfile 是不是早期版本整体写给 Kokoro 的：
+// 那时还没有分段标记，整份文件第一行就是 Kokoro 的标记。
+func isLegacyKokoroCaddyFile(content string) bool {
+	for i, line := range strings.Split(content, "\n") {
+		if i >= 3 {
+			break
+		}
+		if strings.Contains(line, installerMarker) {
+			return true
+		}
+	}
+	return false
+}
+
+// removeKokoroCaddySite 收回 Kokoro 写进 Caddyfile 的站点段。
+// fileRemoved 表示整份文件都归 Kokoro 且已删除；changed 表示文件被改写过。
+// 别人的站点只会被摘掉我们那一段，其余原样保留 —— 这是兼容安装必须守住的一条。
+func removeKokoroCaddySite(path string) (fileRemoved, changed bool, err error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	remaining, found := stripKokoroCaddyBlock(string(raw))
+	switch {
+	case found && strings.TrimSpace(remaining) == "":
+		if err := os.Remove(path); err != nil {
+			return false, false, err
+		}
+		return true, true, nil
+	case found:
+		mode := os.FileMode(0o644)
+		if info, statErr := os.Stat(path); statErr == nil {
+			mode = info.Mode().Perm()
+		}
+		if err := os.WriteFile(path, []byte(remaining), mode); err != nil {
+			return false, false, err
+		}
+		return false, true, nil
+	case isLegacyKokoroCaddyFile(string(raw)):
+		if err := os.Remove(path); err != nil {
+			return false, false, err
+		}
+		return true, true, nil
+	}
+	return false, false, nil
+}
 
 // kokoroInstallerMarker 是安装器留在程序目录里的"这台机是我装的"标记。
 const kokoroInstallerMarker = ".managed-by-kokoro-installer"
@@ -704,14 +794,16 @@ func removeKokoroWebServerConfig(purge bool) {
 		systemctlQuiet("disable", "--now", unit)
 	}
 
-	caddyRemoved, err := removeIfKokoroManaged(kokoroCaddyFile)
+	caddyRemoved, caddyChanged, err := removeKokoroCaddySite(kokoroCaddyFile)
 	if err != nil {
-		fmt.Printf("移除 Caddy 配置失败：%v\n", err)
+		fmt.Printf("清理 Caddy 配置失败：%v\n", err)
 	} else if caddyRemoved {
 		fmt.Printf("已移除 Kokoro 写入的 Caddy 配置：%s\n", kokoroCaddyFile)
 		if backups, _ := filepath.Glob(kokoroCaddyFile + ".kokoro-backup.*"); len(backups) > 0 {
 			fmt.Printf("安装时备份的原配置仍在：%s\n", backups[len(backups)-1])
 		}
+	} else if caddyChanged {
+		fmt.Printf("已从 %s 摘除 Kokoro 站点，其余站点保持不动\n", kokoroCaddyFile)
 	}
 
 	nginxRemoved := false
@@ -755,11 +847,13 @@ func removeKokoroWebServerConfig(purge bool) {
 		runSystemctl("daemon-reload")
 	}
 
-	// Caddy 是安装器装来专门给 Kokoro 用的，而且它读的那份配置只有 Kokoro 的
-	// 站点。配置已经删掉，再让它跑下去只会拿内存里的旧配置占着 80/443，
-	// 重装时端口检查也会因此失败。
+	// Caddy 是安装器装来给 Kokoro 用的：整份配置都归 Kokoro 时，配置没了就没必要
+	// 再让它跑下去，否则它会拿内存里的旧配置继续占着 80/443。
+	// 但配置里还有别人的站点时只重新加载，别把人家的服务停掉。
 	if caddyRemoved {
 		runSystemctl("disable", "--now", "caddy")
+	} else if caddyChanged {
+		systemctlQuiet("reload", "caddy")
 	}
 	if purge && safePurgeDir(kokoroCaddyStorage) {
 		if err := os.RemoveAll(kokoroCaddyStorage); err != nil && !os.IsNotExist(err) {

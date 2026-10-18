@@ -2,7 +2,7 @@
 
 Kokoro 是一个用于管理多台 VPS 的主控面板与轻量探针。Hub 部署在主机上，负责节点管理、任务下发和结果展示；Agent 安装在子机上，定期上报状态并执行 Hub 下发的固定任务。
 
-> **版本状态：Alpha 2.0.0。** 当前发布标签为 [v0.1.3-preview.37](https://github.com/Vincentkeio/kokoro/releases/tag/v0.1.3-preview.37)，兼容既有数字版本更新器。适合在可恢复的测试环境中试用并反馈问题。功能、配置和接口仍可能调整；重要数据请先备份。
+> **版本状态：Alpha 2.0.0。** 当前发布标签为 [v0.1.3-preview.38](https://github.com/Vincentkeio/kokoro/releases/tag/v0.1.3-preview.38)，兼容既有数字版本更新器。适合在可恢复的测试环境中试用并反馈问题。功能、配置和接口仍可能调整；重要数据请先备份。
 
 ## 功能
 
@@ -50,12 +50,11 @@ sudo sh install-hub.sh --domain panel.example.com --assets-dir /path/to/release
 安装器会安装 Hub、Caddy 和 `kokoro-hub` systemd 服务。Hub 只监听本机 `127.0.0.1:8799`，公网流量由反向代理接入：
 
 - 没有 Nginx 占用 80/443 时，Caddy 负责 HTTPS 和面板反代，并长期提供面板服务。
-- 检测到 Nginx（包括常见的宝塔配置目录）时，保留 Nginx 现有网站，只为 Kokoro 添加独立站点；Caddy 在本地备用端口申请和续期证书，续期后自动重载 Nginx。
-- 若 80/443 被其他程序占用、无法识别安全的 Nginx 配置目录、域名已配置，或发现需要人工合并的自定义 Caddy 配置，安装器会停止以避免覆盖现有站点。它不会停止或接管 Nginx，也不会自动修改其他站点配置。
-- 安装器自己写下的配置带 `Managed-By=Kokoro-Installer` 标记：卸载后重装时，这些残留（包括上一次的 `/etc/caddy/Caddyfile` 和 `/opt/kokoro/data` 链接）会被识别为 Kokoro 自己的产物并放行，不会把操作者挡在"检测到已有 Caddy 配置"之外。没有标记的配置仍然一律拒绝。
+- 检测到 Nginx（包括常见的宝塔配置目录）时，保留 Nginx 现有网站，只为 Kokoro 添加独立站点；Caddy 在本地备用端口申请和续期证书，续期后自动重载 Nginx。如果域名已经有站点在服务，安装器不会报错退出：那个站点已经在反代 Kokoro 就直接沿用，没有则保留原配置并说明该怎么改。
+- 和已有的 Caddy 配置共存：Kokoro 的站点写在 `# >>> Kokoro-Installer begin >>>` 与 `# <<< Kokoro-Installer end <<<` 之间。整份配置都归 Kokoro 时（全新主机、系统自带的欢迎页、上一次 Kokoro 装的那份）整体重写；**属于别人的配置则一个字都不动，只把 Kokoro 的站点块追加进去**，而且不碰全局选项——`default_bind`、`http_port` 这类全局设置会连带影响别人的站点，共用配置时端口和绑定只写在 Kokoro 自己的站点地址里。写完先 `caddy validate`，不通过就还原原文件；Caddy 本来在替别人服务时也不会盲目 restart，避免把它们一起弄下线。
 - 安装中途失败会把这次创建的服务单元、程序和 Caddy 配置收回，主机不会停在"装了一半、再也装不上"的状态。
 
-安装目录为 `/opt/kokoro`，数据目录为 `/var/lib/kokoro`。安装完成后运行 `kokoro` 打开管理菜单；可用 `systemctl status kokoro-hub` 查看服务状态，用 `journalctl -u kokoro-hub -f` 查看实时日志。Nginx 模式下也可检查 `nginx` 和 `caddy` 服务。菜单里面板与探针的更新、卸载是分开的，且只显示本机实际装了的角色。三个更新选项都会自动检测当前角色是否有可用更新：没有更新时直接提示；有更新时询问是否立即更新，不让用户选择版本。「更新面板（Hub 主程序）」从 GitHub Release 获取制品并校验 SHA-256，替换 Hub 二进制后重启服务，健康检查失败自动还原旧程序和更新前数据库；「更新探针程序」只更新 Agent；「更新安装脚本」单独更新 Hub 提供给后续节点安装和升级的 `install.sh`，不替换 Hub 或 Agent 二进制。管理菜单中的「卸载面板」会询问是否**连数据一起删除**：选择彻底删除时会先关闭 Kokoro 托管的 SWAP 并清理 `/etc/fstab` 里的对应挂载行，再删数据目录（默认只卸载面板、保留数据）。卸载会一并收回安装器写下的反代配置——带 Kokoro 标记的 `/etc/caddy/Caddyfile`（随后停用 Caddy）、`kokoro-hub-*.conf` 形式的 Nginx 站点，以及 `kokoro-update`、`kokoro-nginx-reload` 单元；只删带标记的文件，别人的站点一律不动。面板只卸载了一半（服务没了、配置还在）时，菜单会多出「清理面板残留」一项把主机收拾干净。「卸载 Agent」只卸载子机探针，不会动面板及其数据。
+安装目录为 `/opt/kokoro`，数据目录为 `/var/lib/kokoro`。安装完成后运行 `kokoro` 打开管理菜单；可用 `systemctl status kokoro-hub` 查看服务状态，用 `journalctl -u kokoro-hub -f` 查看实时日志。Nginx 模式下也可检查 `nginx` 和 `caddy` 服务。菜单里面板与探针的更新、卸载是分开的，且只显示本机实际装了的角色。三个更新选项都会自动检测当前角色是否有可用更新：没有更新时直接提示；有更新时询问是否立即更新，不让用户选择版本。「更新面板（Hub 主程序）」从 GitHub Release 获取制品并校验 SHA-256，替换 Hub 二进制后重启服务，健康检查失败自动还原旧程序和更新前数据库；「更新探针程序」只更新 Agent；「更新安装脚本」单独更新 Hub 提供给后续节点安装和升级的 `install.sh`，不替换 Hub 或 Agent 二进制。管理菜单中的「卸载面板」会询问是否**连数据一起删除**：选择彻底删除时会先关闭 Kokoro 托管的 SWAP 并清理 `/etc/fstab` 里的对应挂载行，再删数据目录（默认只卸载面板、保留数据）。卸载会一并收回安装器写下的反代配置：从 `/etc/caddy/Caddyfile` 里**只摘掉标记之间那段**（别人的站点原样保留，Caddy 继续为它们服务；只有整份配置都归 Kokoro 时才停用 Caddy）、删除 `kokoro-hub-*.conf` 形式的 Nginx 站点，以及 `kokoro-update`、`kokoro-nginx-reload` 单元。面板只卸载了一半（服务没了、配置还在）时，菜单会多出「清理面板残留」一项把主机收拾干净。「卸载 Agent」只卸载子机探针，不会动面板及其数据。
 
 安装器从 GitHub Release 下载 Hub、Linux amd64/arm64 Agent、Agent 安装脚本和固定测试脚本，并校验 SHA-256。目标主机不需要 Go 或编译工具；建议预留约 100 MB 临时空间和运行空间。可用 `scripts/build-release.ps1 -Version v版本号` 构建候选制品；确认下载包已公开后，再更新 [`scripts/install-hub.sh`](scripts/install-hub.sh) 中的 `RELEASE_TAG`，避免安装入口指向尚不存在的制品。
 

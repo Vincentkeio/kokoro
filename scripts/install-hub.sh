@@ -25,7 +25,6 @@ MENU_PREVIOUS_TARGET=""
 MENU_LINK_CHANGED=0
 # 记录本次运行创建了什么，失败时才能只回滚自己的产物。
 EXISTING_DATA=0
-KOKORO_CADDY_CONFIG=0
 CREDENTIALS_EXISTING=0
 CADDY_CONFIG_WRITTEN=0
 CADDY_BACKUP=""
@@ -33,6 +32,18 @@ DATA_LINK_CREATED=0
 HUB_FILES_INSTALLED=0
 SERVICE_INSTALLED=0
 UPDATE_UNITS_INSTALLED=0
+# Caddyfile 合并：Kokoro 只占标记之间这一段，别人的配置原样保留。
+CADDY_BLOCK_BEGIN='# >>> Kokoro-Installer begin >>>'
+CADDY_BLOCK_END='# <<< Kokoro-Installer end <<<'
+CADDY_MODE=owned
+CADDY_CERT=""
+CADDY_KEY=""
+# Nginx 模式下如果域名已经由现有站点服务，就沿用它，Kokoro 不另建站点。
+NGINX_REUSE=0
+NGINX_DOMAIN_OWNER=""
+NGINX_DOMAIN_CONFLICT=0
+CADDY_HTTP_PORT=9080
+CADDY_HTTPS_PORT=9443
 
 fail() { printf '错误：%s\n' "$*" >&2; exit 1; }
 info() { printf '==> %s\n' "$*"; }
@@ -112,11 +123,19 @@ if [ -L "$INSTALL_DIR/data" ]; then
 elif [ -e "$INSTALL_DIR/data" ]; then
   fail "检测到已有 Hub 数据路径 $INSTALL_DIR/data；为避免覆盖残留数据，安装已停止"
 fi
+# 已有 Caddy 配置一律不拦。能确认整份文件都是 Kokoro 自己的（上次安装留下的、
+# 或系统自带的欢迎页）就整体重写；其它一律走合并：原内容一个字不动，只把 Kokoro
+# 的站点块追加进去，写完用 caddy validate 校验，不过就回滚原文件。
+CADDY_MODE=owned
 if [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ]; then
-  DEFAULT_CADDY_CONFIG=0
-  if [ -f "$CADDY_FILE" ] && [ ! -L "$CADDY_FILE" ] \
-    && grep -Fq 'Managed-By=Kokoro-Installer' "$CADDY_FILE"; then
-    KOKORO_CADDY_CONFIG=1
+  CADDY_MODE=merge
+  if grep -Fq "$CADDY_BLOCK_BEGIN" "$CADDY_FILE" 2>/dev/null; then
+    # 已经合并过一次：把旧块摘掉重写，别人的内容继续保留。
+    CADDY_MODE=merge
+    info "检测到已有 Caddy 配置：保留原有站点，只更新 Kokoro 的站点块"
+  elif [ -f "$CADDY_FILE" ] && [ ! -L "$CADDY_FILE" ] \
+    && head -n 3 "$CADDY_FILE" | grep -Fq 'Managed-By=Kokoro-Installer'; then
+    CADDY_MODE=replace
     info "检测到上次 Kokoro 安装留下的 Caddy 配置，将备份后覆盖"
   elif [ ! -L "$CADDY_FILE" ] \
     && grep -Fq 'The Caddyfile is an easy way to configure your Caddy web server.' "$CADDY_FILE" \
@@ -132,10 +151,9 @@ if [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ]; then
       }
       END { exit !(blocks == 1 && !invalid) }
     ' "$CADDY_FILE"; then
-    DEFAULT_CADDY_CONFIG=1
-  fi
-  if [ "$DEFAULT_CADDY_CONFIG" -ne 1 ] && [ "$KOKORO_CADDY_CONFIG" -ne 1 ]; then
-    fail "检测到已有 Caddy 配置：$CADDY_FILE。为避免影响其他站点，请先为 Kokoro 准备独立主机，或手动合并反代配置"
+    CADDY_MODE=replace
+  else
+    info "检测到已有 Caddy 配置：保留原有站点，只追加 Kokoro 站点块"
   fi
 fi
 if [ -e "$MENU_PATH" ] || [ -L "$MENU_PATH" ]; then
@@ -178,20 +196,37 @@ if command -v ss >/dev/null 2>&1; then
       fail "检测到 Nginx，但无法确认安全的虚拟主机配置目录；没有修改现有配置"
     fi
     [ -d "$NGINX_VHOST_DIR" ] || fail "Nginx 虚拟主机目录不存在：$NGINX_VHOST_DIR"
-    printf '%s\n' "$NGINX_CONFIG_FILES" | while IFS= read -r config_path; do
+    NGINX_CONFIG_FILE="$NGINX_VHOST_DIR/kokoro-hub-$DOMAIN.conf"
+    # 域名已经被别的站点占用时不再报错退出：先看那个站点是不是已经在反代 Kokoro，
+    # 是就直接沿用（一个字都不改现有配置），不是就保留它并把该怎么改讲清楚。
+    NGINX_DOMAIN_OWNER=""
+    NGINX_DOMAIN_CONFLICT=0
+    while IFS= read -r config_path; do
       [ -n "$config_path" ] || continue
-      if awk -v domain="$DOMAIN" '
+      [ "$config_path" != "$NGINX_CONFIG_FILE" ] || continue
+      awk -v domain="$DOMAIN" '
         /^[[:space:]]*server_name[[:space:]]/ {
           for (i=2; i<=NF; i++) { gsub(/[;,]/, "", $i); if ($i == domain) found=1 }
         }
         END { exit !found }
-      ' "$config_path" 2>/dev/null; then
-        printf '发现已有 Nginx 域名配置：%s\n' "$config_path" >&2
-        exit 1
+      ' "$config_path" 2>/dev/null || continue
+      NGINX_DOMAIN_OWNER=$config_path
+      break
+    done <<NGINX_CONFIG_LIST
+$NGINX_CONFIG_FILES
+NGINX_CONFIG_LIST
+    if [ -n "$NGINX_DOMAIN_OWNER" ]; then
+      NGINX_REUSE=1
+      # 复用已有站点时不再创建 kokoro-hub-*.conf，避免出现两个同 server_name 的
+      # 站点让 nginx 只认其中一个。
+      NGINX_CONFIG_FILE=""
+      if grep -Fq '127.0.0.1:8799' "$NGINX_DOMAIN_OWNER"; then
+        info "域名 $DOMAIN 已由 $NGINX_DOMAIN_OWNER 反代到 Kokoro，沿用该站点，不改动现有配置"
+      else
+        NGINX_DOMAIN_CONFLICT=1
+        info "域名 $DOMAIN 已由 $NGINX_DOMAIN_OWNER 使用，Kokoro 没有改动它"
       fi
-    done || fail "该域名已在 Nginx 配置中使用；为避免覆盖现有网站，安装已停止"
-    NGINX_CONFIG_FILE="$NGINX_VHOST_DIR/kokoro-hub-$DOMAIN.conf"
-    [ ! -e "$NGINX_CONFIG_FILE" ] || fail "Nginx 配置文件已存在：$NGINX_CONFIG_FILE"
+    fi
     info "检测到 Nginx：保留 Nginx 作为公网入口，Caddy 将使用本地备用端口管理证书"
   fi
 fi
@@ -219,9 +254,11 @@ cleanup() {
   # 下一次安装被"检测到已有 Kokoro Hub 安装"挡在门外。
   if [ "$INSTALL_SUCCEEDED" -ne 1 ] && [ "$CADDY_CONFIG_WRITTEN" -eq 1 ]; then
     if [ -n "$CADDY_BACKUP" ] && [ -f "$CADDY_BACKUP" ]; then
-      cp -a "$CADDY_BACKUP" "$CADDY_FILE" 2>/dev/null || true
+      # 还原内容（写入目标可能是软链接，链接本身要留着）。
+      cat "$CADDY_BACKUP" > "$CADDY_TARGET" 2>/dev/null || true
+      systemctl reload caddy >/dev/null 2>&1 || true
     else
-      rm -f "$CADDY_FILE"
+      rm -f "$CADDY_TARGET"
     fi
   fi
   if [ "$INSTALL_SUCCEEDED" -ne 1 ] && [ "$UPDATE_UNITS_INSTALLED" -eq 1 ]; then
@@ -453,42 +490,95 @@ else
 fi
 set_data_ownership
 
+CADDY_TARGET="$CADDY_FILE"
 if [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ]; then
+  if [ -L "$CADDY_FILE" ]; then
+    CADDY_TARGET=$(readlink -f "$CADDY_FILE" 2>/dev/null || true)
+    [ -n "$CADDY_TARGET" ] || CADDY_TARGET="$CADDY_FILE"
+  fi
+  # 备份内容而不是链接本身：回滚要还原的是文件内容。
   CADDY_BACKUP=$(mktemp "$CADDY_FILE.kokoro-backup.XXXXXX")
-  cp -a "$CADDY_FILE" "$CADDY_BACKUP"
+  cp "$CADDY_TARGET" "$CADDY_BACKUP"
   info "已备份原 Caddy 配置：$CADDY_BACKUP"
-  [ ! -L "$CADDY_FILE" ] || rm -f "$CADDY_FILE"
 fi
-if [ "$NGINX_MODE" -eq 1 ]; then
-  CADDY_CERT_DIR="$CADDY_STORAGE/certificates/acme-v02.api.letsencrypt.org-directory/$DOMAIN"
-  CADDY_CERT="$CADDY_CERT_DIR/$DOMAIN.crt"
-  CADDY_KEY="$CADDY_CERT_DIR/$DOMAIN.key"
-  cat >"$CADDY_FILE" <<EOF
-# Managed-By=Kokoro-Installer
-{
-  storage file_system $CADDY_STORAGE
-  http_port 9080
-  https_port 9443
-  default_bind 127.0.0.1
+
+# 只有整份配置都归 Kokoro 时才写全局选项。和别人共用一份 Caddyfile 时绝不能碰
+# 全局块：那里的 default_bind / http_port 会连带把别人的站点一起改掉。
+caddy_global_block() {
+  printf '{\n  storage file_system %s\n' "$CADDY_STORAGE"
+  if [ "$NGINX_MODE" -eq 1 ]; then
+    printf '  http_port %s\n  https_port %s\n  default_bind 127.0.0.1\n' "$CADDY_HTTP_PORT" "$CADDY_HTTPS_PORT"
+  fi
+  printf '}\n\n'
 }
 
-https://$DOMAIN {
-  bind 127.0.0.1
-  tls {
-    issuer acme {
-      alt_http_port 9080
-      disable_tlsalpn_challenge
-    }
-  }
-  reverse_proxy 127.0.0.1:8799 {
-    flush_interval -1
-  }
+caddy_site_block() {
+  if [ "$NGINX_MODE" -eq 1 ]; then
+    if [ "$CADDY_SHARED" -eq 1 ]; then
+      # 共用一份配置时没有全局 http_port/https_port，端口和 bind 只能写进站点地址。
+      CADDY_SITE_ADDR="https://$DOMAIN:$CADDY_HTTPS_PORT"
+      CADDY_HTTP_ADDR="http://$DOMAIN:$CADDY_HTTP_PORT"
+    else
+      CADDY_SITE_ADDR="https://$DOMAIN"
+      CADDY_HTTP_ADDR="http://$DOMAIN"
+    fi
+    printf '%s {\n  bind 127.0.0.1\n' "$CADDY_SITE_ADDR"
+    printf '  tls {\n    issuer acme {\n      alt_http_port %s\n      disable_tlsalpn_challenge\n    }\n  }\n' "$CADDY_HTTP_PORT"
+    printf '  reverse_proxy 127.0.0.1:8799 {\n    flush_interval -1\n  }\n}\n\n'
+    printf '%s {\n  bind 127.0.0.1\n}\n' "$CADDY_HTTP_ADDR"
+  else
+    printf '%s {\n  reverse_proxy 127.0.0.1:8799 {\n    flush_interval -1\n  }\n}\n' "$DOMAIN"
+  fi
 }
 
-http://$DOMAIN {
-  bind 127.0.0.1
+# write_caddyfile 把 Kokoro 站点写进 Caddyfile。
+#
+# 先摘掉上一次留下的 Kokoro 段，再看文件里还剩不剩别人的内容：
+# 还剩 -> 只追加站点块，全局选项一个字都不动（共用一份配置）；
+# 不剩 -> 这份配置归 Kokoro，连全局块一起重写。
+# 安装中途失败时由 EXIT 陷阱还原备份，别人的站点不会停在半成品状态。
+write_caddyfile() {
+  CADDY_MERGE_TMP="$CADDY_FILE.kokoro-merge.$$"
+  CADDY_SHARED=0
+  : > "$CADDY_MERGE_TMP"
+  if [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ]; then
+    if [ "$CADDY_MODE" = "replace" ]; then
+      # 整份文件都是 Kokoro 的（或系统自带的欢迎页）：旧内容整份作废。
+      # 不这么做的话，旧版留下的站点块会和新站点块重复，站点地址撞车。
+      : > "$CADDY_MERGE_TMP"
+    else
+      awk -v b="$CADDY_BLOCK_BEGIN" -v e="$CADDY_BLOCK_END" '
+        { line = $0; sub(/[[:space:]]+$/, "", line)
+          if (line == b) { skip = 1; next }
+          if (line == e) { skip = 0; next }
+          if (!skip) print }
+      ' "$CADDY_FILE" > "$CADDY_MERGE_TMP" || { rm -f "$CADDY_MERGE_TMP"; fail "读取 $CADDY_FILE 失败"; }
+      if [ -n "$(tr -d ' \t\r\n' < "$CADDY_MERGE_TMP")" ]; then
+        CADDY_SHARED=1
+      fi
+    fi
+  fi
+  # 原文件可能没有结尾换行，那样标记行会跟上一行粘在一起。
+  CADDY_MERGE_LAST=$(tail -c 1 "$CADDY_MERGE_TMP" 2>/dev/null | od -An -c 2>/dev/null | tr -d ' \n')
+  {
+    if [ "$CADDY_SHARED" -eq 1 ]; then
+      cat "$CADDY_MERGE_TMP"
+      [ "$CADDY_MERGE_LAST" = '\n' ] || printf '\n'
+    fi
+    # 标记之间的整段都归 Kokoro，包括全局选项块：注释可以出现在全局块之前，
+    # 而把全局块也放进标记里，卸载时才能干净摘走、不留半个空壳。
+    printf '%s\n' "$CADDY_BLOCK_BEGIN"
+    printf '# Managed-By=Kokoro-Installer\n'
+    if [ "$CADDY_SHARED" -eq 0 ]; then
+      caddy_global_block
+    fi
+    caddy_site_block
+    printf '\n%s\n' "$CADDY_BLOCK_END"
+  } > "$CADDY_FILE"
+  rm -f "$CADDY_MERGE_TMP"
 }
-EOF
+
+if [ "$NGINX_MODE" -eq 1 ] && [ "$NGINX_REUSE" -eq 0 ]; then
   cat >"$NGINX_CONFIG_FILE" <<EOF
 # Managed-By=Kokoro-Installer
 server {
@@ -497,7 +587,7 @@ server {
   server_name $DOMAIN;
 
   location ^~ /.well-known/acme-challenge/ {
-    proxy_pass http://127.0.0.1:9080;
+    proxy_pass http://127.0.0.1:$CADDY_HTTP_PORT;
     proxy_set_header Host \$host;
   }
 
@@ -506,23 +596,20 @@ server {
   }
 }
 EOF
+fi
+write_caddyfile
+CADDY_CONFIG_WRITTEN=1
+if [ "$CADDY_SHARED" -eq 0 ] && [ "$NGINX_MODE" -eq 1 ]; then
+  # 整份配置归 Kokoro 时存储目录是我们指定的，证书路径确定；
+  # 共用别人的配置时用不了自定义 storage，证书要去 Caddy 自己的存储里找。
+  CADDY_CERT_DIR="$CADDY_STORAGE/certificates/acme-v02.api.letsencrypt.org-directory/$DOMAIN"
+  CADDY_CERT="$CADDY_CERT_DIR/$DOMAIN.crt"
+  CADDY_KEY="$CADDY_CERT_DIR/$DOMAIN.key"
+fi
+if [ -n "$NGINX_CONFIG_FILE" ]; then
   "$NGINX_BIN" -t || fail "Nginx 临时 ACME 路由校验失败；已恢复原配置"
   "$NGINX_BIN" -s reload || fail "无法加载 Nginx 临时 ACME 路由；请检查 Nginx 状态"
-else
-  cat >"$CADDY_FILE" <<EOF
-# Managed-By=Kokoro-Installer
-{
-  storage file_system $CADDY_STORAGE
-}
-
-$DOMAIN {
-  reverse_proxy 127.0.0.1:8799 {
-    flush_interval -1
-  }
-}
-EOF
 fi
-CADDY_CONFIG_WRITTEN=1
 
 chmod 0644 "$SERVICE_FILE" "$CADDY_FILE"
 systemctl daemon-reload
@@ -530,13 +617,44 @@ systemctl enable --now kokoro-update.path
 systemctl enable --now kokoro-hub
 systemctl enable caddy
 caddy validate --config "$CADDY_FILE" --adapter caddyfile
-systemctl reload caddy || systemctl restart caddy
+# 不要盲目 restart：Caddy 已经在跑别人的站点，restart 失败会把它们一起弄下线。
+# 加载失败时退出，由 EXIT 陷阱把原配置还原回去。
+if systemctl is-active --quiet caddy; then
+  systemctl reload caddy || fail "Caddy 加载新配置失败；已还原原来的 Caddy 配置"
+else
+  systemctl restart caddy || fail "Caddy 启动失败"
+fi
 
-if [ "$NGINX_MODE" -eq 1 ]; then
+# 找到 Caddy 为这个域名签下的证书。整份配置归 Kokoro 时路径是确定的；
+# 合并模式下 Caddy 用的是它自己的存储（不能动人家的全局 storage），逐个候选找。
+locate_caddy_cert() {
+  if [ -n "$CADDY_CERT" ] && [ -s "$CADDY_CERT" ] && [ -s "$CADDY_KEY" ]; then
+    return 0
+  fi
+  for root in "$CADDY_STORAGE" /var/lib/caddy/.local/share/caddy /var/lib/caddy \
+    /root/.local/share/caddy "${HOME:-/root}/.local/share/caddy"; do
+    [ -d "$root/certificates" ] || continue
+    for dir in "$root"/certificates/*/"$DOMAIN"; do
+      if [ -s "$dir/$DOMAIN.crt" ] && [ -s "$dir/$DOMAIN.key" ]; then
+        CADDY_CERT="$dir/$DOMAIN.crt"
+        CADDY_KEY="$dir/$DOMAIN.key"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+caddy_cert_ready() {
+  locate_caddy_cert || return 1
+  openssl x509 -in "$CADDY_CERT" -noout -checkhost "$DOMAIN" >/dev/null 2>&1
+}
+
+if [ -n "$NGINX_CONFIG_FILE" ]; then
   info "等待 Caddy 通过 Nginx HTTP 路由申请 HTTPS 证书"
   attempt=0
-  until [ -s "$CADDY_CERT" ] && [ -s "$CADDY_KEY" ] && openssl x509 -in "$CADDY_CERT" -noout -checkhost "$DOMAIN" >/dev/null 2>&1; do
-    curl -ksf --resolve "$DOMAIN:9443:127.0.0.1" "https://$DOMAIN:9443/" >/dev/null 2>&1 || true
+  until caddy_cert_ready; do
+    curl -ksf --resolve "$DOMAIN:$CADDY_HTTPS_PORT:127.0.0.1" "https://$DOMAIN:$CADDY_HTTPS_PORT/" >/dev/null 2>&1 || true
     attempt=$((attempt + 1))
     [ "$attempt" -lt 180 ] || fail "证书申请超时；查看 journalctl -u caddy，当前 Nginx 的 80/443 服务保持运行"
     sleep 1
@@ -554,7 +672,7 @@ server {
   server_name $DOMAIN;
 
   location ^~ /.well-known/acme-challenge/ {
-    proxy_pass http://127.0.0.1:9080;
+    proxy_pass http://127.0.0.1:$CADDY_HTTP_PORT;
     proxy_set_header Host \$host;
   }
 
@@ -610,6 +728,8 @@ EOF
   chmod 0644 /etc/systemd/system/kokoro-nginx-reload.service /etc/systemd/system/kokoro-nginx-reload.path
   systemctl daemon-reload
   systemctl enable --now kokoro-nginx-reload.path
+elif [ "$NGINX_REUSE" -eq 1 ]; then
+  info "沿用现有 Nginx 站点：没有生成 Kokoro 站点配置和证书联动单元"
 fi
 
 info "等待 Hub 服务启动"
@@ -660,6 +780,13 @@ else
 fi
 if [ "$EXISTING_DATA" -eq 1 ]; then
   printf '数据目录：%s（沿用了安装前的数据，节点和文章都还在）\n' "$DATA_DIR"
+fi
+if [ "$CADDY_SHARED" -eq 1 ]; then
+  printf 'Caddy：已把 Kokoro 站点合并进现有的 %s；原有站点保持不动，原文件备份在 %s\n' "$CADDY_FILE" "$CADDY_BACKUP"
+fi
+if [ "$NGINX_DOMAIN_CONFLICT" -eq 1 ]; then
+  printf '⚠ 域名 %s 已由 %s 服务，Kokoro 没有改动它，所以面板可能还打不开。\n' "$DOMAIN" "$NGINX_DOMAIN_OWNER"
+  printf '  要指向面板：把那个站点的 location / 反代到 http://127.0.0.1:8799，然后执行 nginx -s reload。\n'
 fi
 INSTALL_SUCCEEDED=1
 if [ "$GENERATED_PASSWORD" -eq 1 ]; then
