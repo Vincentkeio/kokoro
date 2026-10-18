@@ -3702,7 +3702,7 @@ body[data-k-theme] .console-intro-copy > p:last-child {
 }
 body[data-k-theme] .console-summary {
   grid-column: 1 / -1; grid-row: 2;
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: clamp(10px, 1.1vw, 14px);
   min-width: 0;
 }
@@ -3720,6 +3720,7 @@ body[data-k-theme] .console-summary > .sum-tile::before {
 body[data-k-theme] .console-summary > .sum-tile.is-online::before { content: "02 / ONLINE"; }
 body[data-k-theme] .console-summary > .sum-tile.is-offline::before { content: "03 / OFFLINE"; }
 body[data-k-theme] .console-summary > .sum-tile.is-regions::before { content: "04 / REGIONS"; }
+body[data-k-theme] .console-summary > .sum-tile.is-visitors::before { content: "05 / VISITORS"; }
 body[data-k-theme] .console-summary b {
   color: var(--fg-strong); font: 600 clamp(28px, 3vw, 40px)/.95 var(--mono);
   letter-spacing: -.06em; font-variant-numeric: tabular-nums;
@@ -4474,7 +4475,7 @@ body[data-k-theme] #speed { padding:16px 18px; }
 body[data-k-theme] .home-band:has(>.map-card) > #speed { min-height:0; }
 body[data-k-theme] #speed { container-type:inline-size; }
 body[data-k-theme] #speed .speed-overview { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:24px; margin:4px 0 18px; padding:0 0 18px; border-bottom:1px solid var(--line); }
-body[data-k-theme] #speed .console-summary { grid-column:auto; grid-row:auto; grid-template-columns:repeat(4,minmax(0,1fr)); margin:0; border:0; padding:0; background:transparent; border-radius:0; box-shadow:none; }
+body[data-k-theme] #speed .console-summary { grid-column:auto; grid-row:auto; grid-template-columns:repeat(5,minmax(0,1fr)); margin:0; border:0; padding:0; background:transparent; border-radius:0; box-shadow:none; }
 body[data-k-theme] #speed .console-summary > .sum-tile { padding:4px 20px; gap:9px; }
 body[data-k-theme] #speed .console-summary > .sum-tile:first-child { padding-left:0; }
 body[data-k-theme] #speed .console-summary b { font-size:40px; line-height:1; letter-spacing:-.045em; }

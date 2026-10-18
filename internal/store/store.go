@@ -42,7 +42,7 @@ var schemaSQL string
 // 只加 2 不加 1 的后果：新装的库缺列，跑起来报
 // "table xxx has no column named yyy" —— 而且**本地测试会先红**
 // （测试用的都是全新库）。踩过一次。
-const schemaVersion = 23
+const schemaVersion = 24
 
 // rollup 各层的窗口长度（毫秒）。级联方向：raw → 1m → 5m → 1h → 1d。
 const (
@@ -403,6 +403,11 @@ SELECT dedupe_key,
  CASE WHEN instr(delivery, 'Telegram 已发送')>0 THEN 'sent' ELSE '' END,
  CASE WHEN instr(delivery, 'Webhook 已发送')>0 THEN 'sent' ELSE '' END
 FROM site_messages WHERE kind='expiry';`},
+	{version: 24, sql: `CREATE TABLE IF NOT EXISTS site_stats (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    visitor_count INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO site_stats (id, visitor_count) VALUES (1, 0);`},
 }
 
 // prepare 预编译高频写入语句。
@@ -1893,6 +1898,24 @@ func (s *Store) GetSetting(key string) (string, error) {
 		return "", nil
 	}
 	return v, err
+}
+
+// IncrementSiteVisitor updates the one-row cumulative counter. Browser IDs
+// stay in the visitor's cookie; neither IDs nor raw IPs are stored server-side.
+func (s *Store) IncrementSiteVisitor() (int64, error) {
+	if _, err := s.db.Exec(`UPDATE site_stats SET visitor_count = visitor_count + 1 WHERE id = 1`); err != nil {
+		return 0, fmt.Errorf("更新首页访客数失败: %w", err)
+	}
+	return s.SiteVisitorCount()
+}
+
+// SiteVisitorCount returns the cumulative count of first-time browser IDs.
+func (s *Store) SiteVisitorCount() (int64, error) {
+	var count int64
+	if err := s.db.QueryRow(`SELECT visitor_count FROM site_stats WHERE id = 1`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("读取首页访客数失败: %w", err)
+	}
+	return count, nil
 }
 
 // SetSetting 写入（或覆盖）配置项。

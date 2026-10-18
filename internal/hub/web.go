@@ -52,12 +52,13 @@ type homeData struct {
 	Total        int
 	// Offline 是"总数 - 在线"，供总览卡的离线数据块直接使用；
 	// 放在后端算，模板里就不必引入减法函数。
-	Offline int
-	Year    int
-	Query   string // 搜索关键词，非空表示当前是搜索结果页
-	Owner   ownerCard
-	Hero    heroView
-	Regions []string
+	Offline  int
+	Visitors int64
+	Year     int
+	Query    string // 搜索关键词，非空表示当前是搜索结果页
+	Owner    ownerCard
+	Hero     heroView
+	Regions  []string
 
 	// 信息面板：时钟、点阵地球
 	//
@@ -1512,6 +1513,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 	if groupErr != nil {
 		log.Printf("[hub] 首页读取节点分组失败: %v", groupErr)
 	}
+	visitors := h.recordHomeVisitor(w, r)
 	h.render(w, "home.html", &homeData{
 		Theme:          tv,
 		SiteName:       h.cfg.SiteName,
@@ -1520,6 +1522,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		Online:         online,
 		Total:          len(nodes),
 		Offline:        len(nodes) - online,
+		Visitors:       visitors,
 		Year:           time.Now().Year(),
 		Query:          query,
 		Owner:          h.owner(),
@@ -1535,6 +1538,50 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		DashJSON: template.JS(dashJSON),
 		ResJSON:  template.JS(resJSON),
 	}, r)
+}
+
+const homeVisitorCookie = "kokoro_visitor"
+
+// recordHomeVisitor counts unique browser cookies that have opened the home
+// panel. This is a lightweight UV estimate: no raw IP or visit log is stored.
+func (h *Hub) recordHomeVisitor(w http.ResponseWriter, r *http.Request) int64 {
+	if r.Method != http.MethodGet {
+		count, _ := h.store.SiteVisitorCount()
+		return count
+	}
+	if c, err := r.Cookie(homeVisitorCookie); err == nil && validHomeVisitorID(c.Value) {
+		count, err := h.store.SiteVisitorCount()
+		if err != nil {
+			log.Printf("[hub] 读取首页访客数失败: %v", err)
+		}
+		return count
+	}
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		log.Printf("[hub] 生成访客标识失败: %v", err)
+		return 0
+	}
+	visitorID := hex.EncodeToString(id[:])
+	count, err := h.store.IncrementSiteVisitor()
+	if err != nil {
+		log.Printf("[hub] 更新首页访客数失败: %v", err)
+		return 0
+	}
+	secure := r.TLS != nil || h.cfg.BehindProxy
+	http.SetCookie(w, &http.Cookie{
+		Name: homeVisitorCookie, Value: visitorID, Path: "/",
+		Expires: time.Now().AddDate(10, 0, 0), MaxAge: 10 * 365 * 24 * 60 * 60,
+		HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
+	})
+	return count
+}
+
+func validHomeVisitorID(value string) bool {
+	if len(value) != 32 {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == 16
 }
 
 // buildHero 按当前主题的 layout 决定首页 Hero 的内容与显隐。

@@ -88,11 +88,12 @@
         </nav>
       </div>
       <div class="speed-overview">
-    <div class="console-summary" aria-label="节点状态">
+    <div class="console-summary" aria-label="总览统计">
       <div class="sum-tile"><b>{{.Total}}</b><span>台服务器</span></div>
       <div class="sum-tile is-online"><b data-field="online">{{.Online}}</b><span>在线</span></div>
       <div class="sum-tile is-offline"><b data-field="offline">{{.Offline}}</b><span>离线</span></div>
       <div class="sum-tile is-regions"><b>{{.Globe.LitCountries}}</b><span>点亮地区</span></div>
+      <div class="sum-tile is-visitors" title="按浏览器标识近似去重；更换浏览器或清除 Cookie 后会再次计入" aria-label="{{.Visitors}} 累计访问"><b>{{.Visitors}}</b><span>累计访问</span></div>
     </div>
       <div class="speed-clock">{{template "clockchip.html" .}}</div>
       </div>

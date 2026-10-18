@@ -488,3 +488,11 @@ CREATE TABLE IF NOT EXISTS expiry_reminder_deliveries (
     telegram_status TEXT NOT NULL DEFAULT '',
     webhook_status TEXT NOT NULL DEFAULT ''
 );
+
+-- ---------- 首页累计访客数（仅一个计数值，不保存 IP 或访客列表） ----------
+
+CREATE TABLE IF NOT EXISTS site_stats (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    visitor_count INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO site_stats (id, visitor_count) VALUES (1, 0);

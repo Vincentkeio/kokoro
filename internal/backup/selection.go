@@ -38,7 +38,7 @@ var Groups = []Group{
 		Tables: []string{
 			"metrics_raw", "metrics_1m", "metrics_5m", "metrics_1h", "metrics_1d",
 			"uptime_buckets", "net_quality", "events", "node_tasks",
-			"alert_events", "audit_log", "expiry_reminder_deliveries",
+			"alert_events", "audit_log", "expiry_reminder_deliveries", "site_stats",
 		},
 	},
 	{
