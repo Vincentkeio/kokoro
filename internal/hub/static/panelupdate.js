@@ -34,7 +34,8 @@
     if (busy) return; busy = true; buttons(); say('正在检查更新…');
     try { var data = await request('check'); target = data.target; hubAvailable = data.hub_available; agentCount = data.agent_count; supported = data.supported;
       hubMsg.textContent = !supported ? '当前服务环境不支持在线更新，请通过服务器管理菜单更新。' : hubAvailable ? '有可用更新。' : '当前面板已是最新版本。';
-      agentsMsg.textContent = agentCount ? agentCount + ' 台探针有可用更新。' : '全部探针已是最新版本。'; say(hubAvailable || agentCount ? '检查完成，可选择需要更新的程序。' : '没有可用更新。');
+      var onlineCount = data.online_count || 0;
+      agentsMsg.textContent = onlineCount === 0 ? '没有在线的探针，无法下发更新。' : agentCount ? agentCount + ' 台在线探针有可用更新。' : '在线的探针都已是最新版本。'; say(hubAvailable || agentCount ? '检查完成，可选择需要更新的程序。' : '没有可用更新。');
     } catch (e) { say(e.message, true); } finally { busy = false; buttons(); }
   });
   async function start(action) {

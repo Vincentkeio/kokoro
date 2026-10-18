@@ -29,6 +29,19 @@ type agentUpdatePlan struct {
 
 const agentUpdateKey = "panel_agent_update_plan"
 
+// nodeOnlineWindow 与界面上的在线判定一致：最近这段时间内上报过才算在线。
+const nodeOnlineWindow = 20 * time.Second
+
+// nodeConsideredOnline 报告节点此刻是否在线。探针更新只下发到在线节点：
+// 离线节点收不到指令，把它们算进去只会留下永远不清零的"待更新"数字。
+func nodeConsideredOnline(n model.Node, nowMS int64) bool {
+	if !n.Online || n.LastSeen <= 0 {
+		return false
+	}
+	age := nowMS - n.LastSeen
+	return age <= nodeOnlineWindow.Milliseconds() && age >= -nodeOnlineWindow.Milliseconds()
+}
+
 func (h *Hub) loadUpdateLocked() {
 	if h.updateLoaded {
 		return
@@ -146,14 +159,22 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "无法读取节点")
 		return
 	}
+	// 只统计在线的探针。离线节点收不到指令，把它们算进来只会让"有 N 台待更新"
+	// 变成永远清不掉的假数字（迁移到新面板后旧面板还挂着全部节点时尤其明显）。
+	now := time.Now().UnixMilli()
+	online := 0
 	count := 0
 	for _, n := range nodes {
+		if !nodeConsideredOnline(n, now) {
+			continue
+		}
+		online++
 		if panelupdate.Compare(tag, n.AgentVer) > 0 {
 			count++
 		}
 	}
 	if action == "check" {
-		writeJSON(w, 200, map[string]any{"ok": true, "target": tag, "hub_available": panelupdate.Compare(tag, Version) > 0, "agent_count": count, "supported": panelupdate.HubSupported(h.cfg.DataDir)})
+		writeJSON(w, 200, map[string]any{"ok": true, "target": tag, "hub_available": panelupdate.Compare(tag, Version) > 0, "agent_count": count, "online_count": online, "supported": panelupdate.HubSupported(h.cfg.DataDir)})
 		return
 	}
 	if r.FormValue("target") != tag {
@@ -207,12 +228,23 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		p := &agentUpdatePlan{ID: randomMigrationID(), Target: tag, StartedAt: time.Now().UnixMilli()}
 		for _, n := range nodes {
+			if !nodeConsideredOnline(n, now) {
+				continue
+			}
 			state, msg := "waiting", "等待节点接收更新"
 			if panelupdate.Compare(tag, n.AgentVer) <= 0 {
 				state = "current"
 				msg = "已是最新版本"
 			}
 			p.Nodes = append(p.Nodes, agentUpdateNode{ID: n.ID, Name: n.Name, State: state, Message: msg})
+		}
+		if count == 0 {
+			if online == 0 {
+				writeErr(w, 409, "没有在线的探针，未下发更新")
+			} else {
+				writeErr(w, 409, "在线的探针都已是最新版本")
+			}
+			return
 		}
 		h.updatePlan = p
 		if e = h.saveUpdateLocked(); e != nil {
