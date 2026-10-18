@@ -4499,6 +4499,14 @@ body[data-k-theme] #speed .overview-chart-group { min-width:0; }
 body[data-k-theme] #speed .overview-charts:not(:has(>.overview-chart-group:nth-child(2))) { grid-template-columns:minmax(0,1fr); }
 body[data-k-theme] #speed .rate-chart-wrap,
 body[data-k-theme] #speed .res-chart-wrap { height:128px; margin-top:10px; padding-right:62px; }
+body[data-k-theme] #speed .rate-chart-wrap.is-empty {
+  display:flex; align-items:center; justify-content:center; box-sizing:border-box;
+  padding:12px; border:1px solid color-mix(in srgb,var(--line) 75%,transparent);
+  border-radius:var(--r-sm); color:var(--muted); font-size:12px; text-align:center;
+  background-color:color-mix(in srgb,var(--panel) 78%,var(--bg));
+  background-image:linear-gradient(to bottom,transparent calc(100% - 1px),color-mix(in srgb,var(--line) 72%,transparent) 100%),linear-gradient(to right,transparent calc(100% - 1px),color-mix(in srgb,var(--line) 72%,transparent) 100%);
+  background-size:100% 33.333%,25% 100%;
+}
 body[data-k-theme] #speed .rate-legend { gap:4px 12px; margin-top:8px; font-size:11px; line-height:1.6; }
 body[data-k-theme] #speed .rate-legend .rate-range { flex-basis:100%; }
 body[data-k-theme] #speed .rate-sub { margin:0; line-height:1.4; font-size:13px; font-weight:600; color:var(--fg); }

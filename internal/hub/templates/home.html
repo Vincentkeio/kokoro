@@ -154,7 +154,13 @@
         <span>{{len .Dash.Points}} 个采样点</span>
       </div>
       {{else}}
-      <p class="hint">这段窗口的采样点还不够，再等等。</p>
+      <div class="rate-chart-wrap is-empty" role="status">
+        <span>采样点不足，收到更多数据后显示趋势</span>
+      </div>
+      <div class="rate-legend rate-legend-empty" aria-hidden="true">
+        <span class="rate-range">{{.Dash.SpanLabel}}</span>
+        <span>等待采样</span>
+      </div>
       {{end}}
       </div>
 
@@ -186,8 +192,6 @@
       </div>
     </section>
 
-    {{/* 没有可定位的节点时整块地球不渲染——画一个空球没意义 */}}
-    {{if .Globe.Places}}
     <section class="map-card">
       <div class="map-head">
         <h2>全球节点 <span class="map-region-count">点亮 {{.Globe.LitCountries}} 个地区</span></h2>
@@ -281,7 +285,6 @@
         <span>{{len .Globe.Places}} 个可定位节点</span>
       </div>
     </section>
-    {{end}}
   </div>
 
 {{if .Nodes}}
@@ -610,12 +613,10 @@
   <span>Powered by <a href="/" aria-label="Kokoro 首页">Kokoro</a></span>
 </footer>
 
-{{if .Globe.Places}}
 {{/* 地球数据用 JSON 塞进来，而不是让前端再发一次请求：
      首屏就能画，省一个来回；数据量也小（几十个点）。 */}}
 <script id="globe-data" type="application/json">{{.GlobeJSON}}</script>
 {{template "kglobe.html" .}}
-{{end}}
 
 <script src="/static/app.js?v=155"></script>
 </body>

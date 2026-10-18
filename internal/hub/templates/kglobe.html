@@ -1,6 +1,5 @@
 {{define "kglobe.html"}}
-{{/* 点阵地球的加载与初始化。
-     只有存在可定位的节点时 home.html 才会 include 这个模板。
+{{/* 点阵地球的加载与初始化。空节点列表也绘制地球，待新节点接入后再显示点位。
 
      脚本顺序有讲究：globe.js 必须**先**执行完，下面的初始化才能拿到
      window.KokoroGlobe。所以不能用 defer —— 内联脚本在解析时就跑，
@@ -20,7 +19,7 @@
   } catch (e) {
     return;
   }
-  if (!data || !data.places || !data.places.length) return;
+  if (!data || !Array.isArray(data.places)) return;
 
   function cssVar(el, name, fb) {
     var v = getComputedStyle(el).getPropertyValue(name).trim();

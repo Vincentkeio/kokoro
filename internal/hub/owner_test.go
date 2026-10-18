@@ -166,8 +166,9 @@ func TestOwnerProfileSaveReachesHomepage(t *testing.T) {
 	var buf strings.Builder
 	mw := multipart.NewWriter(&buf)
 	for k, v := range map[string]string{
-		"owner_name": "小宝",
-		"owner_bio":  "一阵有脑子的小旋风",
+		"owner_name":    "小宝",
+		"owner_bio":     "一阵有脑子的小旋风",
+		"owner_visible": "1",
 	} {
 		if err := mw.WriteField(k, v); err != nil {
 			t.Fatal(err)

@@ -35,10 +35,11 @@ import (
 
 // ownerCard 是站长名片：头像 + 名字 + 签名，显示在首页和详情页底部。
 type ownerCard struct {
-	Name   string
-	Avatar string
-	Bio    string
-	Has    bool
+	Name    string
+	Avatar  string
+	Bio     string
+	Has     bool
+	Visible bool
 }
 
 type homeData struct {
@@ -1152,7 +1153,8 @@ type adminData struct {
 	// NetQInterval 是探测间隔（分钟）：0=连续（默认）、-1=关、正数=分钟。
 	NetQInterval int
 
-	OwnerName string
+	OwnerName    string
+	OwnerVisible bool
 	// OwnerDisplayName 用于后台标题栏展示站长的个性名，不是登录账户名。
 	OwnerDisplayName string
 	OwnerBio         string
@@ -1601,6 +1603,7 @@ func (h *Hub) owner() ownerCard {
 	rawName, _ := h.store.GetSetting("owner_name")
 	bio, _ := h.store.GetSetting("owner_bio")
 	avatar, _ := h.store.GetSetting("owner_avatar")
+	visibleRaw, _ := h.store.GetSetting("owner_visible")
 
 	name := strings.TrimSpace(rawName)
 	if name == "" {
@@ -1614,13 +1617,20 @@ func (h *Hub) owner() ownerCard {
 	if avatar != "" && !safeAvatarURL(avatar) {
 		avatar = ""
 	}
+	hasProfile := strings.TrimSpace(rawName) != "" || strings.TrimSpace(bio) != "" || avatar != ""
+	visible := visibleRaw == "1"
+	// 兼容老面板：在新增开关前已填写的名片保持原来的公开状态。
+	// 新安装没有资料时默认不显示；一旦管理员明确保存开关，后续以开关为准。
+	if visibleRaw == "" {
+		visible = hasProfile
+	}
 	return ownerCard{
 		Name:   name,
 		Bio:    bio,
 		Avatar: avatar,
-		// 只要站长在任何一项里填过东西就显示。三项全空时不渲染，
-		// 免得首页顶着一块只有站点名的空名片。
-		Has: strings.TrimSpace(rawName) != "" || strings.TrimSpace(bio) != "" || avatar != "",
+		// Has 表示资料是否填写，Visible 单独表示公开显示开关。
+		Has:     hasProfile,
+		Visible: visible,
 	}
 }
 
@@ -1665,6 +1675,11 @@ func (h *Hub) handleAdminProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = h.store.SetSetting("owner_name", clampRunes(strings.TrimSpace(r.FormValue("owner_name")), 64))
 	_ = h.store.SetSetting("owner_bio", clampRunes(strings.TrimSpace(r.FormValue("owner_bio")), 200))
+	ownerVisible := "0"
+	if r.FormValue("owner_visible") == "1" {
+		ownerVisible = "1"
+	}
+	_ = h.store.SetSetting("owner_visible", ownerVisible)
 
 	if r.FormValue("avatar_clear") == "1" {
 		_ = h.store.SetSetting("owner_avatar", "")
@@ -2426,6 +2441,7 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 		CommentOn:        h.commentEnabled(),
 		AutoApprove:      h.autoApprove(),
 		OwnerName:        ownerOf.Name,
+		OwnerVisible:     ownerOf.Visible,
 		OwnerDisplayName: ownerOf.Name,
 		OwnerBio:         ownerOf.Bio,
 		OwnerAvatar:      ownerOf.Avatar,

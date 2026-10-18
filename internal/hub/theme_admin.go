@@ -309,6 +309,7 @@ func (h *Hub) adminBase(r *http.Request) adminData {
 		CommentOn:        h.commentEnabled(),
 		AutoApprove:      h.autoApprove(),
 		OwnerName:        h.owner().Name,
+		OwnerVisible:     h.owner().Visible,
 		OwnerDisplayName: h.owner().Name,
 		OwnerBio:         h.owner().Bio,
 		OwnerAvatar:      h.owner().Avatar,

@@ -651,12 +651,13 @@
 
   <section class="panel" id="profile" data-atab="comments">
     <h3>站长名片</h3>
-    <p class="hint">头像和签名会显示在首页顶部与每台小鸡的页面底部。头像支持 png / jpg / webp / gif，不超过 2MB。</p>
+    <p class="hint">开启后，头像和签名会显示在首页顶部与每台小鸡的页面底部。头像支持 png / jpg / webp / gif，不超过 2MB。</p>
     <form class="row" method="post" action="/admin/profile" enctype="multipart/form-data">
       <input name="owner_name" placeholder="昵称" value="{{.OwnerName}}" style="width:12rem">
       <input name="owner_bio" placeholder="签名档，一句话介绍自己" value="{{.OwnerBio}}" style="min-width:16rem;flex:1">
       <input type="file" name="avatar" accept="image/png,image/jpeg,image/webp,image/gif">
       <label class="chk"><input type="checkbox" name="avatar_clear" value="1"> 清除头像</label>
+      <label class="chk"><input type="checkbox" name="owner_visible" value="1"{{if .OwnerVisible}} checked{{end}}> 在站点公开显示名片</label>
       <button class="btn" type="submit">保存</button>
     </form>
     {{if .OwnerAvatar}}<p class="row" style="margin-top:10px">
