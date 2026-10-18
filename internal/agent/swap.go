@@ -3,10 +3,13 @@ package agent
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -26,23 +29,95 @@ func validateSwapDiskSpace(sizeMB int, available uint64) error {
 }
 
 const (
-	managedSwapDir  = "/var/lib/kokoro-swap"
-	managedSwapFile = managedSwapDir + "/swapfile"
-	swapFstabMark   = "# kokoro-managed-swap"
+	// 交换文件按系统惯例放在根目录（/swapfile、/swapfile2…）。
+	// 它是这台机器的交换空间，属于系统，不是面板数据：不放进任何 Kokoro 目录，
+	// 卸载面板和导入导出备份都不会碰它（备份只装 images/ 与 kokoro.db）。
+	managedSwapName  = "swapfile"
+	managedSwapSlots = 9
+	swapFstabMark    = "# kokoro-managed-swap"
+	fstabPath        = "/etc/fstab"
 )
 
-func managedSwapFstabContent(data string) string {
+// managedSwapCandidate 返回第 n 个候选位置（1 -> /swapfile，2 -> /swapfile2…）。
+func managedSwapCandidate(dir string, n int) string {
+	if n <= 1 {
+		return filepath.Join(dir, managedSwapName)
+	}
+	return filepath.Join(dir, fmt.Sprintf("%s%d", managedSwapName, n))
+}
+
+// managedSwapFstabPath 从 fstab 里取出我们之前标记过、并且可以继续沿用的交换文件。
+//
+// 只认放在根目录的 /swapfileN。旧版把交换文件塞进 Kokoro 目录（/var/lib/kokoro、
+// /var/lib/kokoro-swap），那条标记不再沿用——否则 Kokoro 会一直把自己的交换空间
+// 放在自己的目录下，正是要改掉的做法。旧文件留着不动，算作别人的既有 SWAP。
+func managedSwapFstabPath(dir, fstab string) string {
+	for _, line := range strings.Split(fstab, "\n") {
+		if !strings.Contains(line, swapFstabMark) {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 || !isManagedSwapName(filepath.Base(fields[0])) {
+			continue
+		}
+		if filepath.Dir(filepath.Clean(fields[0])) == filepath.Clean(dir) {
+			return fields[0]
+		}
+	}
+	return ""
+}
+
+// isManagedSwapName 报告文件名是不是我们那套命名（swapfile、swapfile2…）。
+func isManagedSwapName(base string) bool {
+	if base == managedSwapName {
+		return true
+	}
+	if !strings.HasPrefix(base, managedSwapName) {
+		return false
+	}
+	n, err := strconv.Atoi(strings.TrimPrefix(base, managedSwapName))
+	return err == nil && n >= 2 && n <= managedSwapSlots
+}
+
+// resolveManagedSwapFile 挑这次要用的交换文件，dir 是放置目录（生产环境为 /）。
+//
+// 已经有我们标记过的文件就继续用它，避免同一台机器上出现两个 Kokoro 交换文件；
+// 否则取第一个空位。已存在、但 fstab 里没有我们标记的普通文件是别人的交换空间，
+// 一律跳过，绝不覆盖。
+func resolveManagedSwapFile(dir, fstab string) (string, error) {
+	if marked := managedSwapFstabPath(dir, fstab); marked != "" {
+		return marked, nil
+	}
+	for n := 1; n <= managedSwapSlots; n++ {
+		candidate := managedSwapCandidate(dir, n)
+		info, err := os.Lstat(candidate)
+		if errors.Is(err, fs.ErrNotExist) {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		if info.Mode().IsRegular() {
+			continue
+		}
+		// 目录、设备之类占着这个名字，换下一个候选。
+	}
+	return "", fmt.Errorf("%s 下没有可用的 SWAP 文件位置（%s 到 %s%d 都被占用）",
+		dir, managedSwapCandidate(dir, 1), managedSwapName, managedSwapSlots)
+}
+
+func managedSwapFstabContent(path, data string) string {
 	var lines []string
 	for _, line := range strings.Split(strings.TrimSuffix(data, "\n"), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) > 0 && fields[0] == managedSwapFile && strings.Contains(line, swapFstabMark) {
+		if len(fields) > 0 && fields[0] == path && strings.Contains(line, swapFstabMark) {
 			continue
 		}
 		if line != "" || len(lines) > 0 {
 			lines = append(lines, line)
 		}
 	}
-	lines = append(lines, managedSwapFile+" none swap sw 0 0 "+swapFstabMark)
+	lines = append(lines, path+" none swap sw 0 0 "+swapFstabMark)
 	return strings.Join(lines, "\n") + "\n"
 }
 
@@ -52,23 +127,23 @@ func validSwapSizeMB(sizeMB int) bool {
 
 // managedSwapSizeForTotal converts a node-wide SWAP target into the size of
 // Kokoro's file while preserving active SWAP sources owned elsewhere.
-func managedSwapSizeForTotal(targetMB int) (int, error) {
+func managedSwapSizeForTotal(managedFile string, targetMB int) (int, error) {
 	f, err := os.Open("/proc/swaps")
 	if err != nil {
 		return 0, err
 	}
 	defer f.Close()
-	return managedSwapFileSizeForTotal(targetMB, f)
+	return managedSwapFileSizeForTotal(managedFile, targetMB, f)
 }
 
-func managedSwapFileSizeForTotal(targetMB int, data io.Reader) (int, error) {
+func managedSwapFileSizeForTotal(managedFile string, targetMB int, data io.Reader) (int, error) {
 	s := bufio.NewScanner(data)
 	var otherSwapKiB int64
 	var currentSwapKiB int64
 	for s.Scan() {
 		fields := strings.Fields(s.Text())
-		if len(fields) < 3 || fields[0] == "Filename" || fields[0] == managedSwapFile {
-			if len(fields) >= 3 && fields[0] == managedSwapFile {
+		if len(fields) < 3 || fields[0] == "Filename" || fields[0] == managedFile {
+			if len(fields) >= 3 && fields[0] == managedFile {
 				sizeKiB, err := strconv.ParseInt(fields[2], 10, 64)
 				if err != nil || sizeKiB < 0 {
 					return 0, fmt.Errorf("无法读取现有 SWAP 容量")

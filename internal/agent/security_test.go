@@ -137,9 +137,19 @@ func TestUnknownCancellationsAreBoundedAndActiveTaskStillCancels(t *testing.T) {
 func TestSwapFstabPreservesLegacyAndExternalSources(t *testing.T) {
 	legacy := "/var/lib/kokoro/swapfile none swap sw 0 0 " + swapFstabMark
 	external := "/swap.img none swap sw 0 0"
-	old := managedSwapFile + " none swap sw 0 0 " + swapFstabMark
-	content := managedSwapFstabContent(legacy + "\n" + external + "\n" + old + "\n")
-	if !strings.Contains(content, legacy) || !strings.Contains(content, external) || strings.Count(content, managedSwapFile+" none swap") != 1 {
-		t.Fatalf("fstab migration removed a live source or duplicated the current source: %q", content)
+	current := "/swapfile none swap sw 0 0 " + swapFstabMark
+	content := managedSwapFstabContent("/swapfile", legacy+"\n"+external+"\n"+current+"\n")
+	if !strings.Contains(content, legacy) || !strings.Contains(content, external) {
+		t.Fatalf("fstab 里别人的交换源被改动了：%q", content)
+	}
+	// 逐行比："/var/lib/kokoro/swapfile none swap" 里也含 "/swapfile none swap" 这段子串。
+	currentLines := 0
+	for _, line := range strings.Split(content, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "/swapfile" {
+			currentLines++
+		}
+	}
+	if currentLines != 1 {
+		t.Fatalf("当前交换文件在 fstab 里出现 %d 次，应为 1：%q", currentLines, content)
 	}
 }

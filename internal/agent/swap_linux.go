@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -30,7 +31,12 @@ func ApplySwapContext(parent context.Context, sizeMB int) error {
 	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Minute)
 	defer cancel()
-	if err := ensureManagedSwapDir(); err != nil {
+	fstab, err := os.ReadFile(fstabPath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	managedSwapFile, err := resolveManagedSwapFile("/", string(fstab))
+	if err != nil {
 		return err
 	}
 	currentMB, err := currentSwapSizeMB()
@@ -43,11 +49,11 @@ func ApplySwapContext(parent context.Context, sizeMB int) error {
 	if sizeMB == currentMB && sizeMB > 0 {
 		return nil
 	}
-	sizeMB, err = managedSwapSizeForTotal(sizeMB)
+	sizeMB, err = managedSwapSizeForTotal(managedSwapFile, sizeMB)
 	if err != nil {
 		return err
 	}
-	active, err := managedSwapIsActive()
+	active, err := managedSwapIsActive(managedSwapFile)
 	if err != nil {
 		return err
 	}
@@ -81,7 +87,7 @@ func ApplySwapContext(parent context.Context, sizeMB int) error {
 	}
 	defer os.Remove(tmp)
 	var disk syscall.Statfs_t
-	if err := syscall.Statfs(managedSwapDir, &disk); err != nil {
+	if err := syscall.Statfs(filepath.Dir(managedSwapFile), &disk); err != nil {
 		return fmt.Errorf("读取 SWAP 磁盘剩余空间失败：%w", err)
 	}
 	if err := validateSwapDiskSpace(sizeMB, uint64(disk.Bavail)*uint64(disk.Bsize)); err != nil {
@@ -104,7 +110,7 @@ func ApplySwapContext(parent context.Context, sizeMB int) error {
 	if out, err := exec.CommandContext(ctx, "mkswap", tmp).CombinedOutput(); err != nil {
 		return fmt.Errorf("初始化 SWAP 文件失败：%s", commandError(out, err))
 	}
-	if err := ensureManagedFstabCanBeWritten(); err != nil {
+	if err := ensureManagedFstabCanBeWritten(managedSwapFile); err != nil {
 		return err
 	}
 	if active {
@@ -143,7 +149,7 @@ func ApplySwapContext(parent context.Context, sizeMB int) error {
 		restoreOld()
 		return fmt.Errorf("启用新 SWAP 失败：%w", err)
 	}
-	if err := writeManagedSwapFstab(); err != nil {
+	if err := writeManagedSwapFstab(managedSwapFile); err != nil {
 		_ = runSwapTool(ctx, "swapoff", managedSwapFile)
 		restoreOld()
 		return fmt.Errorf("写入 /etc/fstab 失败：%w", err)
@@ -179,23 +185,7 @@ func currentSwapSizeMB() (int, error) {
 	return int((totalKiB + 1023) / 1024), nil
 }
 
-func ensureManagedSwapDir() error {
-	if info, err := os.Lstat(managedSwapDir); err == nil {
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("Kokoro SWAP 状态路径不是普通目录")
-		}
-		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || stat.Uid != 0 {
-			return errors.New("Kokoro SWAP 目录必须由 root 拥有")
-		}
-		return os.Chmod(managedSwapDir, 0700)
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	return os.MkdirAll(managedSwapDir, 0700)
-}
-
-func managedSwapIsActive() (bool, error) {
+func managedSwapIsActive(managedSwapFile string) (bool, error) {
 	f, err := os.Open("/proc/swaps")
 	if err != nil {
 		return false, err
@@ -211,7 +201,7 @@ func managedSwapIsActive() (bool, error) {
 	return false, s.Err()
 }
 
-func ensureManagedFstabCanBeWritten() error {
+func ensureManagedFstabCanBeWritten(managedSwapFile string) error {
 	data, err := os.ReadFile("/etc/fstab")
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -225,8 +215,8 @@ func ensureManagedFstabCanBeWritten() error {
 	return nil
 }
 
-func writeManagedSwapFstab() error {
-	if err := ensureManagedFstabCanBeWritten(); err != nil {
+func writeManagedSwapFstab(managedSwapFile string) error {
+	if err := ensureManagedFstabCanBeWritten(managedSwapFile); err != nil {
 		return err
 	}
 	path := "/etc/fstab"
@@ -239,7 +229,7 @@ func writeManagedSwapFstab() error {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	content := managedSwapFstabContent(string(data))
+	content := managedSwapFstabContent(managedSwapFile, string(data))
 	tmp, err := os.CreateTemp("/etc", ".kokoro-fstab-*")
 	if err != nil {
 		return err

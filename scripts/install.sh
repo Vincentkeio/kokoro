@@ -516,6 +516,13 @@ EOF
     as_root chmod 0644 "$SYSTEMD_UNIT"
 
     _swap_unit="$TMP_DIR/kokoro-swap@.service"
+    # 交换文件按系统惯例放在根目录（/swapfile、/swapfile2…），不放进任何 Kokoro
+    # 目录：它是这台机器的交换空间，不是面板数据。单元只放开这些候选路径的写权限，
+    # 加上必须改写的 /etc/fstab。
+    _swap_paths=""
+    for _slot in "" 2 3 4 5 6 7 8 9; do
+        _swap_paths="$_swap_paths /swapfile$_slot /swapfile$_slot.new /swapfile$_slot.old"
+    done
     cat > "$_swap_unit" <<EOF
 [Unit]
 Description=Kokoro managed swap resize (%i MiB)
@@ -526,8 +533,6 @@ Type=oneshot
 User=root
 ExecStart=$BIN_PATH apply-swap --size-mb %i
 TimeoutStartSec=10min
-StateDirectory=kokoro-swap
-StateDirectoryMode=0700
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -536,7 +541,7 @@ ProtectKernelTunables=true
 ProtectControlGroups=true
 AmbientCapabilities=CAP_SYS_ADMIN
 CapabilityBoundingSet=CAP_SYS_ADMIN
-ReadWritePaths=/var/lib/kokoro-swap /etc
+ReadWritePaths=$_swap_paths /etc
 EOF
     as_root cp "$_swap_unit" /etc/systemd/system/kokoro-swap@.service
     as_root chmod 0644 /etc/systemd/system/kokoro-swap@.service

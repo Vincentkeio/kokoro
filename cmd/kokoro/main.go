@@ -949,7 +949,8 @@ func uninstallHub(reader *bufio.Reader) int {
 	// 配置和数据分开问，因为这两件事的用途完全不同：
 	// 数据要留着迁移或重装，配置有时想跟着机器一起清掉。
 	// 默认值保持原来的安全取向——数据默认保留，配置默认删除。
-	fmt.Printf("\n面板数据（数据库、上传文件、备份、SWAP）在：%s\n", hubData)
+	fmt.Printf("\n面板数据（数据库、上传文件、备份）在：%s\n", hubData)
+	fmt.Println("SWAP 不算面板数据：交换空间是这台机器的资源，卸载不会动它。")
 	purge := promptLine(reader, "是否彻底删除数据？（不可恢复）输入 delete 删除，直接回车保留：") == "delete"
 	fmt.Println("\n面板配置包括：服务单元（kokoro-hub / kokoro-update / kokoro-nginx-reload）、")
 	fmt.Printf("程序目录（%s）、反代配置、快捷命令和 kokoro 系统账户。\n", path.Dir(hubBinary))
@@ -982,7 +983,14 @@ func uninstallHub(reader *bufio.Reader) int {
 			fmt.Printf("面板已卸载，但删除数据失败：%v\n", err)
 			return 1
 		}
-		fmt.Printf("数据目录 %s 已彻底删除。\n", hubData)
+		if _, statErr := os.Stat(hubData); statErr == nil {
+			// 旧版把交换文件放在数据目录里，那是这台机器的 SWAP，不能被一起删掉，
+			// 所以目录留了下来——如实说明，不谎报"彻底删除"。
+			fmt.Printf("面板数据已删除；%s 仍然保留，因为里面还留着这台机器的交换文件（SWAP）。\n", hubData)
+			fmt.Println("  Kokoro 不会再动它；确认不再需要时再手动处理：swapoff <文件> → 删除文件 → 去掉 /etc/fstab 里对应的行。")
+		} else {
+			fmt.Printf("数据目录 %s 已彻底删除。\n", hubData)
+		}
 	} else {
 		fmt.Printf("数据目录 %s 已保留（重装可复用）。\n", hubData)
 	}
@@ -1018,17 +1026,15 @@ func uninstallHub(reader *bufio.Reader) int {
 
 // ---- 面板数据清理（连库一起删） ----
 
-// managedSwapDir 是 Agent 新版 SWAP 用的 root 独占目录（见 internal/agent/swap.go）。
-const managedSwapDir = "/var/lib/kokoro-swap"
-
-// hubSwapFiles 列出 Kokoro 可能托管的 swap 文件：
-// 数据目录下的旧版 swapfile 系列，以及 root 独占目录里的新版 swapfile。
+// hubSwapFiles 列出旧版可能落在数据目录里的交换文件。
+//
+// 卸载只把它们**留下来**：交换空间是这台机器的资源，不是面板数据。新版已经把
+// 交换文件放到根目录（/swapfile、/swapfile2…），这里只为兼容旧布局。
 func hubSwapFiles(dataDir string) []string {
 	return []string{
 		filepath.Join(dataDir, "swapfile"),
 		filepath.Join(dataDir, "swapfile.new"),
 		filepath.Join(dataDir, "swapfile.old"),
-		filepath.Join(managedSwapDir, "swapfile"),
 	}
 }
 
@@ -1053,90 +1059,41 @@ func safePurgeDir(dir string) bool {
 	return false
 }
 
-// fstabWithoutSwapPaths 去掉 fstab 里指向这些文件的 swap 挂载行。
+// purgeHubData 删除面板自己的数据：数据库、上传文件、备份、更新请求。
 //
-// fstab 格式：<设备> <挂载点> <类型> <选项> ... ，swap 行的类型列是第 3 列。
-// 只删「第 1 列命中给定路径、第 3 列是 swap」的行；注释、别的挂载一律原样保留。
-func fstabWithoutSwapPaths(src string, paths map[string]bool) string {
-	lines := strings.Split(src, "\n")
-	out := make([]string, 0, len(lines))
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) >= 3 && paths[fields[0]] && fields[2] == "swap" {
-			continue
-		}
-		out = append(out, line)
-	}
-	return strings.Join(out, "\n")
-}
-
-// stripFstabSwapEntries 从 /etc/fstab 移除指向这些 swap 文件的挂载行（写回前先备份）。
-func stripFstabSwapEntries(paths []string) error {
-	const fstab = "/etc/fstab"
-	raw, err := os.ReadFile(fstab)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // 容器/精简系统里没有 fstab，跳过
-		}
-		return fmt.Errorf("读取 fstab 失败: %w", err)
-	}
-	want := make(map[string]bool, len(paths))
-	for _, p := range paths {
-		want[p] = true
-	}
-	updated := fstabWithoutSwapPaths(string(raw), want)
-	if updated == string(raw) {
-		return nil
-	}
-	backup := fstab + ".kokoro-bak"
-	if err := os.WriteFile(backup, raw, 0o644); err != nil {
-		return fmt.Errorf("备份 fstab 失败: %w", err)
-	}
-	if err := os.WriteFile(fstab, []byte(updated), 0o644); err != nil {
-		return fmt.Errorf("写回 fstab 失败: %w", err)
-	}
-	return nil
-}
-
-// cancelSwap 尽力关掉这些 swap 文件；没启用或已不存在就跳过。
-//
-// 必须先 swapoff 再删文件：启用中的 swapfile 被删掉会留下"已删除但仍在使用"的
-// 交换区，白占内存且 fstab 里还挂着一条指向空气的记录。
-func cancelSwap(files []string) {
-	for _, f := range files {
-		if _, err := os.Stat(f); err != nil {
-			continue
-		}
-		if out, err := exec.Command("swapoff", f).CombinedOutput(); err != nil {
-			fmt.Printf("提示：swapoff %s 未成功（可能未启用）：%s\n", f, strings.TrimSpace(string(out)))
-		}
-	}
-}
-
-// purgeHubData 彻底删除面板数据：先关掉 Kokoro 托管的 SWAP 并清掉 fstab 记录，
-// 再删数据目录与 root 独占的 SWAP 目录。删除路径前一律过 safePurgeDir。
+// **不动 SWAP。** 交换空间是这台机器的资源，不是面板数据：面板（或节点）只是
+// 一次性替它配过一次。所以这里不 swapoff、不改 /etc/fstab、也不删交换文件；
+// 旧版把交换文件放在数据目录里（/var/lib/kokoro/swapfile），那就把它留下，
+// 目录也跟着留下，由调用方如实告知操作者。删除路径前一律过 safePurgeDir。
 func purgeHubData(dataDir, hubBinary string) error {
 	if !safePurgeDir(dataDir) {
 		return fmt.Errorf("数据目录 %q 未通过安全检查，已中止删除", dataDir)
 	}
-	swapFiles := hubSwapFiles(dataDir)
-	cancelSwap(swapFiles)
-	if err := stripFstabSwapEntries(swapFiles); err != nil {
-		return err
+	keep := make(map[string]bool)
+	for _, swap := range hubSwapFiles(dataDir) {
+		keep[swap] = true
 	}
-	if err := os.RemoveAll(dataDir); err != nil {
-		return fmt.Errorf("删除数据目录失败: %w", err)
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return fmt.Errorf("读取数据目录失败: %w", err)
 	}
-	if safePurgeDir(managedSwapDir) {
-		if err := os.RemoveAll(managedSwapDir); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("删除 SWAP 目录失败: %w", err)
+	for _, entry := range entries {
+		target := filepath.Join(dataDir, entry.Name())
+		if keep[target] {
+			continue
+		}
+		if err := os.RemoveAll(target); err != nil {
+			return fmt.Errorf("删除 %s 失败: %w", target, err)
 		}
 	}
-	// 安装器会在程序目录里放一个 data 软链；数据没了把它一起清掉，别留悬空链接。
+	// 安装器会在程序目录里放一个 data 软链。数据目录整个没了就别留悬空链接；
+	// 里面还有交换文件时链接仍然有效，保留。
 	if hubBinary != "" {
-		link := filepath.Join(filepath.Dir(hubBinary), "data")
-		if info, err := os.Lstat(link); err == nil && info.Mode()&os.ModeSymlink != 0 {
-			_ = os.Remove(link)
+		if _, statErr := os.Stat(dataDir); statErr != nil {
+			link := filepath.Join(filepath.Dir(hubBinary), "data")
+			if info, err := os.Lstat(link); err == nil && info.Mode()&os.ModeSymlink != 0 {
+				_ = os.Remove(link)
+			}
 		}
 	}
 	return nil

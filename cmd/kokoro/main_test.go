@@ -72,29 +72,18 @@ func TestRefreshInstallerRejectsBadChecksumWithoutReplacing(t *testing.T) {
 	}
 }
 
-// TestFstabWithoutSwapPathsRemovesOnlyKokoroSwap 卸载面板时清 fstab：
-// 只删 Kokoro 自己的 swap 行，别的 swap 与普通挂载一行都不能动。
-func TestFstabWithoutSwapPathsRemovesOnlyKokoroSwap(t *testing.T) {
-	paths := map[string]bool{
-		"/var/lib/kokoro/swapfile":      true,
-		"/var/lib/kokoro-swap/swapfile": true,
+// TestHubSwapFilesArePreserved 卸载删数据时，旧版落在数据目录里的交换文件必须留下：
+// 交换空间是这台机器的资源，不是面板数据。fstab 也一概不动。
+func TestHubSwapFilesArePreserved(t *testing.T) {
+	// filepath 在 Windows 上用 "\" 拼接，这里只比文件名——这些路径运行时才在 Linux 上解析。
+	want := []string{"swapfile", "swapfile.new", "swapfile.old"}
+	got := hubSwapFiles("/var/lib/kokoro")
+	if len(got) != len(want) {
+		t.Fatalf("应当列出 %d 个旧版交换文件，得到 %v", len(want), got)
 	}
-	src := strings.Join([]string{
-		"# /etc/fstab",
-		"/var/lib/kokoro/swapfile none swap sw 0 0 # kokoro-managed-swap",
-		"/swap.img none swap sw 0 0",
-		"/dev/vda1 / ext4 defaults 0 1",
-		"/var/lib/kokoro-swap/swapfile none swap sw 0 0 # kokoro-managed-swap",
-		"",
-	}, "\n")
-
-	got := fstabWithoutSwapPaths(src, paths)
-	if strings.Contains(got, "/var/lib/kokoro/swapfile") || strings.Contains(got, "/var/lib/kokoro-swap/swapfile") {
-		t.Fatalf("Kokoro 的 swap 行应被删除：\n%s", got)
-	}
-	for _, keep := range []string{"# /etc/fstab", "/swap.img none swap sw 0 0", "/dev/vda1 / ext4 defaults 0 1"} {
-		if !strings.Contains(got, keep) {
-			t.Errorf("不该动这一行：%q\n%s", keep, got)
+	for i, p := range got {
+		if filepath.Base(p) != want[i] {
+			t.Errorf("第 %d 项应为 %s，得到 %q", i, want[i], p)
 		}
 	}
 }
