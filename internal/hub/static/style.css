@@ -4236,7 +4236,7 @@ html[data-k-mode="dark"] .route-standard { color:#c8c8c8; border-color:#494949; 
 .node-netq-family label { display:inline-flex; align-items:center; gap:5px; min-height:20px; white-space:nowrap; }
 .admin-node-table td:nth-child(4), .admin-node-table td:nth-child(5),
 .admin-node-table td:nth-child(6), .admin-node-table td:nth-child(7) { white-space:nowrap; }
-.node-status-cell > .node-netq-family { margin-top:4px; }
+.admin-node-table td:nth-child(8) { white-space:nowrap; }
 .map-region-count { font:400 11px var(--mono); color:var(--muted); white-space:nowrap; margin-left:6px; }
 .map-card .map-head { flex-wrap:wrap; gap:6px; }
 .globe-mode-switch { display:flex; align-self:flex-end; gap:3px; margin:0 12px 4px; }

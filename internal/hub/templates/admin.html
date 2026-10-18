@@ -166,10 +166,10 @@
     <table class="tbl admin-node-table">
       {{/* 没有「架构」列：所有节点都是 amd64，一列全一样的值没有信息量。
          地区/国家码也不在这里编辑 —— 那是 agent 上报的（见 hostFactsOf）。 */}}
-      <thead><tr><th class="node-select-cell"><label class="node-select-control"><input type="checkbox" data-node-select-all aria-label="全选节点"></label></th><th title="数字越小越靠前；相同则按名称排列">排序 ID</th><th>名称</th><th>分组</th><th>地区</th><th>状态</th><th>展示</th><th>操作</th></tr></thead>
+      <thead><tr><th class="node-select-cell"><label class="node-select-control"><input type="checkbox" data-node-select-all aria-label="全选节点"></label></th><th title="数字越小越靠前；相同则按名称排列">排序 ID</th><th>名称</th><th>分组</th><th>地区</th><th>状态</th><th>三网探测</th><th>展示</th><th>操作</th></tr></thead>
       <tbody>
       {{range .NodeGroups}}
-      <tr class="admin-node-group" data-group-section="{{.Name}}"><th colspan="8"><div class="admin-node-group-head"><div><span>{{.Name}}</span><small>{{len .Nodes}} 台服务器</small></div><button class="btn small ghost" type="button" data-group-assign-open {{if not $.Groups}}disabled{{end}}>加入分组</button></div></th></tr>
+      <tr class="admin-node-group" data-group-section="{{.Name}}"><th colspan="9"><div class="admin-node-group-head"><div><span>{{.Name}}</span><small>{{len .Nodes}} 台服务器</small></div><button class="btn small ghost" type="button" data-group-assign-open {{if not $.Groups}}disabled{{end}}>加入分组</button></div></th></tr>
       {{range .Nodes}}
       <tr data-node-group-row="{{if .Group}}{{.Group}}{{else}}未分组{{end}}" data-node-sort="{{.SortOrder}}" data-node-name="{{.Name}}" data-node-id="{{.ID}}">
         <td class="node-select-cell"><label class="node-select-control"><input type="checkbox" name="node_ids" value="{{.ID}}" form="node-selected-tests" data-node-select-item aria-label="选择 {{.Name}}"></label></td>
@@ -233,8 +233,8 @@
         </td>
         <td>{{if .Group}}<span class="node-group-badge">{{.Group}}</span>{{else}}<span class="node-group-empty">未分组</span>{{end}}</td>
         <td>{{if .Region}}{{.Region}}{{else}}{{.Country}}{{end}}</td>
-        <td class="node-status-cell">
-          <div>{{if .Online}}<span class="ok">在线</span>{{else}}<span class="bad">离线</span>{{end}}</div>
+        <td>{{if .Online}}<span class="ok">在线</span>{{else}}<span class="bad">离线</span>{{end}}</td>
+        <td>
           <div class="node-netq-family" role="group" aria-label="三网探测 IP 协议">
             <label><input form="node-edit-{{.ID}}" type="radio" name="netq_ip_version" value="v4" {{if ne .NetQIPVersion "v6"}}checked{{end}}>IPv4</label>
             <label><input form="node-edit-{{.ID}}" type="radio" name="netq_ip_version" value="v6" {{if eq .NetQIPVersion "v6"}}checked{{end}}>IPv6</label>
