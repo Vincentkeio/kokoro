@@ -56,8 +56,8 @@
 
 {{define "clockchip.html"}}
 {{if .Clocks}}{{range .Clocks}}
-<div class="hub-clock overview-clock"{{if .HasOffset}} data-offset="{{.OffsetMin}}"{{else if .TZ}} data-tz="{{.TZ}}"{{end}}>
-  <span class="tz">{{if .Note}}{{.Note}}{{else if .TZ}}{{.TZ}}{{else}}UTC{{end}}</span>
+<div class="hub-clock overview-clock">
+  <span class="tz">{{.Label}}</span>
   <span class="d">----</span>
   <b class="t">--:--:--</b>
   <span class="live-pulse" aria-hidden="true"></span>

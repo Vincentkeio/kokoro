@@ -19,46 +19,15 @@ import (
 
 // ---- 时钟 ----
 
-// clockZone 是时钟条上的一格。
-//
-// 只输出**时区名**，具体时间由前端用 Intl 算。
-// 服务端算时间会踩两个坑：一是服务器时区未必是访客的，二是 SSR 出来的时间
-// 到浏览器显示时已经过去几百毫秒，秒针会"跳"。
-// clockZone 是时钟条上的一格。具体时间由前端算，服务端只给"怎么算"：
-//
-//	TZ 非空  -> 用 Intl 按 IANA 时区名算（自动处理夏令时）
-//	HasOffset -> 用固定 UTC 偏移算
-//
-// 后者给"主机时间"用：服务器不一定设了 IANA 时区（常常只是 Local），
-// 而我们要的就是**这台机器自己的墙上时间**，固定偏移反而最准。
+// clockZone 是首页本地时钟的模板数据。时区由访问者的浏览器决定。
 type clockZone struct {
-	Label     string
-	TZ        string // IANA 时区名（用 Intl 算，自动处理夏令时）
-	OffsetMin int    // 相对 UTC 的分钟数（东八区 = 480）
-	HasOffset bool   // 用固定偏移算，见下面的说明
-	Note      string // 补充说明，例如 "UTC+08:00"
+	Label string
 }
 
-// homeClocks 只返回**主机自己的时间**。
-//
-// 原来铺了 本地/UTC/东京/洛杉矶/法兰克福 五格，占一整行却没什么信息量——
-// 站长真正关心的是"面板这台机器现在几点"（对日志、对备份窗口都靠它）。
-// homeClocks 返回时钟条要显示的时区。
-//
-// 固定几个主要落点即可，不必按节点动态生成——那样节点一多会挤满一行，
-// 而且"主机在哪个时区"才是这里真正想表达的信息。
+// homeClocks 返回一格按访问者浏览器本地时区运行的时钟。
 func homeClocks() []clockZone {
-	now := time.Now()
-	_, off := now.Zone() // 东八区 = 28800
-	sign, abs := "+", off
-	if off < 0 {
-		sign, abs = "-", -off
-	}
 	return []clockZone{{
-		Label:     "主机时间",
-		OffsetMin: off / 60,
-		HasOffset: true,
-		Note:      fmt.Sprintf("UTC%s%02d:%02d", sign, abs/3600, (abs%3600)/60),
+		Label: "本地时间",
 	}}
 }
 
@@ -447,7 +416,7 @@ func specDisk(total int64) string {
 // 改了 CSS/JS 必须同步 +1：宝塔默认给 js/css 设 12 小时缓存，
 // URL 不变浏览器就吃旧文件，表现成"代码改了但页面没变"。
 // 加 ?v= 是唯一能让缓存立即失效的办法。
-const staticVer = "76"
+const staticVer = "77"
 
 // staticAssetURL 给静态资源拼上版本号。
 func staticAssetURL(name string) string {

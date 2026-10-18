@@ -48,7 +48,7 @@
     {{template "admin_task_list_rows.html" .Rows}}
   </section>
 </main>
-<script src="/static/app.js?v=155"></script>
+<script src="/static/app.js?v=156"></script>
 </body>
 </html>
 {{end}}
@@ -62,7 +62,7 @@
       <span class="st st-{{.Task.Status}}">{{if eq .Task.Status "queued"}}排队中{{else if eq .Task.Status "running"}}执行中{{else if eq .Task.Status "done"}}已完成{{else if eq .Task.Status "cancelled"}}已取消{{else}}失败{{end}}</span>
       <a class="task-node" href="/admin/tasks?node={{.Task.NodeID}}">{{if .NodeName}}{{.NodeName}}{{else}}已删除节点{{end}}</a>
       <span class="task-sum"><b>{{.Task.Title}}</b>{{if .Task.Summary}} · {{.Task.Summary}}{{end}}{{if .Task.Error}} · <span class="task-err">{{.Task.Error}}</span>{{end}}</span>
-      <span class="task-time">{{fmtTime .Task.CreatedAt}}</span>
+      <time class="task-time" data-local-epoch="{{.Task.CreatedAt}}">{{fmtTime .Task.CreatedAt}}</time>
       <span class="task-actions">
         <a class="btn small ghost" href="/admin/tasks?node={{.Task.NodeID}}">详情</a>
         {{if or (eq .Task.Status "queued") (eq .Task.Status "running")}}

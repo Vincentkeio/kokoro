@@ -130,7 +130,7 @@
 
 </main>
 
-<script src="/static/app.js?v=155"></script>
+<script src="/static/app.js?v=156"></script>
 </body>
 </html>
 {{end}}
@@ -147,7 +147,7 @@
         {{if .Summary}} · {{.Summary}}{{end}}
         {{if .Error}} · <span style="color:var(--bad)">{{.Error}}</span>{{end}}
       </span>
-      <span class="task-time">{{fmtTime .CreatedAt}}</span>
+      <time class="task-time" data-local-epoch="{{.CreatedAt}}">{{fmtTime .CreatedAt}}</time>
       {{if or (eq .Status "queued") (eq .Status "running")}}
       <form class="task-cancel-form" method="post" action="/admin/tasks">
         <input type="hidden" name="action" value="cancel">

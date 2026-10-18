@@ -63,13 +63,14 @@ func TestHomeHasClockAndStats(t *testing.T) {
 
 	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
 
-	// 时钟只显示**主机自己的时间**：用 data-offset（固定 UTC 偏移）算，
-	// 不再是本地/UTC/东京…那一排多时区。钟面文案是 UTC±HH:MM 偏移
-	// （"主机时间"字样已按设计去掉，不再断言它）。
-	for _, want := range []string{"hub-clock", "data-offset="} {
+	// 首页时钟由访问者浏览器按本地时区显示，不再输出服务器的固定偏移。
+	for _, want := range []string{"hub-clock", "本地时间"} {
 		if !strings.Contains(body, want) {
-			t.Errorf("首页缺少主机时钟的 %s", want)
+			t.Errorf("首页缺少浏览器本地时钟的 %s", want)
 		}
+	}
+	if strings.Contains(body, "data-offset=") {
+		t.Error("首页时钟不应固定使用服务器时区偏移")
 	}
 	// 「服务器总览」侧栏卡：机器数汇总 + 今日/本月流量。
 	// 2026-10-17 起总览卡回归（boss 要求在这里也能看到总流量），

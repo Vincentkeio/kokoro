@@ -1,4 +1,18 @@
 // Theme chart geometry shared by live, server-rendered and detail histories.
+function kokoroFormatLocalTaskTimes(root) {
+  root = root || document;
+  var times = root.querySelectorAll('[data-local-epoch]');
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  for (var i = 0; i < times.length; i++) {
+    var ms = Number(times[i].getAttribute('data-local-epoch'));
+    if (!Number.isFinite(ms) || ms <= 0) continue;
+    var d = new Date(ms);
+    times[i].textContent = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+}
+kokoroFormatLocalTaskTimes(document);
+
 function kokoroChartPath(points, type, smooth) {
   if (!points.length) return '';
   function num(v) { return Number(v).toFixed(2); }
@@ -819,7 +833,10 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
         try { d = JSON.parse(ev.data); } catch (e) { return; }
         if (d.node !== taskNodeID || typeof d.html !== 'string') return;
         var current = document.getElementById('task-history-' + taskNodeID);
-        if (current) current.outerHTML = d.html;
+        if (current) {
+          current.outerHTML = d.html;
+          kokoroFormatLocalTaskTimes(document.getElementById('task-history-' + taskNodeID));
+        }
       });
     }
     var globalTaskList = document.querySelector('[data-global-task-list]');
@@ -831,7 +848,10 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
         try { d = JSON.parse(ev.data); } catch (e) { return; }
         if (typeof d.html !== 'string') return;
         var current = document.getElementById('admin-task-list-rows');
-        if (current) current.outerHTML = d.html;
+        if (current) {
+          current.outerHTML = d.html;
+          kokoroFormatLocalTaskTimes(document.getElementById('admin-task-list-rows'));
+        }
       });
     }
   }
@@ -1029,9 +1049,8 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
 (function () {
   'use strict';
 
-  // 主机时钟用 data-offset（固定 UTC 偏移），多时区时钟用 data-tz（IANA 名）。
-  // 两者都要认——服务端不一定设了 IANA 时区，主机时间只能靠偏移算。
-  var cells = document.querySelectorAll('.hub-clock[data-offset], .hub-clock[data-tz], .clock[data-tz], .clock');
+  // 首页时钟使用访问者浏览器本地时区；其他时钟仍可指定固定偏移或 IANA 时区。
+  var cells = document.querySelectorAll('.hub-clock, .clock');
   if (!cells.length) return;
 
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
@@ -1042,6 +1061,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       var el = cells[i];
       var tEl = el.querySelector('.t');
       var dEl = el.querySelector('.d');
+      var zoneEl = el.querySelector('.tz');
       if (!tEl) continue;
       var tz = el.getAttribute('data-tz');
       var offAttr = el.getAttribute('data-offset');
@@ -1055,6 +1075,12 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
       } else if (!tz) {
         h = now.getHours(); m = now.getMinutes(); sec = now.getSeconds();
         dateStr = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+        if (zoneEl) {
+          var offset = -now.getTimezoneOffset();
+          var sign = offset < 0 ? '-' : '+';
+          var absOffset = Math.abs(offset);
+          zoneEl.textContent = 'UTC' + sign + pad(Math.floor(absOffset / 60)) + ':' + pad(absOffset % 60);
+        }
       } else {
         var parts = new Intl.DateTimeFormat('en-GB', {
           timeZone: tz, hour12: false,
