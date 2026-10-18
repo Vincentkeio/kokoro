@@ -35,7 +35,7 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 // Version is set from the CLI build version before serving registrations.
-var Version = "v0.1.3-preview.32"
+var Version = "v0.1.3-preview.33"
 
 // Hub 是一个运行中的主控实例。
 type Hub struct {
@@ -53,6 +53,15 @@ type Hub struct {
 	loginThrottle    *loginThrottle
 	tokenMu          sync.Mutex
 	expiryReminderMu sync.Mutex
+	transferMu       sync.Mutex
+	restoreQueued    bool
+	restoreCh        chan string
+	restoreStage     string
+	onReady          func() error
+	migrationMu      sync.Mutex
+	migrationLoaded  bool
+	migrationPlan    *panelMigrationPlan
+	migrationSyncAt  time.Time
 	alerts           *alert.Manager
 
 	// themes 是主题注册表（内置 + 导入），theme 缓存当前主题的渲染产物。
@@ -191,7 +200,8 @@ func New(cfg *model.HubConfig, st *store.Store) (*Hub, error) {
 		themeAssets:   newThemeAssetCache(),
 		// 在这里就建好，保证 handleStream 拿到的一定不是 nil
 		// （select 里对 nil channel 会永久阻塞，那就等于没接上关闭信号）。
-		done: make(chan struct{}),
+		done:      make(chan struct{}),
+		restoreCh: make(chan string, 1),
 	}
 	hubURL := ""
 	if cfg.Domain != "" {
@@ -279,6 +289,12 @@ func (h *Hub) routes() {
 	h.mux.HandleFunc("/admin/settings", h.handleAdminSettings)
 	h.adminOnly("/admin/expiry-reminder", h.handleAdminExpiryReminder)
 	h.adminOnly("/admin/messages", h.handleAdminMessages)
+	h.adminOnly("/admin/backup/export", h.handleBackupExport)
+	h.adminOnly("/admin/backup/status", h.handleBackupStatus)
+	h.adminOnly("/admin/backup/import", h.handleBackupImport)
+	h.adminOnly("/admin/migration", h.handleAdminMigration)
+	h.mux.HandleFunc("/api/v1/migration/check", h.handleMigrationCheck)
+	h.mux.HandleFunc("/api/v1/migration/node", h.handleMigrationNode)
 	h.mux.HandleFunc("/admin/profile", h.handleAdminProfile)
 	h.mux.HandleFunc("/admin/account", h.handleAdminAccount)
 	h.mux.HandleFunc("/admin/logout", h.handleAdminLogout)
@@ -371,6 +387,8 @@ func (h *Hub) adminOnlyPage(fn func(http.ResponseWriter, *http.Request, bool)) h
 
 // Run 启动服务并阻塞，直到 ctx 取消。
 func (h *Hub) Run(ctx context.Context) error {
+	ctx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
 	// 首次启动时备好管理员口令与安装令牌
 	h.ensureBootstrap()
 	// 后台：定期向浏览器广播快照
@@ -388,6 +406,12 @@ func (h *Hub) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("hub: 监听 %s 失败: %w", h.cfg.Listen, err)
 	}
+	if h.onReady != nil {
+		if err := h.onReady(); err != nil {
+			ln.Close()
+			return err
+		}
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -398,26 +422,31 @@ func (h *Hub) Run(ctx context.Context) error {
 		close(errCh)
 	}()
 
+	var stopReason error
 	select {
 	case err := <-errCh:
 		return err
+	case stage := <-h.restoreCh:
+		h.restoreStage = stage
+		stopReason = ErrRestoreReady
 	case <-ctx.Done():
-		log.Printf("[hub] 正在关闭")
-		// 先唤醒长连接（SSE），让它们的 handler 尽快返回。
-		// 顺序很重要：必须在 Shutdown 之前 close，否则 Shutdown
-		// 会一直等到 deadline，把正常重启变成 status=1/FAILURE。
-		h.signalDone()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := h.srv.Shutdown(shutdownCtx); err != nil {
-			// 兜底：仍有个别连接赖着不走（客户端半开等），强制收尾。
-			// 这里**不**把错误上抛——重启是正常运维动作，
-			// 不该因为一个卡住的浏览器连接就让 systemd 记一次 FAILURE。
-			log.Printf("[hub] 优雅关闭超时，强制收尾: %v", err)
-			_ = h.srv.Close()
-		}
-		return nil
 	}
+	cancelRun()
+	log.Printf("[hub] 正在关闭")
+	// 先唤醒长连接（SSE），让它们的 handler 尽快返回。
+	// 顺序很重要：必须在 Shutdown 之前 close，否则 Shutdown
+	// 会一直等到 deadline，把正常重启变成 status=1/FAILURE。
+	h.signalDone()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := h.srv.Shutdown(shutdownCtx); err != nil {
+		// 兜底：仍有个别连接赖着不走（客户端半开等），强制收尾。
+		// 这里**不**把错误上抛——重启是正常运维动作，
+		// 不该因为一个卡住的浏览器连接就让 systemd 记一次 FAILURE。
+		log.Printf("[hub] 优雅关闭超时，强制收尾: %v", err)
+		_ = h.srv.Close()
+	}
+	return stopReason
 }
 
 // signalDone 通知所有监听 done 的 goroutine 退出（可重复调用）。

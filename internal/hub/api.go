@@ -300,6 +300,10 @@ func (h *Hub) handleReport(w http.ResponseWriter, r *http.Request) {
 	} else if wasOffline {
 		h.broadcastTaskCard(node.ID)
 	}
+	commands := h.pendingCommands(node.ID, m.NetQProvinces, m.NetQCatalogVer, m.NetQIntervalMin, m.Tasks)
+	if c := h.migrationCommand(node.ID, m.MigrationVersion); c != nil {
+		commands = append(commands, *c)
+	}
 	writeJSON(w, http.StatusOK, model.ReportResponse{
 		OK:         true,
 		IntervalMS: 2000,
@@ -312,7 +316,7 @@ func (h *Hub) handleReport(w http.ResponseWriter, r *http.Request) {
 		// 就随这条响应下发（netq_targets / netq_catalog）。
 		// 保存后 agent 数秒内切到新范围（即点即生效），agent 重启后
 		// 也会在第一次上报时被自愈纠正。
-		Commands:       h.pendingCommands(node.ID, m.NetQProvinces, m.NetQCatalogVer, m.NetQIntervalMin, m.Tasks),
+		Commands:       commands,
 		CancelledTasks: h.cancelledTaskIDs(node.ID, m.Tasks),
 		// 告诉 agent「静态信息收到了」—— 它收到才会停发。
 		// 写库失败时不回 true，让它下一条继续带。
@@ -396,6 +400,14 @@ func (h *Hub) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(res.ID) == 0 || len(res.ID) > 128 {
 		writeErr(w, http.StatusBadRequest, "任务编号无效")
+		return
+	}
+	if handled, e := h.migrationResult(node.ID, res); handled {
+		if e != nil {
+			writeErr(w, 500, "保存迁移状态失败，请重试")
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
 		return
 	}
 	task, err := h.store.GetTask(res.ID)

@@ -36,14 +36,13 @@
   {{/* ---- 选项卡 ----
        后台原来 10 个区块一路往下堆，找一个设置要滚半天。
        分组走 hash（#nodes / #sys / …），所以老链接仍然能用：
-       比如「去填名片」指到 #profile，会直接打开"名片"那一页。
+       比如「去填名片」指到 #profile，会直接打开互动中的名片设置。
 
        ⚠️ 默认页签是「节点」—— 那是站长最常来的地方。
        安装令牌虽然排在最前面（新站第一步要用），但日常不常看。 ---- */}}
   <nav class="atabs" role="tablist">
     <button type="button" class="atab" data-goto="nodes">节点</button>
     <button type="button" class="atab" data-goto="comments">互动{{if .PendingN}}<span class="abadge">{{.PendingN}}</span>{{end}}</button>
-    <button type="button" class="atab" data-goto="profile">名片</button>
     <button type="button" class="atab" data-goto="alerts">告警</button>
     <button type="button" class="atab" data-goto="themes">主题</button>
     <button type="button" class="atab" data-goto="inbox">站内消息{{if .InboxUnread}}<span class="abadge">{{.InboxUnread}}</span>{{end}}</button>
@@ -635,6 +634,7 @@
     {{end}}
   </section>
 
+  {{template "migration-panel" .}}
   <section class="panel" id="account" data-atab="sys">
     <h3>唯一管理员账户</h3>
     {{if .AccountMsg}}<p class="{{if .AccountBad}}bad{{else}}ok{{end}}">{{.AccountMsg}}</p>{{end}}
@@ -648,7 +648,7 @@
     <p class="hint">系统只有这一个管理员账户；保存用户名或密码会直接更新该账户。改密码会注销所有已登录会话。密码经过加盐哈希存储，不保存明文。</p>
   </section>
 
-  <section class="panel" id="profile" data-atab="profile">
+  <section class="panel" id="profile" data-atab="comments">
     <h3>站长名片</h3>
     <p class="hint">头像和签名会显示在首页顶部与每台小鸡的页面底部。头像支持 png / jpg / webp / gif，不超过 2MB。</p>
     <form class="row" method="post" action="/admin/profile" enctype="multipart/form-data">
@@ -683,6 +683,7 @@
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
 <script src="/static/app.js?v=155"></script>
+<script src="/static/migration.js?v=1" defer></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

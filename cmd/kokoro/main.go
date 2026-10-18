@@ -14,6 +14,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -38,7 +39,7 @@ import (
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。
-var Version = "v0.1.3-preview.32"
+var Version = "v0.1.3-preview.33"
 
 const usage = `kokoro - 每台小鸡都有一颗心
 
@@ -1010,13 +1011,6 @@ func runServe(args []string) int {
 		return 1
 	}
 
-	st, err := store.Open(*data + "/kokoro.db")
-	if err != nil {
-		log.Printf("[kokoro] 打开数据库失败: %v", err)
-		return 1
-	}
-	defer st.Close()
-
 	cfg := &model.HubConfig{
 		Listen:      *listen,
 		DataDir:     *data,
@@ -1026,45 +1020,9 @@ func runServe(args []string) int {
 		BehindProxy: *tls == "proxy",
 	}
 
-	h, err := hub.New(cfg, st)
-	if err != nil {
-		log.Printf("[kokoro] 初始化 Hub 失败: %v", err)
-		return 1
-	}
-
-	// 后台任务：分层 rollup 聚合（每 5 分钟）与保留期清理（每小时）。
-	//
-	// 参照 Komari 的节奏：「关桶聚合」跑得勤（分钟级），「按保留期清理」放低频
-	// （小时级）—— 清理会做大范围 DELETE、必要时 VACUUM，不该挤在写路径上。
-	// 各层保留期见 store 里的 retention* 常量（也可用 settings 覆盖）。
-	go func() {
-		compact := time.NewTicker(5 * time.Minute)
-		retention := time.NewTicker(time.Hour)
-		defer compact.Stop()
-		defer retention.Stop()
-
-		if err := st.AggregateRollups(); err != nil {
-			log.Printf("[kokoro] 聚合失败: %v", err)
-		}
-		for {
-			select {
-			case <-compact.C:
-				if err := st.AggregateRollups(); err != nil {
-					log.Printf("[kokoro] 聚合失败: %v", err)
-				}
-			case <-retention.C:
-				if err := st.Prune(); err != nil {
-					log.Printf("[kokoro] 清理失败: %v", err)
-				}
-			}
-		}
-	}()
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	log.Printf("[kokoro] Hub 启动 %s（数据目录 %s，版本 %s）", *listen, *data, Version)
-	if err := h.Run(ctx); err != nil {
+	if err := serveHub(ctx, cfg); err != nil {
 		log.Printf("[kokoro] Hub 退出: %v", err)
 		return 1
 	}
@@ -1177,7 +1135,7 @@ func installedHubPaths() (binary, data string) {
 func runAgent(args []string) int {
 	agent.Version = Version
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
-	cfgPath := fs.String("config", "/etc/kokoro/config.toml", "配置文件")
+	cfgPath := fs.String("config", agent.ConfigPath(), "配置文件")
 	hubURL := fs.String("hub", "", "Hub 地址")
 	token := fs.String("token", "", "安装令牌")
 	interval := fs.Int("interval", 0, "上报间隔毫秒")
@@ -1208,21 +1166,31 @@ func runAgent(args []string) int {
 		return 2
 	}
 
-	a, err := agent.New(cfg, newCollector())
-	if err != nil {
-		log.Printf("[kokoro-agent] 初始化失败: %v", err)
-		return 1
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	log.Printf("[kokoro-agent] 启动，Hub=%s，版本 %s", cfg.Hub, Version)
-	if err := a.Run(ctx); err != nil {
-		log.Printf("[kokoro-agent] 退出: %v", err)
-		return 1
+	for {
+		a, err := agent.New(cfg, newCollector())
+		if err != nil {
+			log.Printf("[kokoro-agent] 初始化失败: %v", err)
+			return 1
+		}
+		a.SetConfigPath(*cfgPath)
+		log.Printf("[kokoro-agent] 启动，Hub=%s，版本 %s", cfg.Hub, Version)
+		err = a.Run(ctx)
+		if errors.Is(err, agent.ErrMigrationRestart) && ctx.Err() == nil {
+			cfg, err = agent.LoadConfig(*cfgPath)
+			if err != nil {
+				log.Printf("[kokoro-agent] 重新读取配置失败: %v", err)
+				return 1
+			}
+			continue
+		}
+		if err != nil {
+			log.Printf("[kokoro-agent] 退出: %v", err)
+			return 1
+		}
+		return 0
 	}
-	return 0
 }
 
 // newCollector 构造真实采集器；不支持的平台降级为 nil（agent 内部会退回兜底采集）。
@@ -1237,7 +1205,7 @@ func newCollector() agent.Collector {
 
 func runRegister(args []string) int {
 	fs := flag.NewFlagSet("register", flag.ExitOnError)
-	cfgPath := fs.String("config", "/etc/kokoro/config.toml", "配置文件")
+	cfgPath := fs.String("config", agent.ConfigPath(), "配置文件")
 	hubURL := fs.String("hub", "", "Hub 地址")
 	token := fs.String("token", "", "安装令牌")
 	if err := fs.Parse(args); err != nil {
@@ -1260,6 +1228,7 @@ func runRegister(args []string) int {
 		log.Printf("[kokoro-agent] 初始化失败: %v", err)
 		return 1
 	}
+	a.SetConfigPath(*cfgPath)
 	if err := a.RegisterOnce(context.Background()); err != nil {
 		log.Printf("[kokoro-agent] 注册失败: %v", err)
 		return 1

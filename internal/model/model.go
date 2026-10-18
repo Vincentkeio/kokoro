@@ -12,14 +12,15 @@ const ProtocolVersion = 1
 // Metrics 是一次上报的完整快照。采集失败的字段省略（指针或 omitempty），
 // 以便 Hub 区分「没采到」和「真的是 0」。
 type Metrics struct {
-	Connectivity *IPConnectivity `json:"connectivity,omitempty"`
-	V            int             `json:"v"`
-	Ts           int64           `json:"ts"`
-	Seq          int64           `json:"seq"`
-	Host         HostStat        `json:"host"`
-	CPU          CPUStat         `json:"cpu"`
-	Mem          MemStat         `json:"mem"`
-	Disk         DiskStat        `json:"disk"`
+	MigrationVersion int             `json:"migration_v,omitempty"`
+	Connectivity     *IPConnectivity `json:"connectivity,omitempty"`
+	V                int             `json:"v"`
+	Ts               int64           `json:"ts"`
+	Seq              int64           `json:"seq"`
+	Host             HostStat        `json:"host"`
+	CPU              CPUStat         `json:"cpu"`
+	Mem              MemStat         `json:"mem"`
+	Disk             DiskStat        `json:"disk"`
 
 	IO    *IOStat    `json:"io,omitempty"`
 	Net   NetStat    `json:"net"`

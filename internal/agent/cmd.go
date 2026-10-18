@@ -67,6 +67,11 @@ func (a *Agent) commandWorker(ctx context.Context) {
 				a.runTaskCommand(ctx, cmd)
 			} else {
 				a.runCommand(cmd)
+				select {
+				case <-a.migrationRestart:
+					return
+				default:
+				}
 			}
 		}
 	}
@@ -132,6 +137,10 @@ func (a *Agent) runCommand(cmd model.Command) {
 	if err := a.postResult(res); err != nil {
 		logger.Printf("回传命令 %s 结果失败：%v", cmd.ID, err)
 	}
+	if cmd.Type == "migrate" && res.OK {
+		a.migrationRestartOnce.Do(func() { close(a.migrationRestart) })
+		return
+	}
 	if cmd.Type == "restart" && res.OK {
 		logger.Printf("收到 restart 指令，退出进程等待 systemd 拉起")
 		os.Exit(0)
@@ -145,6 +154,7 @@ func (a *Agent) execCommand(cmd model.Command) model.CommandResult {
 		"test":         {"kind": true},
 		"swap":         {"size_mb": true},
 		"reconfig":     {"interval_ms": true, "node_name": true, "netq_interval_min": true},
+		"migrate":      {"hub": true, "backup_id": true},
 		"netq_targets": {"provinces": true, "interval_min": true},
 		"netq_catalog": {"catalog": true},
 		"restart":      {},
@@ -169,6 +179,8 @@ func (a *Agent) execCommand(cmd model.Command) model.CommandResult {
 		return res
 	case "reconfig":
 		return a.reconfig(cmd)
+	case "migrate":
+		return a.migrate(cmd)
 	case "netq_targets":
 		return a.netqTargets(cmd)
 	case "netq_catalog":

@@ -35,7 +35,7 @@ import (
 )
 
 // Version 是 agent 版本，注册时上报给 Hub。
-var Version = "v0.1.3-preview.32"
+var Version = "v0.1.3-preview.33"
 
 const logPrefix = "[kokoro-agent] "
 
@@ -107,25 +107,28 @@ type Agent struct {
 	client     *http.Client
 	configPath string
 
-	mu                sync.Mutex
-	interval          time.Duration
-	seq               int64
-	buf               []*model.Metrics // 断线缓冲，按时间顺序，最多 replayBufferSize 条
-	factsSent         bool             // Hub 确认收到静态信息前，每条上报都带着它
-	factsTick         int              // 距上次重查静态信息过了几条上报
-	lastFacts         *model.HostFacts // 上次发出去的静态信息，用来比对有没有变
-	lastRTTms         float64
-	cmdCh             chan model.Command
-	cmdDone           chan struct{}
-	closed            bool
-	cmdWG             sync.WaitGroup
-	activeTaskCancels map[string]context.CancelFunc
-	cancelledTasks    map[string]bool
-	warnNoColl        bool
-	taskMu            sync.Mutex
-	taskRecords       map[string]*taskRecord
-	taskCompleted     map[string]bool
-	taskResultWake    chan struct{}
+	mu                   sync.Mutex
+	interval             time.Duration
+	seq                  int64
+	buf                  []*model.Metrics // 断线缓冲，按时间顺序，最多 replayBufferSize 条
+	factsSent            bool             // Hub 确认收到静态信息前，每条上报都带着它
+	factsTick            int              // 距上次重查静态信息过了几条上报
+	lastFacts            *model.HostFacts // 上次发出去的静态信息，用来比对有没有变
+	lastRTTms            float64
+	cmdCh                chan model.Command
+	cmdDone              chan struct{}
+	closed               bool
+	cmdWG                sync.WaitGroup
+	activeTaskCancels    map[string]context.CancelFunc
+	cancelledTasks       map[string]bool
+	warnNoColl           bool
+	migrationPending     bool
+	migrationRestart     chan struct{}
+	migrationRestartOnce sync.Once
+	taskMu               sync.Mutex
+	taskRecords          map[string]*taskRecord
+	taskCompleted        map[string]bool
+	taskResultWake       chan struct{}
 
 	// netqSel 是三网分省探测的当前范围（省份名列表，空 = 不探测）。
 	// 由 Hub 的 netq_targets 命令改写，见 netq.go。
@@ -164,6 +167,7 @@ func New(cfg *model.AgentConfig, c Collector) (*Agent, error) {
 		hubHost:           u.Hostname(),
 		interval:          time.Duration(interval) * time.Millisecond,
 		configPath:        ConfigPath(),
+		migrationRestart:  make(chan struct{}),
 		buf:               make([]*model.Metrics, 0, replayBufferSize),
 		netqWake:          make(chan struct{}, 1),
 		activeTaskCancels: make(map[string]context.CancelFunc),
@@ -302,6 +306,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	ctx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
+	if err := a.resumeMigration(ctx); err != nil {
+		return err
+	}
 	if err := a.ensureToken(ctx); err != nil {
 		return err
 	}
@@ -324,6 +331,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	bo := newBackoff()
 	for {
 		select {
+		case <-a.migrationRestart:
+			return ErrMigrationRestart
 		case <-ctx.Done():
 			return nil
 		default:
@@ -349,6 +358,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			continue
 		}
 		bo.reset()
+		a.finishMigration()
 		if !sleepCtx(ctx, a.getInterval()) {
 			return nil
 		}
@@ -561,6 +571,7 @@ func (a *Agent) flush(ctx context.Context) error {
 func (a *Agent) sendReport(ctx context.Context, m *model.Metrics) (*model.ReportResponse, error) {
 	// Refresh delivery state at send time, including when replaying old metrics.
 	snapshot := *m
+	snapshot.MigrationVersion = 1
 	snapshot.Tasks = a.taskHeartbeat()
 	body, err := json.Marshal(&snapshot)
 	if err != nil {

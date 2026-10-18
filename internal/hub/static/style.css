@@ -416,6 +416,29 @@ body[data-k-tag="text"] .tag::before { content: "#"; opacity: .5; }
 }
 .panel.narrow { max-width: 360px; margin: 80px auto; }
 
+/* Backup controls follow the existing console form rhythm and theme tokens. */
+.migration-forms { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--s5); }
+.migration-forms > form { min-width: 0; padding-top: var(--s3); border-top: 1px solid var(--line); }
+.migration-forms label, .migration-agents label { display: flex; flex-direction: column; align-items: stretch; gap: var(--s1); font-size: var(--kokoro-font-size-sm,13px); }
+.migration-forms label { margin-bottom: var(--s3); }
+.migration-forms input { width: 100%; min-width: 0; box-sizing: border-box; }
+.migration-forms input[type="file"] { max-width: 100%; }
+.migration-forms .sub, .migration-agents .sub { margin-top: 0; }
+.migration-agents { border-top: 1px solid var(--line); margin-top: var(--s4); padding-top: var(--s4); }
+.migration-agents .row { align-items: end; }
+.migration-agents label { flex: 1 1 20rem; }
+.migration-agents input { min-width: 0; width: 100%; box-sizing: border-box; }
+.migration-feedback { overflow-wrap: anywhere; min-height: 1.5em; }
+.migration-feedback:empty { display: none; }
+[data-panel-migration] [hidden] { display: none !important; }
+#migration { scroll-margin-top: 120px; }
+.migration-agents .tbl td { overflow-wrap: anywhere; }
+[data-panel-migration] button { min-height: 42px; }
+@media (max-width: 640px) {
+  .migration-forms { grid-template-columns: minmax(0,1fr); gap: var(--s3); }
+  .migration-agents .row > label { flex-basis: 100%; }
+}
+
 /* 详情页头部形态：hero / compact / none。
    具体规则由主题引擎生成的 CSS 提供（min-height、padding 等），
    这里只做兜底，保证 layout 缺失时也是紧凑的。 */

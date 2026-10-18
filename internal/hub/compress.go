@@ -64,6 +64,9 @@ type gzipResponse struct {
 	mode int8 // 0=还没定 1=压缩 2=直通（不压）
 }
 
+// Preserve ResponseController capabilities through the compression wrapper.
+func (g *gzipResponse) Unwrap() http.ResponseWriter { return g.ResponseWriter }
+
 func (g *gzipResponse) WriteHeader(code int) {
 	g.code = code
 	g.passthroughIfNeeded()

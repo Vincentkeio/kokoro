@@ -1,0 +1,40 @@
+{{define "migration-panel"}}
+<section class="panel" id="migration" data-atab="sys" data-panel-migration>
+  <h3>备份与迁移</h3>
+  <p class="hint">换 VPS 时先导出备份，在新面板导入。沿用原域名只需切换 DNS；更换域名时，再由旧面板迁移探针。</p>
+  <div class="migration-forms">
+    <form method="post" action="/admin/backup/export" target="backup-download" data-backup-export>
+      <h4 class="sub">导出备份</h4>
+      <p class="hint">包含节点、历史数据、文章、主题、图片和通知设置，使用密码加密。下载后请妥善保存密码。</p>
+      <label>备份密码<input type="password" name="password" minlength="12" maxlength="256" autocomplete="new-password" required placeholder="至少 12 个字符"></label>
+      <label>再输一次<input type="password" name="confirm_password" minlength="12" maxlength="256" autocomplete="new-password" required></label>
+      <input type="hidden" name="download_id">
+      <button class="btn" type="submit">导出加密备份</button>
+      <p class="hint migration-feedback" role="status" aria-live="polite" data-export-status></p>
+    </form>
+    <form method="post" action="/admin/backup/import" enctype="multipart/form-data" data-backup-import>
+      <h4 class="sub">导入恢复</h4>
+      <p class="hint">在新面板操作，将覆盖这里现有的数据。恢复后使用原面板的管理员账号登录；失败会回退原数据。</p>
+      <label>备份文件<input type="file" name="backup" accept=".kokoro" required></label>
+      <label>备份密码<input type="password" name="password" autocomplete="off" required></label>
+      <label>确认覆盖<input name="confirm" autocomplete="off" placeholder="输入：覆盖并恢复" required></label>
+      <button class="btn danger" type="submit">导入并恢复</button>
+      <p class="hint migration-feedback" role="status" aria-live="polite" data-import-status></p>
+    </form>
+  </div>
+  <div class="migration-agents">
+    <h4 class="sub">迁移探针到新域名</h4>
+    <p class="hint">先在新面板导入最近导出的备份，并配置有效的 HTTPS。在旧面板填写新地址，验证通过后下发迁移。请保留旧面板，直到所有节点到达新面板。</p>
+    <form class="row" data-migration-start>
+      <label>新面板地址<input name="target" type="url" placeholder="https://panel.example.com" required></label>
+      <button class="btn" type="submit">验证并迁移探针</button>
+      <button class="btn ghost" type="button" data-migration-refresh>刷新状态</button>
+      <button class="btn danger" type="button" data-migration-stop hidden>停止下发</button>
+    </form>
+    <p class="hint migration-feedback" role="status" aria-live="polite" data-migration-status></p>
+    <div class="tbl-wrap" data-migration-table hidden><table class="tbl"><thead><tr><th>节点</th><th>迁移状态</th><th>说明</th></tr></thead><tbody data-migration-rows></tbody></table></div>
+  </div>
+  <p class="hint">备份数据上限 4 GB；请预留至少约 3 倍数据量的可用磁盘空间。导入不修改服务器的域名解析、HTTPS 配置或系统服务。</p>
+  <iframe name="backup-download" title="备份文件下载" hidden></iframe>
+</section>
+{{end}}
