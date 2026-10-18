@@ -60,6 +60,37 @@ for asset in "${release_assets[@]}"; do
 done
 chown -R kokoro:kokoro "$dist"
 
+install -d -o kokoro -g kokoro -m 0750 /var/lib/kokoro/update-requests
+cat >/etc/systemd/system/kokoro-update.service <<'EOF'
+[Unit]
+Description=Kokoro verified panel self-update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/kokoro/kokoro apply-update-request --request=/var/lib/kokoro/update-requests/hub.json --state=/var/lib/kokoro/web-update-hub.json --data=/var/lib/kokoro --health=http://127.0.0.1:8799/
+TimeoutStartSec=15min
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/kokoro /var/lib/kokoro
+NoNewPrivileges=true
+EOF
+cat >/etc/systemd/system/kokoro-update.path <<'EOF'
+[Unit]
+Description=Watch for a verified Kokoro panel update request
+
+[Path]
+PathExists=/var/lib/kokoro/update-requests/hub.json
+Unit=kokoro-update.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now kokoro-update.path
+
 rollback() {
   systemctl stop kokoro-hub || true
   install -o root -g root -m 0755 "$bin_backup" /opt/kokoro/kokoro

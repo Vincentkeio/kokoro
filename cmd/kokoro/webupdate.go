@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -59,6 +60,43 @@ func runWebUpdate(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+func runWebUpdateRequest(args []string) int {
+	fs := flag.NewFlagSet("apply-update-request", flag.ContinueOnError)
+	request := fs.String("request", "", "")
+	state := fs.String("state", "", "")
+	data := fs.String("data", "", "")
+	health := fs.String("health", "", "")
+	if fs.Parse(args) != nil || fs.NArg() != 0 || !filepath.IsAbs(*request) || !filepath.IsAbs(*state) || !filepath.IsAbs(*data) || !strings.HasPrefix(*request, filepath.Clean(*data)+string(os.PathSeparator)) {
+		return 2
+	}
+	info, e := os.Lstat(*request)
+	if e != nil || !info.Mode().IsRegular() {
+		return 1
+	}
+	f, e := os.Open(*request)
+	if e != nil {
+		return 1
+	}
+	opened, e := f.Stat()
+	if e != nil || !os.SameFile(info, opened) {
+		f.Close()
+		return 1
+	}
+	b, e := io.ReadAll(io.LimitReader(f, 8193))
+	f.Close()
+	if e != nil || len(b) > 8192 {
+		return 1
+	}
+	var req panelupdate.State
+	if json.Unmarshal(b, &req) != nil || !panelupdate.ValidID(req.ID) || !panelupdate.ValidTag(req.Target) || req.Status != "queued" {
+		return 1
+	}
+	if e = os.Remove(*request); e != nil {
+		return 1
+	}
+	return runWebUpdate([]string{"--role=hub", "--target=" + req.Target, "--job=" + req.ID, "--state=" + *state, "--data=" + *data, "--health=" + *health})
 }
 
 type pinnedReleaseSource struct {

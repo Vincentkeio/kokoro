@@ -202,6 +202,9 @@ func Save(path string, s State) error {
 	}
 	defer os.Remove(f.Name())
 	if e = f.Chmod(0600); e == nil {
+		e = preserveOwner(path, f.Name())
+	}
+	if e == nil {
 		_, e = f.Write(b)
 	}
 	if e == nil {
@@ -223,12 +226,37 @@ func Supported() bool {
 	_, e := exec.LookPath("systemd-run")
 	return e == nil
 }
+func HubSupported(dataDir string) bool {
+	if Supported() {
+		return true
+	}
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if exec.CommandContext(ctx, "systemctl", "is-active", "--quiet", "kokoro-update.path").Run() != nil {
+		return false
+	}
+	dir := filepath.Join(dataDir, "update-requests")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return false
+	}
+	f, err := os.CreateTemp(dir, ".probe-")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+	return true
+}
 
 type Spec struct{ Role, Target, ID, StatePath, DataDir, ConfigPath, HealthURL string }
 
 func Launch(s Spec) error {
-	if !Supported() {
-		return errors.New("在线更新需要 Linux、root 和 systemd")
+	if !Supported() && !(s.Role == "hub" && HubSupported(s.DataDir)) {
+		return errors.New("在线更新需要 Linux 和 systemd")
 	}
 	if (s.Role != "hub" && s.Role != "agent") || !ValidTag(s.Target) || !ValidID(s.ID) {
 		return errors.New("更新请求无效")
@@ -244,6 +272,16 @@ func Launch(s Spec) error {
 	state := State{ID: s.ID, Target: s.Target, Status: "queued", Message: "等待更新进程启动"}
 	if e := Save(s.StatePath, state); e != nil {
 		return e
+	}
+	if s.Role == "hub" && os.Geteuid() != 0 {
+		requestPath := filepath.Join(s.DataDir, "update-requests", "hub.json")
+		if e := Save(requestPath, state); e != nil {
+			state.Status = "failed"
+			state.Message = "无法提交更新请求"
+			_ = Save(s.StatePath, state)
+			return e
+		}
+		return nil
 	}
 	exe, e := os.Executable()
 	if e != nil {

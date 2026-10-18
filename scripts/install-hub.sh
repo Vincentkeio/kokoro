@@ -328,6 +328,35 @@ SyslogIdentifier=kokoro-hub
 WantedBy=multi-user.target
 EOF
 
+install -d -o kokoro -g kokoro -m 0750 "$DATA_DIR/update-requests"
+cat > /etc/systemd/system/kokoro-update.service <<EOF
+[Unit]
+Description=Kokoro verified panel self-update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$INSTALL_DIR/kokoro apply-update-request --request=$DATA_DIR/update-requests/hub.json --state=$DATA_DIR/web-update-hub.json --data=$DATA_DIR --health=http://127.0.0.1:8799/
+TimeoutStartSec=15min
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=$INSTALL_DIR $DATA_DIR
+NoNewPrivileges=true
+EOF
+cat > /etc/systemd/system/kokoro-update.path <<EOF
+[Unit]
+Description=Watch for a verified Kokoro panel update request
+
+[Path]
+PathExists=$DATA_DIR/update-requests/hub.json
+Unit=kokoro-update.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 "$INSTALL_DIR/kokoro" passwd --if-unset --data "$DATA_DIR" --user "$ADMIN_USER" --password "$ADMIN_PASSWORD"
 set_data_ownership
 
@@ -403,6 +432,7 @@ fi
 
 chmod 0644 "$SERVICE_FILE" "$CADDY_FILE"
 systemctl daemon-reload
+systemctl enable --now kokoro-update.path
 systemctl enable --now kokoro-hub
 systemctl enable caddy
 caddy validate --config "$CADDY_FILE" --adapter caddyfile

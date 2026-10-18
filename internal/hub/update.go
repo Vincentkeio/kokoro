@@ -65,6 +65,20 @@ func (h *Hub) hubUpdateState() *panelupdate.State {
 	return &s
 }
 func (h *Hub) updateBusy() bool { s := h.hubUpdateState(); return s != nil && s.Busy() }
+func (h *Hub) agentUpdatesBusy() bool {
+	h.updateMu.Lock()
+	defer h.updateMu.Unlock()
+	h.loadUpdateLocked()
+	if h.updatePlan == nil || time.Now().UnixMilli()-h.updatePlan.StartedAt > 20*60*1000 {
+		return false
+	}
+	for _, n := range h.updatePlan.Nodes {
+		if n.State == "waiting" || n.State == "running" {
+			return true
+		}
+	}
+	return false
+}
 func (h *Hub) updateStatus(w http.ResponseWriter, r *http.Request) {
 	h.updateMu.Lock()
 	defer h.updateMu.Unlock()
@@ -83,7 +97,7 @@ func (h *Hub) updateStatus(w http.ResponseWriter, r *http.Request) {
 	if changed {
 		_ = h.saveUpdateLocked()
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "hub": h.hubUpdateState(), "plan": h.updatePlan, "supported": panelupdate.Supported()})
+	writeJSON(w, 200, map[string]any{"ok": true, "hub": h.hubUpdateState(), "plan": h.updatePlan, "supported": panelupdate.HubSupported(h.cfg.DataDir)})
 }
 func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -139,7 +153,7 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if action == "check" {
-		writeJSON(w, 200, map[string]any{"ok": true, "target": tag, "hub_available": panelupdate.Compare(tag, Version) > 0, "agent_count": count, "supported": panelupdate.Supported()})
+		writeJSON(w, 200, map[string]any{"ok": true, "target": tag, "hub_available": panelupdate.Compare(tag, Version) > 0, "agent_count": count, "supported": panelupdate.HubSupported(h.cfg.DataDir)})
 		return
 	}
 	if r.FormValue("target") != tag {

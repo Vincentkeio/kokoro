@@ -169,6 +169,10 @@ func (h *Hub) handleAdminMigration(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "面板正在恢复")
 		return
 	}
+	if h.agentUpdatesBusy() {
+		writeErr(w, 409, "请等待探针更新完成后再迁移")
+		return
+	}
 	if r.FormValue("action") == "cancel" {
 		h.migrationMu.Lock()
 		defer h.migrationMu.Unlock()

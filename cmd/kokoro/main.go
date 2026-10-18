@@ -90,6 +90,8 @@ func main() {
 		os.Exit(runServe(os.Args[2:]))
 	case "apply-update":
 		os.Exit(runWebUpdate(os.Args[2:]))
+	case "apply-update-request":
+		os.Exit(runWebUpdateRequest(os.Args[2:]))
 	case "agent", "run":
 		// run 是 agent 的别名：systemd 里的写法 kokoro-agent run 更自然
 		os.Exit(runAgent(os.Args[2:]))
