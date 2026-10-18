@@ -56,6 +56,9 @@ type Metrics struct {
 	// 靠它发现差异并随下一条上报把新间隔带下去。
 	NetQIntervalMin int `json:"netq_interval_min,omitempty"`
 
+	// NetQIPVersion 是这台机器当前使用的三网探测协议族（v4 / v6）。
+	NetQIPVersion string `json:"netq_ip_version,omitempty"`
+
 	// Present even when empty: confirms which tests are queued, executing or
 	// awaiting result acknowledgement on the Agent. Older Agents omit it.
 	Tasks *TaskHeartbeat `json:"tasks,omitempty"`
@@ -298,6 +301,7 @@ type Node struct {
 	OfflineWarn bool   `json:"offline_warn"`
 	CreatedAt   int64  `json:"created_at"`
 	SortOrder   int    `json:"sort_order"`
+	NetQIPVersion string `json:"netq_ip_version"`
 }
 
 // NodeView 是页面渲染用的结构：节点静态信息 + 最新指标 + 内容。

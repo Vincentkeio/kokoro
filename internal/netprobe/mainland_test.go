@@ -7,7 +7,7 @@ package netprobe
 // 所以这里守的是「同步之后表仍然是好的」：
 //   - 能解析；
 //   - 覆盖够全（31 个省级行政区 × 三网）；
-//   - 每个点是合法 IPv4，且**至少有一个候选**（回退机制的前提）；
+//   - 每个点是与标记协议族一致的合法 IP，且至少有一个候选；
 //   - 首选地址不重复（重复说明同步脚本的优选/去重坏了 —— 重复首选会让
 //     两省的格子测的是同一台机器，数字互相污染）。
 //
@@ -42,7 +42,7 @@ func TestMainlandTableCoversAllProvincesAndISPs(t *testing.T) {
 	}
 }
 
-func TestMainlandTargetsAreValidIPv4WithFallbacks(t *testing.T) {
+func TestMainlandTargetsAreValidIPWithFallbacks(t *testing.T) {
 	for _, tg := range Targets {
 		if tg.ISP != ISPTelecom && tg.ISP != ISPUnicom && tg.ISP != ISPMobile {
 			continue // 境外点在这里不校验（它们由人手维护，另有测试）
@@ -55,8 +55,9 @@ func TestMainlandTargetsAreValidIPv4WithFallbacks(t *testing.T) {
 			t.Errorf("%s 的 Host(%s) 应等于 Hosts[0](%s)", tg.Name, tg.Host, tg.Hosts[0])
 		}
 		for _, h := range tg.Hosts {
-			if ip := net.ParseIP(h); ip == nil || ip.To4() == nil {
-				t.Errorf("%s 的候选地址不是合法 IPv4: %q", tg.Name, h)
+			ip := net.ParseIP(h)
+			if ip == nil || (tg.IPVersion == "v6" && ip.To4() != nil) || (tg.IPVersion != "v6" && ip.To4() == nil) {
+				t.Errorf("%s 的候选地址与协议族 %s 不匹配: %q", tg.Name, tg.IPVersion, h)
 			}
 		}
 	}

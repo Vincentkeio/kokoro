@@ -56,6 +56,7 @@ var MainlandISPs = []string{ISPTelecom, ISPUnicom, ISPMobile}
 type Target struct {
 	Province string `json:"province"` // 省份，如 "广东"
 	ISP      string `json:"isp"`      // telecom | unicom | mobile | hk | tw | jp | us | eu
+	IPVersion string `json:"ip_version,omitempty"` // v4 | v6；空值兼容旧版目录，按 v4 处理
 	Name     string `json:"name"`     // 展示名，如 "广东电信"
 	Host     string `json:"host"`     // 首选地址（== Hosts[0]）
 	// Hosts 是候选地址：大陆点来自每日更新的「可用 ICMP」表，每省每网最多 3 个。
@@ -93,23 +94,29 @@ func buildTargets() []Target {
 // 香港 HKBN 46.9ms、香港通用 81.4ms、台湾 HiNet 32.1ms、
 // 台湾 TWNIC 30.9ms、日本东京 2.9ms、日本神奈川 4.0ms。
 var overseasTargets = []Target{
-	{"中国香港", ISPHK, "中国香港 HKBN", "203.80.96.10", nil},     // 境外 DNS（香港宽频）；实测 46.9ms
-	{"中国香港", ISPHK, "中国香港通用", "103.147.12.3", nil},        // 境外 DNS（ip.cn 香港）；实测 81.4ms
-	{"中国台湾", ISPTW, "中国台湾 HiNet", "168.95.192.1", nil},    // 境外 DNS（中华电信）；实测 32.1ms
-	{"中国台湾", ISPTW, "中国台湾 TWNIC", "101.101.101.101", nil}, // 境外 DNS（TWNIC Quad 101）；实测 30.9ms
-	{"日本", ISPJP, "日本 东京", "211.10.168.1", nil},           // 境外 DNS（ip.cn 东京）；实测 2.9ms
-	{"日本", ISPJP, "日本 神奈川", "122.210.62.171", nil},        // 境外 DNS（ip.cn 神奈川）；实测 4.0ms
+	{"中国香港", ISPHK, "v4", "中国香港 HKBN", "203.80.96.10", nil},     // 境外 DNS（香港宽频）；实测 46.9ms
+	{"中国香港", ISPHK, "v4", "中国香港通用", "103.147.12.3", nil},        // 境外 DNS（ip.cn 香港）；实测 81.4ms
+	{"中国台湾", ISPTW, "v4", "中国台湾 HiNet", "168.95.192.1", nil},    // 境外 DNS（中华电信）；实测 32.1ms
+	{"中国台湾", ISPTW, "v4", "中国台湾 TWNIC", "101.101.101.101", nil}, // 境外 DNS（TWNIC Quad 101）；实测 30.9ms
+	{"日本", ISPJP, "v4", "日本 东京", "211.10.168.1", nil},           // 境外 DNS（ip.cn 东京）；实测 2.9ms
+	{"日本", ISPJP, "v4", "日本 神奈川", "122.210.62.171", nil},        // 境外 DNS（ip.cn 神奈川）；实测 4.0ms
 	// 美国：换成单点落地的运营商/机构主机，实测均为真·跨太平洋延迟。
-	{"美国", ISPUS, "美国 Comcast", "75.75.75.75", nil},    // Comcast 递归 DNS（美国本土）；实测 158ms
-	{"美国", ISPUS, "美国 Cox", "68.105.28.11", nil},       // Cox 递归 DNS（美国本土）；实测 140ms
-	{"美国", ISPUS, "美国 NIST", "132.163.96.5", nil},      // NIST 时间服务器（马里兰州，单点）；实测 192ms
-	{"欧洲", ISPEU, "欧洲 DNS.WATCH", "84.200.69.80", nil}, // DNS.WATCH（德国）；实测 217ms
-	{"欧洲", ISPEU, "欧洲 SWITCH", "130.59.31.248", nil},   // SWITCH 基金会（瑞士苏黎世）；实测 224ms
+	{"美国", ISPUS, "v4", "美国 Comcast", "75.75.75.75", nil},    // Comcast 递归 DNS（美国本土）；实测 158ms
+	{"美国", ISPUS, "v4", "美国 Cox", "68.105.28.11", nil},       // Cox 递归 DNS（美国本土）；实测 140ms
+	{"美国", ISPUS, "v4", "美国 NIST", "132.163.96.5", nil},      // NIST 时间服务器（马里兰州，单点）；实测 192ms
+	{"欧洲", ISPEU, "v4", "欧洲 DNS.WATCH", "84.200.69.80", nil}, // DNS.WATCH（德国）；实测 217ms
+	{"欧洲", ISPEU, "v4", "欧洲 SWITCH", "130.59.31.248", nil},   // SWITCH 基金会（瑞士苏黎世）；实测 224ms
 }
 
 // Filter 按省份与 ISP 筛选探测点。
 // 两个条件取交集；任一为 nil 或空表示不限制该项。省份精确匹配，ISP 忽略大小写。
 func Filter(provinces []string, isps []string) []Target {
+	return FilterFamily(provinces, isps, "v4")
+}
+
+// FilterFamily 按省份、运营商和 IP 协议族筛选探测点。旧目录未标协议族时按 IPv4 兼容。
+func FilterFamily(provinces []string, isps []string, family string) []Target {
+	family = normalizeIPVersion(family)
 	pSet := make(map[string]struct{}, len(provinces))
 	for _, p := range provinces {
 		if p != "" {
@@ -124,6 +131,9 @@ func Filter(provinces []string, isps []string) []Target {
 	}
 	out := make([]Target, 0, len(Targets))
 	for _, t := range Catalog() {
+		if normalizeIPVersion(t.IPVersion) != family {
+			continue
+		}
 		if len(pSet) > 0 {
 			if _, ok := pSet[t.Province]; !ok {
 				continue
@@ -137,6 +147,13 @@ func Filter(provinces []string, isps []string) []Target {
 		out = append(out, t)
 	}
 	return out
+}
+
+func normalizeIPVersion(version string) string {
+	if strings.EqualFold(version, "v6") || strings.EqualFold(version, "ipv6") {
+		return "v6"
+	}
+	return "v4"
 }
 
 // CoverageStat 描述内置探测点的覆盖情况，供后台展示。

@@ -135,7 +135,8 @@ WITH rounds AS (
     SELECT node_id, province, isp, ts,
            AVG(CASE WHEN ok = 1 THEN latency END) AS lat
     FROM net_quality
-    WHERE ts >= ?
+    WHERE ts >= ? AND ip_version =
+          (SELECT netq_ip_version FROM nodes WHERE id = net_quality.node_id)
     GROUP BY node_id, province, isp, ts
 ),
 ranked AS (
@@ -199,7 +200,8 @@ FROM (
   SELECT ts, province, isp, MAX(ok) AS ok,
          AVG(CASE WHEN ok=1 THEN latency END) AS latency
   FROM net_quality
-  WHERE node_id=? AND ts>=? AND ts<=?
+  WHERE node_id=? AND ts>=? AND ts<=? AND ip_version =
+        (SELECT netq_ip_version FROM nodes WHERE id = net_quality.node_id)
   GROUP BY ts, province, isp
 )
 WHERE ok=1 AND latency IS NOT NULL
@@ -273,6 +275,7 @@ current_windows AS MATERIALIZED (
     SELECT n.id AS node_id, COALESCE((
         SELECT ts FROM net_quality INDEXED BY idx_netq_node_time
         WHERE node_id = n.id AND ts >= params.agg_since
+          AND ip_version = n.netq_ip_version
           AND isp IN (SELECT isp FROM isps) AND province = '上海'
         GROUP BY ts ORDER BY ts DESC LIMIT 1 OFFSET ?
     ), params.agg_since) AS cutoff
@@ -286,13 +289,15 @@ cur AS (
     FROM current_windows win
     CROSS JOIN net_quality q INDEXED BY idx_netq_node_time
     WHERE q.node_id = win.node_id AND q.ts >= win.cutoff
+      AND q.ip_version = (SELECT netq_ip_version FROM nodes WHERE id = win.node_id)
       AND q.isp IN (SELECT isp FROM isps) AND q.province = '上海'
     GROUP BY q.node_id, q.isp
 ),
 history_windows AS MATERIALIZED (
     SELECT n.id AS node_id, isps.isp, COALESCE((
         SELECT ts FROM net_quality INDEXED BY idx_netq_node_time
-        WHERE node_id = n.id AND isp = isps.isp AND ts >= params.hist_since AND province = '上海'
+        WHERE node_id = n.id AND isp = isps.isp AND ts >= params.hist_since
+          AND ip_version = n.netq_ip_version AND province = '上海'
         GROUP BY ts ORDER BY ts DESC LIMIT 1 OFFSET ?
     ), params.hist_since) AS cutoff
     FROM nodes n CROSS JOIN isps CROSS JOIN params
@@ -304,7 +309,9 @@ hist AS (
                PARTITION BY q.node_id, q.isp ORDER BY q.ts DESC) AS rn
     FROM history_windows win
     CROSS JOIN net_quality q INDEXED BY idx_netq_node_time
-    WHERE q.node_id = win.node_id AND q.isp = win.isp AND q.ts >= win.cutoff AND q.province = '上海'
+    WHERE q.node_id = win.node_id AND q.isp = win.isp AND q.ts >= win.cutoff
+      AND q.ip_version = (SELECT netq_ip_version FROM nodes WHERE id = win.node_id)
+      AND q.province = '上海'
     GROUP BY q.node_id, q.isp, q.ts
 )
 SELECT node_id, isp, lat, loss, okn, 0 FROM cur

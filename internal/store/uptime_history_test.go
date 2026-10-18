@@ -69,6 +69,9 @@ func TestMigrationBackfillsUptimeFromHourlyRollups(t *testing.T) {
 	if err := s.CreateTask(&model.NodeTask{ID: "tk_ghost", NodeID: "nd_missing", Kind: "bench", Cmd: "test:bench"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.db.Exec(`ALTER TABLE nodes DROP COLUMN netq_ip_version; ALTER TABLE net_quality DROP COLUMN ip_version`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.db.Exec(`PRAGMA user_version=18`); err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"net"
-	"strings"
 	"testing"
 	"time"
 )
@@ -71,13 +70,18 @@ func TestFilterAndCoverage(t *testing.T) {
 		t.Fatalf("广东应有 3 个点（三网各一），实际 %d", len(gd))
 	}
 	ct := Filter(nil, []string{"telecom"})
-	if len(ct) != Coverage().ByISP[ISPTelecom] {
+	v4Telecom := len(FilterFamily(nil, []string{ISPTelecom}, "v4"))
+	if len(ct) != v4Telecom {
 		t.Fatalf("电信筛选数量与覆盖统计不一致")
 	}
 	for _, x := range ct {
 		if x.ISP != ISPTelecom {
 			t.Fatalf("筛选结果混入非电信目标: %v", x)
 		}
+	}
+	gd6 := FilterFamily([]string{"广东"}, nil, "v6")
+	if len(gd6) != 3 {
+		t.Fatalf("广东应有 3 个 IPv6 三网点，实际 %d", len(gd6))
 	}
 	both := Filter([]string{"广东"}, []string{"UNICOM"})
 	if len(both) != 1 || both[0].Name != "广东联通" {
@@ -118,8 +122,9 @@ func TestTargetsIPLiteral(t *testing.T) {
 		if x.Province == "" || x.ISP == "" || x.Name == "" {
 			t.Fatalf("字段为空: %+v", x)
 		}
-		if strings.Count(x.Host, ".") != 3 {
-			t.Fatalf("Host 不是 IPv4 字面量: %s (%s)", x.Host, x.Name)
+		ip := net.ParseIP(x.Host)
+		if ip == nil || (x.IPVersion == "v6" && ip.To4() != nil) || (x.IPVersion != "v6" && ip.To4() == nil) {
+			t.Fatalf("Host 与协议族 %s 不匹配: %s (%s)", x.IPVersion, x.Host, x.Name)
 		}
 	}
 }

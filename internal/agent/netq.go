@@ -148,6 +148,29 @@ func (a *Agent) setNetQSelection(provinces []string) {
 	}
 }
 
+func (a *Agent) netqIPFamily() string {
+	a.netqSelMu.Lock()
+	defer a.netqSelMu.Unlock()
+	if a.netqIPVersion == "v6" {
+		return "v6"
+	}
+	return "v4"
+}
+
+func (a *Agent) setNetQIPFamily(version string) {
+	a.netqSelMu.Lock()
+	if version == "v6" {
+		a.netqIPVersion = "v6"
+	} else {
+		a.netqIPVersion = "v4"
+	}
+	a.netqSelMu.Unlock()
+	select {
+	case a.netqWake <- struct{}{}:
+	default:
+	}
+}
+
 // netqInterval 解析配置：-1 关闭；0（未配）= 连续模式；正数 = 间隔分钟。
 //
 // 0 = 连续是 2026-10-12 起的新默认（boss："打完一轮就上报"）——
@@ -188,9 +211,10 @@ func (a *Agent) runNetQOnce(ctx context.Context, sel []string) error {
 
 	// 只探选中的省份（× 全部运营商）。范围由 Hub 的 netq_targets
 	// 命令维护，默认是「北京」三网基线。
-	targets := netprobe.Filter(sel, nil)
+	family := a.netqIPFamily()
+	targets := netprobe.FilterFamily(sel, nil, family)
 	if len(targets) == 0 {
-		return fmt.Errorf("省份范围 %v 在内置探测表里匹配不到目标", sel)
+		return fmt.Errorf("省份范围 %v 在内置探测表里匹配不到 %s 目标", sel, family)
 	}
 	if len(targets) > netqMaxTargets {
 		targets = targets[:netqMaxTargets]

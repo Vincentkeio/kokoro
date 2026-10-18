@@ -17,17 +17,26 @@ func TestParseUpstreamNodesNormalizes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析失败: %v", err)
 	}
-	if len(ts) != 2 {
-		t.Fatalf("应得 2 个点（河北联通 + 北京电信），实际 %d: %+v", len(ts), ts)
+	if len(ts) != 3 {
+		t.Fatalf("应得 3 个点（河北联通 v4/v6 + 北京电信 v4），实际 %d: %+v", len(ts), ts)
 	}
 	var hebei *Target
 	for i := range ts {
-		if ts[i].Province == "河北" && ts[i].ISP == ISPUnicom {
+		if ts[i].Province == "河北" && ts[i].ISP == ISPUnicom && ts[i].IPVersion == "v4" {
 			hebei = &ts[i]
 		}
 	}
 	if hebei == nil {
 		t.Fatalf("没有河北联通：%+v", ts)
+	}
+	var hebeiV6 *Target
+	for i := range ts {
+		if ts[i].Province == "河北" && ts[i].ISP == ISPUnicom && ts[i].IPVersion == "v6" {
+			hebeiV6 = &ts[i]
+		}
+	}
+	if hebeiV6 == nil || hebeiV6.Host != "2408:871a::1" {
+		t.Fatalf("IPv6 目标未保留：%+v", hebeiV6)
 	}
 	// 省份转简称、运营商转代码、名称拼好
 	if hebei.Name != "河北联通" {

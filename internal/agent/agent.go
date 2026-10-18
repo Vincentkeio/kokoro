@@ -36,7 +36,7 @@ import (
 )
 
 // Version 是 agent 版本，注册时上报给 Hub。
-var Version = "v0.2.0-beta.8"
+var Version = "v0.2.0-beta.9"
 
 const logPrefix = "[kokoro-agent] "
 
@@ -134,6 +134,7 @@ type Agent struct {
 	// netqSel 是三网分省探测的当前范围（省份名列表，空 = 不探测）。
 	// 由 Hub 的 netq_targets 命令改写，见 netq.go。
 	netqSel   []string
+	netqIPVersion string
 	netqSelMu sync.Mutex
 	netqWake  chan struct{} // 范围变了就唤醒探测循环，立刻重跑
 }
@@ -171,6 +172,7 @@ func New(cfg *model.AgentConfig, c Collector) (*Agent, error) {
 		migrationRestart:  make(chan struct{}),
 		buf:               make([]*model.Metrics, 0, replayBufferSize),
 		netqWake:          make(chan struct{}, 1),
+		netqIPVersion:     "v4",
 		activeTaskCancels: make(map[string]context.CancelFunc),
 		cancelledTasks:    make(map[string]bool),
 	}
@@ -530,6 +532,7 @@ func (a *Agent) collectOnce() {
 	m.NetQProvinces = a.netqSelection()
 	// 探测间隔一起带上：单独改间隔（范围没动）时 Hub 靠它发现差异
 	m.NetQIntervalMin = a.cfg.NetQIntervalMin
+	m.NetQIPVersion = a.netqIPFamily()
 	// 探测点目录版本：后台「更新探测点列表」后，Hub 靠它发现差异并推新目录。
 	m.NetQCatalogVer = a.netqCatalogVer()
 	a.buf = append(a.buf, m)

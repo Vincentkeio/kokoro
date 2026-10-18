@@ -193,6 +193,11 @@
               <span>自定义标签</span>
               <input name="tags" value="{{joinTags .Tags}}" placeholder="逗号分隔" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 4 个" aria-label="自定义标签">
             </label>
+            <fieldset class="ip-family-options node-netq-family">
+              <legend>三网延迟 IP 协议</legend>
+              <label><input type="radio" name="netq_ip_version" value="v4" {{if ne .NetQIPVersion "v6"}}checked{{end}}>IPv4</label>
+              <label><input type="radio" name="netq_ip_version" value="v6" {{if eq .NetQIPVersion "v6"}}checked{{end}}>IPv6</label>
+            </fieldset>
             {{/* 续费与到期都是节点资料，在这里单独维护，不放进文章内容。 */}}
             {{$price := ""}}{{with index $.Profiles .ID}}{{$price = .Price}}{{end}}
             <label class="fld renewal-entry">

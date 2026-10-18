@@ -178,7 +178,7 @@ func (h *Hub) handleNetQ(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type row struct {
-		province, isp, name, host string
+		province, isp, name, host, ipVersion string
 		ok                        bool
 		latency, jitter, loss     float64
 	}
@@ -220,6 +220,7 @@ func (h *Hub) handleNetQ(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = append(rows, row{
 			province: province, isp: isp, name: res.Target.Name, host: host,
+			ipVersion: strings.ToLower(strings.TrimSpace(res.Target.IPVersion)),
 			ok: res.OK, latency: lat, jitter: jit, loss: los,
 		})
 	}
@@ -235,8 +236,8 @@ func (h *Hub) handleNetQ(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stmt, err := tx.Prepare(`INSERT INTO net_quality
-(node_id, ts, mode, province, isp, city, host, ok, latency, jitter, loss)
-VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+(node_id, ts, mode, ip_version, province, isp, city, host, ok, latency, jitter, loss)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		_ = tx.Rollback()
 		log.Printf("[hub] 预编译网络质量写入失败: %v", err)
@@ -244,12 +245,15 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
 		return
 	}
 	for _, x := range rows {
+		if x.ipVersion != "v6" {
+			x.ipVersion = "v4"
+		}
 		okVal := 0
 		if x.ok {
 			okVal = 1
 		}
 		// city 列目前留空：探测目标表里没有城市字段，保留列位以备后续细化。
-		if _, err := stmt.Exec(node.ID, ts, mode, x.province, x.isp, "", x.host,
+		if _, err := stmt.Exec(node.ID, ts, mode, x.ipVersion, x.province, x.isp, "", x.host,
 			okVal, x.latency, x.jitter, x.loss); err != nil {
 			stmt.Close()
 			_ = tx.Rollback()
@@ -291,7 +295,12 @@ func (h *Hub) broadcastNetQ(nodeID string) {
 	}
 	payload := map[string]any{"node": nodeID}
 	if netq, err := h.store.NetQByNode(); err == nil {
-		cells := net3Cells(netq[nodeID])
+		node, _ := h.store.GetNode(nodeID)
+		family := "v4"
+		if node != nil {
+			family = node.NetQIPVersion
+		}
+		cells := net3Cells(netq[nodeID], family)
 		if len(cells) > 0 {
 			payload["rows"] = h.renderPartial("netq_rows.html", map[string]any{
 				"ID": nodeID, "Net3": cells,
@@ -339,8 +348,9 @@ func (h *Hub) LoadNetQRange(nodeID, waveRange string) *NetQSummary {
 	var ts int64
 	var mode string
 	err := db.QueryRow(
-		`SELECT ts, mode FROM net_quality WHERE node_id = ? ORDER BY ts DESC LIMIT 1`,
-		nodeID).Scan(&ts, &mode)
+		`SELECT ts, mode FROM net_quality WHERE node_id = ? AND ip_version =
+         (SELECT netq_ip_version FROM nodes WHERE id = ?) ORDER BY ts DESC LIMIT 1`,
+		nodeID, nodeID).Scan(&ts, &mode)
 	if err != nil {
 		return nil
 	}
@@ -396,13 +406,14 @@ func (h *Hub) LoadNetQRange(nodeID, waveRange string) *NetQSummary {
 				COALESCE(AVG(CASE WHEN ok = 1 THEN jitter END), 0) AS jitter,
 				AVG(loss) AS loss
 			FROM net_quality
-			WHERE node_id = ? AND ts >= ?
+			WHERE node_id = ? AND ts >= ? AND ip_version =
+              (SELECT netq_ip_version FROM nodes WHERE id = ?)
 			GROUP BY ts, province, isp
 		) AS rounds
 	)
 	SELECT ts, province, isp, host, ok, latency, jitter, loss
 	FROM ranked WHERE rn = 1 ORDER BY ts DESC`, nodeID,
-		now-cellHistoryAge.Milliseconds())
+		now-cellHistoryAge.Milliseconds(), nodeID)
 	if err != nil {
 		log.Printf("[hub] 读取网络质量失败 %s: %v", nodeID, err)
 		return nil
@@ -676,18 +687,22 @@ func isISP3(isp string) bool {
 // 抽成函数是因为**两条路都要用**：首页 SSR 渲染（web.go renderHome）
 // 和 SSE 的 netq 事件（探测结果一到就广播，见 broadcastNetQ）——
 // 两处必须同一套排序与口径，否则"刷新后数字变了"说不清。
-func net3Cells(lats []store.ISPLatency) []net3Cell {
+func net3Cells(lats []store.ISPLatency, family string) []net3Cell {
 	if len(lats) == 0 {
 		return nil
 	}
 	sort.SliceStable(lats, func(i, j int) bool {
 		return ispOrder(lats[i].ISP) < ispOrder(lats[j].ISP)
 	})
+	family = strings.ToLower(strings.TrimSpace(family))
+	if family != "v6" {
+		family = "v4"
+	}
 	out := make([]net3Cell, 0, len(lats))
 	for _, l := range lats {
 		line, area := netqWavePaths(l.Hist)
 		cell := net3Cell{
-			Label:     ispLabel(l.ISP),
+			Label:     ispLabel(l.ISP) + " " + family,
 			Level:     "ok",
 			SparkLine: line,
 			SparkArea: area,

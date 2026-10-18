@@ -33,6 +33,9 @@ const (
 	icmpEchoReply    = 0
 	icmpEchoRequest  = 8
 	icmpTimeExceeded = 11
+	icmp6EchoRequest = 128
+	icmp6EchoReply   = 129
+	ipv6ICMPProtocol = 58
 
 	icmpHeaderLen = 8      // ICMPv4 首部长度
 	echoDataLen   = 48     // Echo 数据负载长度（对齐常见 ping 的 56 字节报文体）
@@ -116,7 +119,12 @@ func New() (Prober, error) {
 		} else {
 			p.reason = err.Error()
 		}
-	} else {
+	}
+	if c, err := openICMP6(); err == nil {
+		_ = c.Close()
+		p.mode = ModeICMP
+		return p, nil
+	} else if p.reason == "" {
 		p.reason = "raw socket 不可用（无 raw ICMP 权限）"
 	}
 	p.mode = ModeTCP
@@ -212,14 +220,28 @@ func (p *prober) probeOne(ctx context.Context, t Target, count int, timeout time
 
 // probeHost 探测单个地址：解析 -> ICMP（或降级 TCP）-> 统计。
 func (p *prober) probeHost(ctx context.Context, t Target, host string, count int, timeout time.Duration) Result {
-	ip, err := resolveIPv4(ctx, host)
+	family := normalizeIPVersion(t.IPVersion)
+	var ip net.IP
+	var err error
+	if family == "v6" {
+		ip, err = resolveIPv6(ctx, host)
+	} else {
+		ip, err = resolveIPv4(ctx, host)
+	}
 	if err != nil {
 		return Result{Target: t, Error: "resolve: " + err.Error()}
 	}
 
 	// ICMP 模式下每个目标单独建 socket，个别目标建 socket 失败时也会退化到 TCP。
 	if p.mode == ModeICMP {
-		samples, fails, ierr := icmpPing(ctx, ip, count, timeout)
+		var samples []time.Duration
+		var fails int
+		var ierr error
+		if family == "v6" {
+			samples, fails, ierr = icmpPing6(ctx, ip, count, timeout)
+		} else {
+			samples, fails, ierr = icmpPing(ctx, ip, count, timeout)
+		}
 		if ierr == nil {
 			mean, jitter, loss := stat(samples, fails+len(samples))
 			return Result{
@@ -246,6 +268,114 @@ func (p *prober) probeHost(ctx context.Context, t Target, host string, count int
 		LossPct:   loss,
 		Error:     icmpUnavailable,
 	}
+}
+
+// icmpPing6 对单个 IPv6 地址发 ICMPv6 Echo Request。校验和按 RFC 4443
+// 使用 IPv6 pseudo-header 计算，raw socket 不依赖外部 ping 命令。
+func icmpPing6(ctx context.Context, ip net.IP, count int, timeout time.Duration) ([]time.Duration, int, error) {
+	c, err := openICMP6()
+	if err != nil {
+		return nil, 0, err
+	}
+	defer c.Close()
+
+	local, err := localIPv6For(ip)
+	if err != nil {
+		return nil, 0, err
+	}
+	dst := ip.To16()
+	samples := make([]time.Duration, 0, count)
+	fails := 0
+	for i := 0; i < count; i++ {
+		if err := ctx.Err(); err != nil {
+			fails += count - i
+			break
+		}
+		seq := nextSeq()
+		msg := icmpv6EchoRequest(seq)
+		binary.BigEndian.PutUint16(msg[2:4], checksumIPv6(local, dst, msg))
+		start := time.Now()
+		if _, err := c.WriteTo(msg, &net.IPAddr{IP: dst}); err != nil {
+			return nil, fails, err
+		}
+		if err := c.SetReadDeadline(start.Add(timeout)); err != nil {
+			fails++
+			continue
+		}
+		if err := awaitEcho6(c, dst, seq); err != nil {
+			fails++
+			continue
+		}
+		samples = append(samples, time.Since(start))
+	}
+	return samples, fails, nil
+}
+
+func openICMP6() (net.PacketConn, error) {
+	return net.ListenPacket("ip6:ipv6-icmp", "::")
+}
+
+func icmpv6EchoRequest(seq uint16) []byte {
+	msg := make([]byte, icmpHeaderLen+echoDataLen)
+	msg[0] = icmp6EchoRequest
+	binary.BigEndian.PutUint16(msg[4:6], echoID())
+	binary.BigEndian.PutUint16(msg[6:8], seq)
+	binary.BigEndian.PutUint64(msg[8:16], uint64(time.Now().UnixNano()))
+	return msg
+}
+
+func checksumIPv6(src, dst, message []byte) uint16 {
+	pseudo := make([]byte, 40+len(message))
+	copy(pseudo[0:16], src)
+	copy(pseudo[16:32], dst)
+	binary.BigEndian.PutUint32(pseudo[32:36], uint32(len(message)))
+	pseudo[39] = ipv6ICMPProtocol
+	copy(pseudo[40:], message)
+	return checksum(pseudo)
+}
+
+func localIPv6For(dst net.IP) (net.IP, error) {
+	c, err := net.Dial("udp6", net.JoinHostPort(dst.String(), "33434"))
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	addr, ok := c.LocalAddr().(*net.UDPAddr)
+	if !ok || addr.IP.To4() != nil || addr.IP.To16() == nil {
+		return nil, errors.New("没有可用的 IPv6 出口地址")
+	}
+	return addr.IP.To16(), nil
+}
+
+func awaitEcho6(c net.PacketConn, want net.IP, seq uint16) error {
+	buf := make([]byte, recvBufLen)
+	for {
+		n, from, err := c.ReadFrom(buf)
+		if err != nil {
+			return err
+		}
+		if !sameIP(from, want) {
+			continue
+		}
+		msg := stripIPv6Header(buf[:n])
+		if len(msg) < icmpHeaderLen || msg[0] != icmp6EchoReply || msg[1] != 0 {
+			continue
+		}
+		if binary.BigEndian.Uint16(msg[4:6]) != echoID() || binary.BigEndian.Uint16(msg[6:8]) != seq {
+			continue
+		}
+		return nil
+	}
+}
+
+func stripIPv6Header(b []byte) []byte {
+	if len(b) >= 40 && b[0]>>4 == 6 {
+		headerLen := 40 + int(binary.BigEndian.Uint16(b[4:6]))
+		if headerLen <= len(b) {
+			return b[headerLen:]
+		}
+	}
+	return b
 }
 
 // ---- ICMP ----
@@ -440,6 +570,27 @@ func resolveIPv4(ctx context.Context, host string) (net.IP, error) {
 		}
 	}
 	return nil, errors.New("无 IPv4 解析结果")
+}
+
+func resolveIPv6(ctx context.Context, host string) (net.IP, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.To4() == nil {
+			return ip.To16(), nil
+		}
+		return nil, errors.New("目标是 IPv4 地址")
+	}
+	rctx, cancel := context.WithTimeout(ctx, maxResolveWait)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(rctx, host)
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range addrs {
+		if a.IP.To4() == nil && a.IP.To16() != nil {
+			return a.IP.To16(), nil
+		}
+	}
+	return nil, errors.New("无 IPv6 解析结果")
 }
 
 // stripIPHeader 去掉报文前可能存在的 IPv4 首部，返回 ICMP 报文部分。

@@ -1468,7 +1468,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		}
 
 		// 三网延迟：固定按 电信 → 联通 → 移动 排，缺哪个就少哪个
-		c.Net3 = net3Cells(netq[n.ID])
+		c.Net3 = net3Cells(netq[n.ID], n.NetQIPVersion)
 
 		// 流量：本日 / 本月。估算值，见 store.TrafficByNodeSince 的注释。
 		if t, ok := today[n.ID]; ok {
@@ -3032,6 +3032,15 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 	case "rename":
 		var nameUpdate *string
 		var tagsUpdate *[]string
+		var netqIPVersionUpdate *string
+		if raw, has := r.Form["netq_ip_version"]; has && len(raw) > 0 {
+			version := strings.TrimSpace(r.FormValue("netq_ip_version"))
+			if version != "v4" && version != "v6" {
+				http.Error(w, "三网延迟协议需选择 IPv4 或 IPv6", http.StatusBadRequest)
+				return
+			}
+			netqIPVersionUpdate = &version
+		}
 		if name := strings.TrimSpace(r.FormValue("name")); name != "" {
 			node.Name = name
 			nameUpdate = &node.Name
@@ -3097,6 +3106,13 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 		if err := h.store.UpdateNodeLabels(node.ID, nameUpdate, tagsUpdate); err != nil {
 			http.Error(w, "保存节点资料失败，请重试", http.StatusInternalServerError)
 			return
+		}
+		if netqIPVersionUpdate != nil {
+			if err := h.store.SetNodeNetQIPVersion(node.ID, *netqIPVersionUpdate); err != nil {
+				http.Error(w, "保存三网延迟协议失败，请重试", http.StatusInternalServerError)
+				return
+			}
+			_ = h.store.AddAudit("admin", "node.netq_ip_version", node.ID, *netqIPVersionUpdate)
 		}
 	case "visibility":
 		switch r.FormValue("visibility") {

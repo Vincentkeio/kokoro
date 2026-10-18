@@ -2427,7 +2427,7 @@ body[data-k-theme] .uptime-bar {
    波最短也有 36px，再窄就换行（flex-wrap 由 grid 自动处理不了，
    所以窄卡上靠 -wave 的 flex-basis 收缩）。 */
 .card .nqr {
-  display: grid; align-items: center; gap: 4px;
+  display: grid; align-items: center; gap: 5px;
   grid-template-columns: 6px auto max-content minmax(18px, 1fr) max-content;
   grid-template-areas: "dot name ms wave loss";
   min-width: 0; max-width: 100%;

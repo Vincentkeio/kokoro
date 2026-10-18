@@ -92,7 +92,7 @@ func TestExpiryReceiptMigrationPreservesDelivery(t *testing.T) {
 	if _, err := s.AddSiteMessage(m); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.DB().Exec(`DROP TABLE expiry_reminder_deliveries; PRAGMA user_version=22`); err != nil {
+	if _, err := s.DB().Exec(`DROP TABLE expiry_reminder_deliveries; ALTER TABLE nodes DROP COLUMN netq_ip_version; ALTER TABLE net_quality DROP COLUMN ip_version; PRAGMA user_version=22`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.migrate(); err != nil {

@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     -- TCP 加速：拥塞控制算法（bbr/cubic…）与队列规则（fq/fq_codel…）
     tcp_cc       TEXT    NOT NULL DEFAULT '',
     tcp_qdisc    TEXT    NOT NULL DEFAULT '',
+    netq_ip_version TEXT NOT NULL DEFAULT 'v4',
     -- 是否在 NAT 后面（公网 IP 不在自己网卡上）。0/1 布尔，**不存 IP**
     nat          INTEGER NOT NULL DEFAULT 0,
     mem_total    INTEGER NOT NULL DEFAULT 0,
@@ -235,6 +236,7 @@ CREATE TABLE IF NOT EXISTS net_quality (
     node_id  TEXT    NOT NULL DEFAULT '',
     ts       INTEGER NOT NULL DEFAULT 0,      -- 这一轮探测的时间戳（毫秒）
     mode     TEXT    NOT NULL DEFAULT '',     -- icmp | tcp（无 raw socket 权限时降级）
+    ip_version TEXT   NOT NULL DEFAULT 'v4',  -- v4 | v6
     province TEXT    NOT NULL DEFAULT '',
     isp      TEXT    NOT NULL DEFAULT '',     -- 电信 | 联通 | 移动
     city     TEXT    NOT NULL DEFAULT '',

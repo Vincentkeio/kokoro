@@ -59,6 +59,7 @@ func (h *Hub) applyStoredNetQCatalog() {
 			log.Printf("[hub] netq_catalog 解析失败，退回内置表: %v", err)
 			return
 		}
+		f.Targets = netprobe.PreserveBuiltinIPv6(f.Targets)
 		netprobe.SetCatalog(f.Targets)
 		log.Printf("[hub] 已加载覆盖探测点目录：%d 个点（抓取于 %s）", len(f.Targets), f.FetchedAt)
 	})
@@ -73,13 +74,22 @@ func (h *Hub) netqCatalogCommand(reportedVer string) *model.Command {
 		return nil // 没有覆盖件
 	}
 	h.applyStoredNetQCatalog()
+	var file netprobe.CatalogFile
+	if err := json.Unmarshal([]byte(raw), &file); err != nil {
+		return nil
+	}
+	file.Targets = netprobe.PreserveBuiltinIPv6(file.Targets)
 	if reportedVer == netprobe.CatalogVersion() {
+		return nil
+	}
+	encoded, err := json.Marshal(file)
+	if err != nil {
 		return nil
 	}
 	return &model.Command{
 		ID:      "netqcat-" + strconv.FormatInt(time.Now().UnixNano(), 10),
 		Type:    "netq_catalog",
-		Payload: map[string]any{"catalog": raw},
+		Payload: map[string]any{"catalog": string(encoded)},
 	}
 }
 
@@ -278,9 +288,16 @@ func (h *Hub) netqInterval() int {
 // 间隔和范围一起存、一起下发，改动范围时顺带把间隔带上；单独改间隔的
 // 场景（范围没动）由 reported 比对覆盖不到，所以 reported 同时带上
 // agent 当前间隔，一起比对（见 api.go 调用处）。
-func (h *Hub) netqTargetsCommand(reported []string, reportedInterval int) *model.Command {
+func (h *Hub) netqTargetsCommand(reported []string, reportedInterval int, families ...string) *model.Command {
 	want := h.netqProvinces()
-	if sameStringSet(want, reported) && h.netqInterval() == reportedInterval {
+	desiredFamily, reportedFamily := "v4", "v4"
+	if len(families) > 0 && families[0] == "v6" {
+		desiredFamily = "v6"
+	}
+	if len(families) > 1 && families[1] != "" {
+		reportedFamily = families[1]
+	}
+	if sameStringSet(want, reported) && h.netqInterval() == reportedInterval && desiredFamily == reportedFamily {
 		return nil
 	}
 	payload := make([]any, 0, len(want))
@@ -293,6 +310,7 @@ func (h *Hub) netqTargetsCommand(reported []string, reportedInterval int) *model
 		Payload: map[string]any{
 			"provinces":    payload,
 			"interval_min": h.netqInterval(),
+			"ip_version":  desiredFamily,
 		},
 	}
 }

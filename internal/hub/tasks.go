@@ -201,6 +201,10 @@ func (h *Hub) dispatchSelectedIP(ids []string, ipKind string) (int, int, error) 
 // 一次只取一条：跑分脚本动辄十几分钟，同机并发跑多个会互相抢 CPU，
 // 结果全是错的。取到就置 running，避免下次上报重复下发。
 func (h *Hub) pendingCommands(nodeID string, netqReported []string, catalogVer string, netqInterval int, heartbeat ...*model.TaskHeartbeat) []model.Command {
+	return h.pendingCommandsWithNetQ(nodeID, netqReported, catalogVer, netqInterval, "", heartbeat...)
+}
+
+func (h *Hub) pendingCommandsWithNetQ(nodeID string, netqReported []string, catalogVer string, netqInterval int, reportedIPVersion string, heartbeat ...*model.TaskHeartbeat) []model.Command {
 	cmds := []model.Command{}
 	// 测试任务：一次一条，claim 到才算下发
 	var task *model.NodeTask
@@ -226,7 +230,11 @@ func (h *Hub) pendingCommands(nodeID string, netqReported []string, catalogVer s
 		}
 	}
 	// 三网探测范围与间隔：agent 报的和设置不一致才发
-	if c := h.netqTargetsCommand(netqReported, netqInterval); c != nil {
+	desiredIPVersion := "v4"
+	if node, err := h.store.GetNode(nodeID); err == nil && node != nil && node.NetQIPVersion == "v6" {
+		desiredIPVersion = "v6"
+	}
+	if c := h.netqTargetsCommand(netqReported, netqInterval, desiredIPVersion, reportedIPVersion); c != nil {
 		cmds = append(cmds, *c)
 	}
 	// 探测点目录覆盖：agent 报的目录版本和 Hub 的不一致才发

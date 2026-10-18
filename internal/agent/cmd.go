@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -155,7 +156,7 @@ func (a *Agent) execCommand(cmd model.Command) model.CommandResult {
 		"swap":         {"size_mb": true},
 		"reconfig":     {"interval_ms": true, "node_name": true, "netq_interval_min": true},
 		"migrate":      {"hub": true, "backup_id": true},
-		"netq_targets": {"provinces": true, "interval_min": true},
+		"netq_targets": {"provinces": true, "interval_min": true, "ip_version": true},
 		"netq_catalog": {"catalog": true},
 		"restart":      {},
 		"upgrade":      {"version": true},
@@ -251,6 +252,14 @@ func (a *Agent) netqTargets(cmd model.Command) model.CommandResult {
 			return res
 		}
 	}
+	if raw, ok := cmd.Payload["ip_version"]; ok {
+		version, valid := raw.(string)
+		if !valid || (version != "v4" && version != "v6") {
+			res.Stderr = "探测协议必须是 v4 或 v6"
+			return res
+		}
+		a.setNetQIPFamily(version)
+	}
 	a.setNetQSelection(provinces)
 	// 间隔也随这条命令带下来（后台可调）：连续探测是默认，但勾了几十个
 	// 省时一轮要几分钟，需要间隔防止把机器和目标都打爆。
@@ -260,8 +269,8 @@ func (a *Agent) netqTargets(cmd model.Command) model.CommandResult {
 		}
 	}
 	res.OK = true
-	res.Stdout = fmt.Sprintf("探测范围已更新：%v（%d 个点）", provinces, len(provinces)*3)
-	logger.Printf("三网探测范围命令：%v", provinces)
+	res.Stdout = fmt.Sprintf("探测范围已更新：%v（%d 个点，%s）", provinces, len(provinces)*3, a.netqIPFamily())
+	logger.Printf("三网探测范围命令：%v，协议 %s", provinces, a.netqIPFamily())
 	return res
 }
 
@@ -298,8 +307,14 @@ func (a *Agent) netqCatalog(cmd model.Command) model.CommandResult {
 		res.Stderr = "探测点目录超出数量限制"
 		return res
 	}
+	f.Targets = netprobe.PreserveBuiltinIPv6(f.Targets)
+	if len(f.Targets) > 512 {
+		res.Stderr = "合并内置 IPv6 探测点后目录超出数量限制"
+		return res
+	}
 	for _, target := range f.Targets {
-		if target.Province == "" || len(target.Province) > 64 || len(target.Hosts) > 8 {
+		if target.Province == "" || len(target.Province) > 64 || len(target.Hosts) > 8 ||
+			(target.IPVersion != "" && target.IPVersion != "v4" && target.IPVersion != "v6") {
 			res.Stderr = "探测点字段不合法"
 			return res
 		}
@@ -311,8 +326,12 @@ func (a *Agent) netqCatalog(cmd model.Command) model.CommandResult {
 		}
 		for _, host := range append([]string{target.Host}, target.Hosts...) {
 			ip := net.ParseIP(host)
-			if !isPublicProbeIPv4(ip) {
-				res.Stderr = "探测点必须是有效的公网 IPv4 地址"
+			valid := isPublicProbeIPv4(ip)
+			if target.IPVersion == "v6" {
+				valid = isPublicProbeIPv6(ip)
+			}
+			if !valid {
+				res.Stderr = "探测点必须是与协议族相符的公网 IP 地址"
 				return res
 			}
 		}
@@ -337,6 +356,17 @@ func isPublicProbeIPv4(ip net.IP) bool {
 		return false
 	}
 	return true
+}
+
+func isPublicProbeIPv6(ip net.IP) bool {
+	if ip == nil || ip.To4() != nil || ip.To16() == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+	var raw [16]byte
+	copy(raw[:], ip.To16())
+	addr := netip.AddrFrom16(raw)
+	return netip.MustParsePrefix("2000::/3").Contains(addr) &&
+		!netip.MustParsePrefix("2001:db8::/32").Contains(addr)
 }
 
 // reconfig 更新内存与磁盘配置（目前支持 interval_ms / node_name）。

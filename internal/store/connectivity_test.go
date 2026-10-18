@@ -38,6 +38,9 @@ func TestConnectivityMigrationFromV16(t *testing.T) {
 	if _, err = st.DB().Exec("ALTER TABLE metrics_raw DROP COLUMN connectivity"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = st.DB().Exec("ALTER TABLE nodes DROP COLUMN netq_ip_version; ALTER TABLE net_quality DROP COLUMN ip_version"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = st.DB().Exec("PRAGMA user_version=16"); err != nil {
 		t.Fatal(err)
 	}

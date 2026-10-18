@@ -54,10 +54,11 @@ def fetch(use_proxy: bool = True) -> list:
 
 
 def build(raw: list) -> dict:
-    """按 (省, 运营商) 归并 v4 地址，按质量/延迟排序，最多留 3 个候选。"""
-    groups: dict[tuple[str, str], list[dict]] = {}
+    """按 (省, 运营商, 协议族) 归并地址，按质量/延迟排序，最多留 3 个候选。"""
+    groups: dict[tuple[str, str, str], list[dict]] = {}
     for row in raw:
-        if row.get("ip_version") != "v4":
+        family = str(row.get("ip_version", "")).strip().lower()
+        if family not in ("v4", "v6"):
             continue
         prov = SHORT.get(str(row.get("province", "")).strip())
         isp = str(row.get("isp_code", "")).strip()
@@ -71,10 +72,10 @@ def build(raw: list) -> dict:
             if i < len(lats):
                 lat = lats[i].strip()
             cand.append({"ip": ip, "latency_ms": lat})
-        groups.setdefault((prov, isp), []).extend(cand)
+        groups.setdefault((prov, isp, family), []).extend(cand)
 
     targets = []
-    for (prov, isp), cands in groups.items():
+    for (prov, isp, family), cands in groups.items():
         # 去重保序：同一 IP 可能在多行里出现
         seen, uniq = set(), []
         for c in cands:
@@ -87,13 +88,25 @@ def build(raw: list) -> dict:
         targets.append({
             "province": prov,
             "isp": ISP_NAME[isp],
+            "ip_version": family,
             "ips": [c["ip"] for c in uniq[:3]],
         })
 
     # 省份按上游出现顺序之外的稳定顺序排列：先直辖市再按拼音？这里按
     # (运营商顺序, 省份) 由 Go 侧再排，保持文件可 diff 即可。
-    targets.sort(key=lambda t: (t["province"], ISP_ORDER.index(
-        next(k for k, v in ISP_NAME.items() if v == t["isp"]))))
+    targets.sort(key=lambda t: (t["province"], 0 if t["ip_version"] == "v4" else 1,
+                                ISP_ORDER.index(next(k for k, v in ISP_NAME.items() if v == t["isp"]))))
+    # 上游会在不同省份/运营商下复用少数 IPv6 地址。跨组去重首选与候选，
+    # 避免两个卡片显示成不同线路、实际却测同一个目标。
+    seen_ips: set[str] = set()
+    unique_targets = []
+    for target in targets:
+        ips = [ip for ip in target["ips"] if ip not in seen_ips]
+        seen_ips.update(ips)
+        if ips:
+            target["ips"] = ips
+            unique_targets.append(target)
+    targets = unique_targets
     return {
         "_meta": {
             "source": SRC,
@@ -126,7 +139,7 @@ def main() -> int:
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1, sort_keys=False)
         f.write("\n")
-    print(f"写入 {OUT}: {len(data['targets'])} 组（省 × 网）")
+    print(f"写入 {OUT}: {len(data['targets'])} 组（省 × 网 × IPv4/IPv6）")
     return 0
 
 

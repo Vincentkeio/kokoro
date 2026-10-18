@@ -42,7 +42,7 @@ var schemaSQL string
 // 只加 2 不加 1 的后果：新装的库缺列，跑起来报
 // "table xxx has no column named yyy" —— 而且**本地测试会先红**
 // （测试用的都是全新库）。踩过一次。
-const schemaVersion = 24
+const schemaVersion = 26
 
 // rollup 各层的窗口长度（毫秒）。级联方向：raw → 1m → 5m → 1h → 1d。
 const (
@@ -408,6 +408,8 @@ FROM site_messages WHERE kind='expiry';`},
     visitor_count INTEGER NOT NULL DEFAULT 0
 );
 INSERT OR IGNORE INTO site_stats (id, visitor_count) VALUES (1, 0);`},
+	{version: 25, sql: `ALTER TABLE nodes ADD COLUMN netq_ip_version TEXT NOT NULL DEFAULT 'v4';`},
+	{version: 26, sql: `ALTER TABLE net_quality ADD COLUMN ip_version TEXT NOT NULL DEFAULT 'v4';`},
 }
 
 // prepare 预编译高频写入语句。
@@ -430,7 +432,7 @@ ON CONFLICT (node_id, ts) DO NOTHING`)
 const nodeCols = `id, name, slug, token_hash, owner_id, region, provider, tags, group_name,
 visibility, hostname, os, kernel, arch, virt, cpu_model, cpu_cores, mem_total, disk_total,
 tcp_cc, tcp_qdisc, nat,
-agent_ver, ip, country, city, asn, online, last_seen, offline_warn, created_at, sort_order`
+agent_ver, ip, country, city, asn, online, last_seen, offline_warn, created_at, sort_order, netq_ip_version`
 
 // scanner 同时适配 *sql.Row 与 *sql.Rows。
 type scanner interface{ Scan(dest ...any) error }
@@ -449,7 +451,7 @@ func scanNode(sc scanner) (*model.Node, error) {
 		&n.Group, &visibility, &n.Hostname, &n.OS, &n.Kernel, &n.Arch, &n.Virt, &n.CPUModel,
 		&n.CPUCores, &n.MemTotal, &n.DiskTotal, &n.TCPCC, &n.TCPQdisc, &nat,
 		&n.AgentVer, &n.IP, &n.Country, &n.City,
-		&n.ASN, &online, &n.LastSeen, &offlineWarn, &n.CreatedAt, &n.SortOrder,
+		&n.ASN, &online, &n.LastSeen, &offlineWarn, &n.CreatedAt, &n.SortOrder, &n.NetQIPVersion,
 	)
 	if err != nil {
 		return nil, err
@@ -493,7 +495,7 @@ func (s *Store) CreateNode(n *model.Node) error {
 		string(n.Visibility), n.Hostname, n.OS, n.Kernel, n.Arch, n.Virt, n.CPUModel,
 		n.CPUCores, n.MemTotal, n.DiskTotal, n.TCPCC, n.TCPQdisc, boolInt(n.NAT),
 		n.AgentVer, n.IP, n.Country, n.City,
-		n.ASN, boolInt(n.Online), n.LastSeen, boolInt(n.OfflineWarn), n.CreatedAt, n.SortOrder,
+		n.ASN, boolInt(n.Online), n.LastSeen, boolInt(n.OfflineWarn), n.CreatedAt, n.SortOrder, normalizeNetQIPVersion(n.NetQIPVersion),
 	)
 	if err != nil {
 		return fmt.Errorf("创建节点失败: %w", err)

@@ -304,7 +304,7 @@ func (h *Hub) handleReport(w http.ResponseWriter, r *http.Request) {
 	} else if wasOffline {
 		h.broadcastTaskCard(node.ID)
 	}
-	commands := h.pendingCommands(node.ID, m.NetQProvinces, m.NetQCatalogVer, m.NetQIntervalMin, m.Tasks)
+	commands := h.pendingCommandsWithNetQ(node.ID, m.NetQProvinces, m.NetQCatalogVer, m.NetQIntervalMin, m.NetQIPVersion, m.Tasks)
 	if c := h.updateCommand(node, &m); c != nil {
 		commands = append(commands, *c)
 	}

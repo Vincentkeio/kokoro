@@ -22,6 +22,23 @@ var (
 	activeCatalog []Target
 )
 
+// PreserveBuiltinIPv6 appends the embedded IPv6 targets when a legacy Hub
+// override contains only IPv4. Existing IPv4 overrides remain authoritative.
+func PreserveBuiltinIPv6(targets []Target) []Target {
+	for _, t := range targets {
+		if normalizeIPVersion(t.IPVersion) == "v6" {
+			return targets
+		}
+	}
+	out := append([]Target(nil), targets...)
+	for _, t := range Targets {
+		if normalizeIPVersion(t.IPVersion) == "v6" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // SetCatalog 用外部目录覆盖内置表。传 nil/空 = 退回内置表。
 func SetCatalog(ts []Target) {
 	clean := make([]Target, 0, len(ts))
@@ -37,6 +54,9 @@ func SetCatalog(ts []Target) {
 	sort.SliceStable(clean, func(i, j int) bool {
 		if clean[i].Province != clean[j].Province {
 			return clean[i].Province < clean[j].Province
+		}
+		if normalizeIPVersion(clean[i].IPVersion) != normalizeIPVersion(clean[j].IPVersion) {
+			return normalizeIPVersion(clean[i].IPVersion) < normalizeIPVersion(clean[j].IPVersion)
 		}
 		return ispRank[clean[i].ISP] < ispRank[clean[j].ISP]
 	})
@@ -65,6 +85,8 @@ func CatalogVersion() string {
 		h.Write([]byte(t.Province))
 		h.Write([]byte{0})
 		h.Write([]byte(t.ISP))
+		h.Write([]byte{0})
+		h.Write([]byte(normalizeIPVersion(t.IPVersion)))
 		h.Write([]byte{0})
 		for _, x := range t.Hosts {
 			h.Write([]byte(x))

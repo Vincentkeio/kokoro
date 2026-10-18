@@ -42,19 +42,20 @@ type upstreamNode struct {
 
 // ParseUpstreamNodes 解析上游原始 nodes.json → 探测点列表。
 //
-// 只取 IPv4（我们的探测器是 v4 路径）；每省每网最多留 3 个候选，
+// 同时保留 IPv4 与 IPv6；每省每网每种协议族最多留 3 个候选，
 // 顺序沿用上游给的优先序（它已按自己观测的延迟排过）。
 func ParseUpstreamNodes(raw []byte) ([]Target, error) {
 	var rows []upstreamNode
 	if err := json.Unmarshal(raw, &rows); err != nil {
 		return nil, fmt.Errorf("解析上游数据失败: %w", err)
 	}
-	type key struct{ prov, isp string }
+	type key struct{ prov, isp, family string }
 	order := []key{}
 	seen := map[key]int{}
 	var out []Target
 	for _, r := range rows {
-		if r.IPVersion != "" && r.IPVersion != "v4" {
+		family := normalizeIPVersion(r.IPVersion)
+		if r.IPVersion != "" && r.IPVersion != "v4" && r.IPVersion != "v6" {
 			continue
 		}
 		prov, ok := provinceShort[r.Province]
@@ -75,7 +76,7 @@ func ParseUpstreamNodes(raw []byte) ([]Target, error) {
 		if len(ips) == 0 {
 			continue
 		}
-		k := key{prov, code}
+		k := key{prov, code, family}
 		if i, ok := seen[k]; ok {
 			// 同一组出现多行：合并候选（去重），最多 3 个
 			for _, ip := range ips {
@@ -87,7 +88,7 @@ func ParseUpstreamNodes(raw []byte) ([]Target, error) {
 		seen[k] = len(out)
 		order = append(order, k)
 		out = append(out, Target{
-			Province: prov, ISP: code, Name: prov + ispNameZh(code),
+			Province: prov, ISP: code, IPVersion: family, Name: prov + ispNameZh(code),
 			Host: ips[0], Hosts: ips,
 		})
 	}

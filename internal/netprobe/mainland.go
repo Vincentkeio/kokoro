@@ -32,6 +32,7 @@ type icmpDoc struct {
 	Targets []struct {
 		Province string   `json:"province"`
 		ISP      string   `json:"isp"` // 电信 / 联通 / 移动
+		IPVersion string  `json:"ip_version"`
 		IPs      []string `json:"ips"`
 	} `json:"targets"`
 }
@@ -61,6 +62,7 @@ func mainlandTargets() []Target {
 		out = append(out, Target{
 			Province: g.Province,
 			ISP:      code,
+			IPVersion: g.IPVersion,
 			Name:     g.Province + g.ISP,
 			Host:     g.IPs[0],
 			Hosts:    append([]string(nil), g.IPs...),
