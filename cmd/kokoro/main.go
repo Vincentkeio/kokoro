@@ -10,6 +10,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -39,7 +40,7 @@ import (
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。
-var Version = "v0.1.3-preview.36"
+var Version = "v0.1.3-preview.37"
 
 const usage = `kokoro - 每台小鸡都有一颗心
 
@@ -148,6 +149,9 @@ type menuItem struct {
 
 func menuItems() []menuItem {
 	hub := unitInstalled("kokoro-hub")
+	// 面板可能只卸了一半：服务没了，Caddy 配置还在。这时也把卸载项列出来，
+	// 否则主机既回不到干净状态，重装又会被残留的反代配置挡住。
+	leftovers := !hub && hubLeftoversPresent()
 	agentInstalled := unitInstalled("kokoro-agent")
 
 	items := []menuItem{
@@ -172,6 +176,8 @@ func menuItems() []menuItem {
 	items = append(items, menuItem{label: "查看最近日志", run: func(*bufio.Reader) int { showLogs(); return 0 }})
 	if hub {
 		items = append(items, menuItem{label: "卸载面板（可选连数据库一起删除）", run: uninstallHub})
+	} else if leftovers {
+		items = append(items, menuItem{label: "清理面板残留（服务已不在）", run: uninstallHub})
 	}
 	if agentInstalled {
 		items = append(items, menuItem{label: "卸载 Agent", run: uninstallAgent})
@@ -620,12 +626,181 @@ func showLogs() {
 	}
 }
 
+// ---- 安装器产物的识别与回收 ----
+
+// installerMarker 是 install-hub.sh 写进它自己生成的配置里的标记行。
+// 卸载只认这个标记：没有标记的反代配置可能是别人的站点，一律不碰。
+const installerMarker = "Managed-By=Kokoro-Installer"
+
+// kokoroCaddyFile / kokoroCaddyStorage 与 install-hub.sh 的 CADDY_FILE、
+// CADDY_STORAGE 保持一致。
+const (
+	kokoroCaddyFile    = "/etc/caddy/Caddyfile"
+	kokoroCaddyStorage = "/var/lib/caddy/kokoro-caddy"
+)
+
+// kokoroInstallerMarker 是安装器留在程序目录里的"这台机是我装的"标记。
+const kokoroInstallerMarker = ".managed-by-kokoro-installer"
+
+// kokoroNginxVhostDirs 与 install-hub.sh 选择虚拟主机目录的顺序一致。
+var kokoroNginxVhostDirs = []string{
+	"/www/server/panel/vhost/nginx",
+	"/etc/nginx/sites-enabled",
+	"/etc/nginx/conf.d",
+}
+
+// isKokoroManaged 报告文件存在且带 Kokoro 安装器标记。
+func isKokoroManaged(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Contains(raw, []byte(installerMarker)), nil
+}
+
+// removeIfKokoroManaged 删除带 Kokoro 标记的文件；不是 Kokoro 写的就原样保留。
+func removeIfKokoroManaged(path string) (bool, error) {
+	managed, err := isKokoroManaged(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !managed {
+		return false, nil
+	}
+	if err := os.Remove(path); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// kokoroNginxBinary 找到本机 nginx，找不到返回空串。
+func kokoroNginxBinary() string {
+	if path, err := exec.LookPath("nginx"); err == nil {
+		return path
+	}
+	const panelNginx = "/www/server/nginx/sbin/nginx"
+	if info, err := os.Stat(panelNginx); err == nil && info.Mode().Perm()&0o111 != 0 {
+		return panelNginx
+	}
+	return ""
+}
+
+// systemctlQuiet 与 runSystemctl 一样，但吞掉输出：调用点就是拿它做尽力而为的
+// 清理，单元不存在时报一堆错只会盖住真正的结果。
+func systemctlQuiet(args ...string) {
+	_ = exec.Command("systemctl", args...).Run()
+}
+
+// removeKokoroWebServerConfig 收回安装器写下的反代配置和更新单元。
+//
+// 卸载后重装之所以会被"检测到已有 Caddy 配置"挡住，根因就是这里以前什么都不清：
+// Caddyfile、Nginx 站点和 kokoro-update / kokoro-nginx-reload 单元都留在了主机上，
+// 而安装器把它们当成"别人的站点"。
+func removeKokoroWebServerConfig(purge bool) {
+	for _, unit := range []string{"kokoro-update.path", "kokoro-nginx-reload.path"} {
+		systemctlQuiet("disable", "--now", unit)
+	}
+
+	caddyRemoved, err := removeIfKokoroManaged(kokoroCaddyFile)
+	if err != nil {
+		fmt.Printf("移除 Caddy 配置失败：%v\n", err)
+	} else if caddyRemoved {
+		fmt.Printf("已移除 Kokoro 写入的 Caddy 配置：%s\n", kokoroCaddyFile)
+		if backups, _ := filepath.Glob(kokoroCaddyFile + ".kokoro-backup.*"); len(backups) > 0 {
+			fmt.Printf("安装时备份的原配置仍在：%s\n", backups[len(backups)-1])
+		}
+	}
+
+	nginxRemoved := false
+	for _, dir := range kokoroNginxVhostDirs {
+		matches, _ := filepath.Glob(filepath.Join(dir, "kokoro-hub-*.conf"))
+		for _, match := range matches {
+			removed, err := removeIfKokoroManaged(match)
+			if err != nil {
+				fmt.Printf("移除 Nginx 站点配置失败 %s：%v\n", match, err)
+				continue
+			}
+			if removed {
+				nginxRemoved = true
+				fmt.Printf("已移除 Kokoro 的 Nginx 站点配置：%s\n", match)
+			}
+		}
+	}
+	if nginxRemoved {
+		if nginx := kokoroNginxBinary(); nginx != "" {
+			if err := exec.Command(nginx, "-t").Run(); err == nil {
+				_ = exec.Command(nginx, "-s", "reload").Run()
+			}
+		}
+	}
+
+	removedUnit := false
+	for _, unit := range []string{
+		"/etc/systemd/system/kokoro-update.service",
+		"/etc/systemd/system/kokoro-update.path",
+		"/etc/systemd/system/kokoro-nginx-reload.service",
+		"/etc/systemd/system/kokoro-nginx-reload.path",
+	} {
+		if err := os.Remove(unit); err == nil {
+			removedUnit = true
+			fmt.Printf("已移除 %s\n", unit)
+		} else if !os.IsNotExist(err) {
+			fmt.Printf("移除 %s 失败：%v\n", unit, err)
+		}
+	}
+	if removedUnit {
+		runSystemctl("daemon-reload")
+	}
+
+	// Caddy 是安装器装来专门给 Kokoro 用的，而且它读的那份配置只有 Kokoro 的
+	// 站点。配置已经删掉，再让它跑下去只会拿内存里的旧配置占着 80/443，
+	// 重装时端口检查也会因此失败。
+	if caddyRemoved {
+		runSystemctl("disable", "--now", "caddy")
+	}
+	if purge && safePurgeDir(kokoroCaddyStorage) {
+		if err := os.RemoveAll(kokoroCaddyStorage); err != nil && !os.IsNotExist(err) {
+			fmt.Printf("删除 Caddy 证书目录失败：%v\n", err)
+		} else {
+			fmt.Printf("已删除 Caddy 证书目录 %s\n", kokoroCaddyStorage)
+		}
+	}
+}
+
+// removeKokoroProgramMarkers 清掉程序目录里的安装器标记，并在目录已经空了时收走它。
+func removeKokoroProgramMarkers(hubBinary string, purge bool) {
+	// 用 path 而不是 filepath：这些是 Linux 路径，filepath 在测试机上按 "\" 切分，
+	// 会让同一份判断得出不同结果（同 safePurgeDir 的理由）。
+	for _, dir := range []string{path.Dir(hubBinary), "/opt/kokoro", "/www/wwwroot/kokoro"} {
+		if dir == "" || dir == "." || dir == "/" || !safePurgeDir(dir) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, kokoroInstallerMarker))
+		if purge {
+			// os.Remove 只在目录为空时成功，所以这里不会误删还有内容的目录。
+			_ = os.Remove(dir)
+		}
+	}
+}
+
 func uninstallHub(reader *bufio.Reader) int {
-	if !unitInstalled("kokoro-hub") {
+	hubBinary, hubData := installedHubPaths()
+	hubService := unitInstalled("kokoro-hub")
+	binaryPresent := false
+	if info, err := os.Stat(hubBinary); err == nil && info.Mode().IsRegular() {
+		binaryPresent = true
+	}
+	caddyPresent, _ := isKokoroManaged(kokoroCaddyFile)
+	if !hubService && !binaryPresent && !caddyPresent {
 		fmt.Println("未检测到 Kokoro 面板服务。")
 		return 0
 	}
-	hubBinary, hubData := installedHubPaths()
+	if !hubService || !binaryPresent {
+		fmt.Println("检测到 Kokoro 面板的残留（服务或程序已不在），本次会一并清理。")
+	}
 	if promptLine(reader, "确定卸载面板？（输入 yes 确认）：") != "yes" {
 		fmt.Println("已取消。")
 		return 0
@@ -638,7 +813,9 @@ func uninstallHub(reader *bufio.Reader) int {
 		purge = true
 	}
 
-	runSystemctl("disable", "--now", "kokoro-hub")
+	if hubService {
+		runSystemctl("disable", "--now", "kokoro-hub")
+	}
 	if err := os.Remove("/etc/systemd/system/kokoro-hub.service"); err != nil && !os.IsNotExist(err) {
 		fmt.Printf("移除面板服务文件失败：%v\n", err)
 		return 1
@@ -663,6 +840,9 @@ func uninstallHub(reader *bufio.Reader) int {
 	} else {
 		fmt.Printf("Kokoro 面板已卸载；%s 数据目录已保留（重装可复用）。\n", hubData)
 	}
+
+	removeKokoroWebServerConfig(purge)
+	removeKokoroProgramMarkers(hubBinary, purge)
 
 	if unitInstalled("kokoro-agent") {
 		if err := replaceMenuCommand("/usr/local/bin/kokoro-agent"); err != nil {
@@ -1067,7 +1247,10 @@ func runPasswd(args []string) int {
 		return 0
 	}
 	if *ifUnset && configured {
-		fmt.Println("管理员账户已存在，未做修改。")
+		// 这里必须说清楚"密码没生效"：安装器复用旧数据目录时就走这条路，
+		// 操作者以为刚设置的密码已经生效，登录时才发现进不去。
+		fmt.Printf("管理员账户已存在（%s），未做修改；本次提供的密码没有生效。\n", hub.AdminUsername(st))
+		fmt.Println("如需更换凭据：kokoro passwd --user 新用户名 --password '新密码'")
 		return 0
 	}
 
@@ -1080,8 +1263,8 @@ func runPasswd(args []string) int {
 		fmt.Fprintln(os.Stderr, "请用 --user 提供新用户名")
 		return 2
 	}
-	if len(p) < 8 {
-		fmt.Fprintln(os.Stderr, "密码至少 8 位")
+	if err := hub.ValidateAdminPassword(p); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return 2
 	}
 
@@ -1134,6 +1317,17 @@ func installedHubPaths() (binary, data string) {
 		}
 	}
 	return "/www/wwwroot/kokoro/kokoro", "/www/wwwroot/kokoro/data"
+}
+
+// hubLeftoversPresent 报告主机上是否还留着 Kokoro 面板的产物（程序或反代配置）。
+// 卸载中断、手工删过二进制都会留下这种状态，需要一条路径能把它清干净。
+func hubLeftoversPresent() bool {
+	binary, _ := installedHubPaths()
+	if info, err := os.Stat(binary); err == nil && info.Mode().IsRegular() {
+		return true
+	}
+	managed, err := isKokoroManaged(kokoroCaddyFile)
+	return err == nil && managed
 }
 
 func runAgent(args []string) int {

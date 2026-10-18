@@ -249,6 +249,31 @@ func TestSetAdminCredentialsValidation(t *testing.T) {
 	}
 }
 
+// TestAdminPasswordRejectsControlChars 带转义序列的口令能存进去却永远输不出来，
+// 必须在写入前拒绝：安装器从 /dev/tty 读口令时会撞上终端的括号粘贴。
+func TestAdminPasswordRejectsControlChars(t *testing.T) {
+	h, st := newTestHub(t)
+	_ = h
+	// 真实踩坑的形态：ESC[200~ 前缀 + 口令 + ESC[201~ 后缀。
+	pasted := "\x1b[200~correct-horse\x1b[201~"
+	if err := ValidateAdminPassword(pasted); err == nil {
+		t.Error("含转义序列的口令应被拒绝")
+	}
+	if err := SetAdminCredentials(st, "boss", pasted); err == nil {
+		t.Error("SetAdminCredentials 应拒绝含控制字符的口令")
+	}
+	if err := ValidateAdminPassword("correct-horse"); err != nil {
+		t.Errorf("普通口令不该被拒绝: %v", err)
+	}
+	// 空格和多字节字符是合法口令字符，不能误伤。
+	if err := ValidateAdminPassword("带 空格 的口令 123"); err != nil {
+		t.Errorf("含空格与多字节字符的口令不该被拒绝: %v", err)
+	}
+	if err := ValidateAdminPassword("short12"); err == nil {
+		t.Error("少于 8 位的口令应被拒绝")
+	}
+}
+
 func mustSetting(t *testing.T, st *store.Store, key string) string {
 	t.Helper()
 	v, err := st.GetSetting(key)

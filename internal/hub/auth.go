@@ -205,6 +205,32 @@ func (h *Hub) setAdminCredentials(user, pass string) error {
 	return SetAdminCredentials(h.store, user, pass)
 }
 
+// hasControlChars 报告字符串里是否含控制字符。
+//
+// 终端粘贴（尤其括号粘贴）会把 ESC 转义序列一起送进 /dev/tty，安装器读到的
+// 就是带转义序列的口令。这种口令能存进数据库，却永远没法在登录框里重新输出来，
+// 等于把自己锁在门外，所以写入前一律拒绝。
+func hasControlChars(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidateAdminPassword 校验管理员口令：至少 8 位、不含控制字符。
+// 后台表单、kokoro passwd 共用这一套规则，避免两处判断逐渐走偏。
+func ValidateAdminPassword(pass string) error {
+	if len(pass) < 8 {
+		return errors.New("口令至少 8 位")
+	}
+	if hasControlChars(pass) {
+		return errors.New("口令不能包含控制字符")
+	}
+	return nil
+}
+
 // SetAdminCredentials 供后台与命令行（kokoro passwd）共用：设置管理员账号。
 // user 为空时保留原用户名（没有则用 "admin"）。这是唯一的口令重置入口，
 // 因为口令明文不落盘，忘了只能重设。
@@ -212,8 +238,8 @@ func SetAdminCredentials(st *store.Store, user, pass string) error {
 	if st == nil {
 		return errors.New("store 为空")
 	}
-	if pass == "" {
-		return errors.New("口令不能为空")
+	if err := ValidateAdminPassword(pass); err != nil {
+		return err
 	}
 	if user == "" {
 		if v, err := st.GetSetting(settingAdminUser); err == nil && v != "" {

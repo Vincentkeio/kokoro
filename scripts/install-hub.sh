@@ -10,6 +10,7 @@ SERVICE_FILE="/etc/systemd/system/kokoro-hub.service"
 CADDY_FILE="/etc/caddy/Caddyfile"
 DOMAIN=""
 ADMIN_USER="admin"
+ASSETS_DIR=""
 HAS_TTY=0
 TMP_DIR=""
 GENERATED_PASSWORD=0
@@ -22,6 +23,16 @@ CADDY_STORAGE="/var/lib/caddy/kokoro-caddy"
 MENU_PATH="/usr/local/bin/kokoro"
 MENU_PREVIOUS_TARGET=""
 MENU_LINK_CHANGED=0
+# 记录本次运行创建了什么，失败时才能只回滚自己的产物。
+EXISTING_DATA=0
+KOKORO_CADDY_CONFIG=0
+CREDENTIALS_EXISTING=0
+CADDY_CONFIG_WRITTEN=0
+CADDY_BACKUP=""
+DATA_LINK_CREATED=0
+HUB_FILES_INSTALLED=0
+SERVICE_INSTALLED=0
+UPDATE_UNITS_INSTALLED=0
 
 fail() { printf '错误：%s\n' "$*" >&2; exit 1; }
 info() { printf '==> %s\n' "$*"; }
@@ -30,12 +41,15 @@ usage() {
   cat <<'EOF'
 Kokoro Hub 从零安装器（Debian / Ubuntu）
 
-用法：install-hub.sh [--domain panel.example.com] [--admin-user 用户名]
+用法：install-hub.sh [--domain panel.example.com] [--admin-user 用户名] [--assets-dir 目录]
 
 未指定 --domain 时，安装器会交互询问面板域名。
 要求：全新主机、systemd、域名 DNS 已指向本机，入站 TCP 80/443 可达。
 安装器配置 Kokoro 和 systemd 服务；无 Nginx 时由 Caddy 提供 HTTPS，有 Nginx 时保留 Nginx 作为公网入口。
 安装器不会改动系统防火墙。
+
+--assets-dir 目录   从本地发布包安装（目录内是 Release 的 12 个制品），不访问 GitHub。
+                    校验规则与线上下载完全一致，仍然逐文件校验 SHA-256。
 EOF
 }
 
@@ -47,6 +61,9 @@ while [ "$#" -gt 0 ]; do
     --admin-user)
       [ "$#" -ge 2 ] || fail "--admin-user 需要参数"
       ADMIN_USER=$2; shift 2 ;;
+    --assets-dir)
+      [ "$#" -ge 2 ] || fail "--assets-dir 需要参数"
+      ASSETS_DIR=$2; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) fail "未知选项：$1（使用 --help 查看用法）" ;;
   esac
@@ -72,7 +89,7 @@ case "$DOMAIN" in *[A-Za-z]*) ;; *) fail "请提供可用于 HTTPS 证书的 DNS
 case "$ADMIN_USER" in
   ''|*[!A-Za-z0-9_.@-]*) fail "管理员用户名仅可包含字母、数字、点、下划线、@ 和连字符" ;;
 esac
-[ "${#ADMIN_USER}" -le 64 ] || fail "管理员用户名不能超过 64 个字符"
+[ "${#ADMIN_USER}" -le 32 ] || fail "管理员用户名不能超过 32 个字符（与 kokoro passwd 的限制一致）"
 
 [ -r /etc/os-release ] || fail "无法识别系统发行版"
 . /etc/os-release
@@ -81,14 +98,27 @@ command -v systemctl >/dev/null 2>&1 || fail "需要 systemd"
 command -v apt-get >/dev/null 2>&1 || fail "需要 apt-get"
 
 if [ -e "$INSTALL_DIR/kokoro" ] || [ -e "$SERVICE_FILE" ]; then
-  fail "检测到已有 Kokoro Hub 安装；本脚本仅用于从零安装，不会覆盖或升级现有数据"
+  fail "检测到已有 Kokoro Hub 安装；请先运行 kokoro 菜单里的「卸载面板」再重装"
 fi
-if [ -e "$INSTALL_DIR/data" ] || [ -L "$INSTALL_DIR/data" ]; then
+# 上一次安装（或卸载）留下的产物不是"别人的站点"：$INSTALL_DIR/data 指向
+# Kokoro 自己的数据目录、Caddyfile 带 Kokoro 标记。卸载后重装不该被它们挡住，
+# 所以这两种情况放行；来源无法确认的配置仍然一律拒绝。
+if [ -L "$INSTALL_DIR/data" ]; then
+  if [ "$(readlink "$INSTALL_DIR/data" 2>/dev/null)" != "$DATA_DIR" ]; then
+    fail "$INSTALL_DIR/data 指向 $(readlink "$INSTALL_DIR/data" 2>/dev/null)；为避免覆盖残留数据，安装已停止"
+  fi
+  EXISTING_DATA=1
+  info "检测到上次安装的数据链接 $INSTALL_DIR/data -> $DATA_DIR，将复用原数据目录"
+elif [ -e "$INSTALL_DIR/data" ]; then
   fail "检测到已有 Hub 数据路径 $INSTALL_DIR/data；为避免覆盖残留数据，安装已停止"
 fi
 if [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ]; then
   DEFAULT_CADDY_CONFIG=0
-  if [ ! -L "$CADDY_FILE" ] \
+  if [ -f "$CADDY_FILE" ] && [ ! -L "$CADDY_FILE" ] \
+    && grep -Fq 'Managed-By=Kokoro-Installer' "$CADDY_FILE"; then
+    KOKORO_CADDY_CONFIG=1
+    info "检测到上次 Kokoro 安装留下的 Caddy 配置，将备份后覆盖"
+  elif [ ! -L "$CADDY_FILE" ] \
     && grep -Fq 'The Caddyfile is an easy way to configure your Caddy web server.' "$CADDY_FILE" \
     && awk '
       /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
@@ -104,7 +134,7 @@ if [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ]; then
     ' "$CADDY_FILE"; then
     DEFAULT_CADDY_CONFIG=1
   fi
-  if [ "$DEFAULT_CADDY_CONFIG" -ne 1 ]; then
+  if [ "$DEFAULT_CADDY_CONFIG" -ne 1 ] && [ "$KOKORO_CADDY_CONFIG" -ne 1 ]; then
     fail "检测到已有 Caddy 配置：$CADDY_FILE。为避免影响其他站点，请先为 Kokoro 准备独立主机，或手动合并反代配置"
   fi
 fi
@@ -185,6 +215,32 @@ cleanup() {
       rm -f "$MENU_PATH"
     fi
   fi
+  # 失败退出时必须把这次写的东西收回去：否则残留的服务文件和程序会让
+  # 下一次安装被"检测到已有 Kokoro Hub 安装"挡在门外。
+  if [ "$INSTALL_SUCCEEDED" -ne 1 ] && [ "$CADDY_CONFIG_WRITTEN" -eq 1 ]; then
+    if [ -n "$CADDY_BACKUP" ] && [ -f "$CADDY_BACKUP" ]; then
+      cp -a "$CADDY_BACKUP" "$CADDY_FILE" 2>/dev/null || true
+    else
+      rm -f "$CADDY_FILE"
+    fi
+  fi
+  if [ "$INSTALL_SUCCEEDED" -ne 1 ] && [ "$UPDATE_UNITS_INSTALLED" -eq 1 ]; then
+    systemctl disable --now kokoro-update.path >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/kokoro-update.service /etc/systemd/system/kokoro-update.path
+  fi
+  if [ "$INSTALL_SUCCEEDED" -ne 1 ] && [ "$SERVICE_INSTALLED" -eq 1 ]; then
+    systemctl disable --now kokoro-hub >/dev/null 2>&1 || true
+    rm -f "$SERVICE_FILE"
+  fi
+  if [ "$INSTALL_SUCCEEDED" -ne 1 ] && [ "$HUB_FILES_INSTALLED" -eq 1 ]; then
+    rm -f "$INSTALL_DIR/kokoro" "$INSTALL_DIR/kokoro.new" "$INSTALL_DIR/.managed-by-kokoro-installer"
+  fi
+  if [ "$INSTALL_SUCCEEDED" -ne 1 ] && [ "$DATA_LINK_CREATED" -eq 1 ]; then
+    rm -f "$INSTALL_DIR/data"
+  fi
+  if [ "$INSTALL_SUCCEEDED" -ne 1 ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
   [ -z "$TMP_DIR" ] || rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -205,11 +261,20 @@ apt-get install -y ca-certificates curl gnupg debian-keyring debian-archive-keyr
 
 download_verified() {
   asset=$1
-  base="https://github.com/$REPO/releases/download/$RELEASE_TAG"
-  curl -fL --retry 3 --proto '=https' --tlsv1.2 "$base/$asset" -o "$TMP_DIR/$asset" \
-    || fail "下载 $asset 失败（Release $RELEASE_TAG）"
-  curl -fL --retry 3 --proto '=https' --tlsv1.2 "$base/$asset.sha256" -o "$TMP_DIR/$asset.sha256" \
-    || fail "Release 缺少 $asset.sha256 校验文件"
+  if [ -n "$ASSETS_DIR" ]; then
+    # 本地发布包：制品和校验文件都必须齐全，缺一个就停，
+    # 绝不用"没有 sha256 就跳过校验"的方式放行。
+    [ -f "$ASSETS_DIR/$asset" ] || fail "本地发布目录缺少 $asset：$ASSETS_DIR"
+    [ -f "$ASSETS_DIR/$asset.sha256" ] || fail "本地发布目录缺少 $asset.sha256：$ASSETS_DIR"
+    cp -f "$ASSETS_DIR/$asset" "$TMP_DIR/$asset"
+    cp -f "$ASSETS_DIR/$asset.sha256" "$TMP_DIR/$asset.sha256"
+  else
+    base="https://github.com/$REPO/releases/download/$RELEASE_TAG"
+    curl -fL --retry 3 --proto '=https' --tlsv1.2 "$base/$asset" -o "$TMP_DIR/$asset" \
+      || fail "下载 $asset 失败（Release $RELEASE_TAG）"
+    curl -fL --retry 3 --proto '=https' --tlsv1.2 "$base/$asset.sha256" -o "$TMP_DIR/$asset.sha256" \
+      || fail "Release 缺少 $asset.sha256 校验文件"
+  fi
   expected=$(awk 'NR == 1 {print $1}' "$TMP_DIR/$asset.sha256")
   case "$expected" in *[!0-9a-fA-F]*|'') fail "$asset SHA-256 格式错误" ;; esac
   [ "${#expected}" -eq 64 ] || fail "$asset SHA-256 长度错误"
@@ -217,7 +282,12 @@ download_verified() {
     || fail "$asset SHA-256 校验失败"
 }
 
-info "下载并校验 Kokoro Hub、Agent 和安装资源（Release $RELEASE_TAG）"
+if [ -n "$ASSETS_DIR" ]; then
+  [ -d "$ASSETS_DIR" ] || fail "本地发布目录不存在：$ASSETS_DIR"
+  info "从本地发布包安装：$ASSETS_DIR（逐个校验 SHA-256）"
+else
+  info "下载并校验 Kokoro Hub、Agent 和安装资源（Release $RELEASE_TAG）"
+fi
 download_verified "$ASSET"
 for TARGET_ARCH in amd64 arm64; do
   download_verified "kokoro-agent-linux-$TARGET_ARCH"
@@ -241,7 +311,7 @@ if [ "$HAS_TTY" -eq 1 ]; then
   IFS= read -r INPUT_USER </dev/tty || true
   [ -z "${INPUT_USER:-}" ] || ADMIN_USER=$INPUT_USER
   case "$ADMIN_USER" in ''|*[!A-Za-z0-9_.@-]*) fail "管理员用户名格式无效" ;; esac
-  [ "${#ADMIN_USER}" -le 64 ] || fail "管理员用户名不能超过 64 个字符"
+  [ "${#ADMIN_USER}" -le 32 ] || fail "管理员用户名不能超过 32 个字符（与 kokoro passwd 的限制一致）"
   printf '设置管理员密码（至少 8 位）：' >/dev/tty
   stty -echo </dev/tty
   IFS= read -r ADMIN_PASSWORD </dev/tty || true
@@ -253,6 +323,11 @@ if [ "$HAS_TTY" -eq 1 ]; then
   printf '\n' >/dev/tty
   [ "$ADMIN_PASSWORD" = "${ADMIN_PASSWORD_CONFIRM:-}" ] || fail "两次输入的密码不一致"
   [ "${#ADMIN_PASSWORD}" -ge 8 ] || fail "管理员密码至少 8 位"
+  # 口令是从 /dev/tty 直接读的：终端的括号粘贴等模式可能把 ESC 转义序列一起送进来。
+  # 这种口令能存进数据库，却永远无法在登录框里重新输出来，等于把自己锁在门外。
+  if printf '%s' "$ADMIN_PASSWORD" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+    fail "管理员密码含有控制字符（多半是终端粘贴带入的转义序列）；请手动输入密码，或先关闭终端括号粘贴后再粘贴"
+  fi
 else
   ADMIN_PASSWORD=$(openssl rand -hex 24)
   GENERATED_PASSWORD=1
@@ -261,12 +336,18 @@ fi
 
 info "安装 Kokoro Hub 和 systemd 服务"
 install -d -m 0755 "$INSTALL_DIR" "$DATA_DIR/dist"
-ln -s "$DATA_DIR" "$INSTALL_DIR/data"
+if [ -L "$INSTALL_DIR/data" ]; then
+  info "复用上次安装的数据链接 $INSTALL_DIR/data"
+else
+  ln -s "$DATA_DIR" "$INSTALL_DIR/data"
+  DATA_LINK_CREATED=1
+fi
 if ! id kokoro >/dev/null 2>&1; then
   useradd --system --home-dir /var/lib/kokoro --no-create-home --shell /usr/sbin/nologin kokoro
 fi
 install -o root -g root -m 0755 "$TMP_DIR/$ASSET" "$INSTALL_DIR/kokoro.new"
 mv -f "$INSTALL_DIR/kokoro.new" "$INSTALL_DIR/kokoro"
+HUB_FILES_INSTALLED=1
 install -o root -g root -m 0644 "$TMP_DIR/install.sh" "$DATA_DIR/dist/install.sh"
 install -o root -g root -m 0644 "$TMP_DIR/install.sh.sha256" "$DATA_DIR/dist/install.sh.sha256"
 install -o root -g root -m 0644 "$TMP_DIR/kokoro-bench.sh" "$DATA_DIR/dist/kokoro-bench.sh"
@@ -288,6 +369,7 @@ set_data_ownership() {
 }
 set_data_ownership
 touch "$INSTALL_DIR/.managed-by-kokoro-installer"
+SERVICE_INSTALLED=1
 
 cat >"$SERVICE_FILE" <<EOF
 [Unit]
@@ -356,8 +438,19 @@ Unit=kokoro-update.service
 [Install]
 WantedBy=multi-user.target
 EOF
+UPDATE_UNITS_INSTALLED=1
 
-"$INSTALL_DIR/kokoro" passwd --if-unset --data "$DATA_DIR" --user "$ADMIN_USER" --password "$ADMIN_PASSWORD"
+# 复用旧数据目录时库里可能已经有管理员账户：这时 --if-unset 会静默跳过，
+# 必须提前告诉操作者，否则他以为刚输入的密码生效了，登录时才发现进不去。
+if "$INSTALL_DIR/kokoro" passwd --check --data "$DATA_DIR" 2>/dev/null | grep -qx 'initialized'; then
+  CREDENTIALS_EXISTING=1
+  info "检测到已有管理员账户：沿用原用户名和密码，本次输入的密码不会生效"
+fi
+if [ "$CREDENTIALS_EXISTING" -eq 1 ]; then
+  GENERATED_PASSWORD=0
+else
+  "$INSTALL_DIR/kokoro" passwd --if-unset --data "$DATA_DIR" --user "$ADMIN_USER" --password "$ADMIN_PASSWORD"
+fi
 set_data_ownership
 
 if [ -e "$CADDY_FILE" ] || [ -L "$CADDY_FILE" ]; then
@@ -429,6 +522,7 @@ $DOMAIN {
 }
 EOF
 fi
+CADDY_CONFIG_WRITTEN=1
 
 chmod 0644 "$SERVICE_FILE" "$CADDY_FILE"
 systemctl daemon-reload
@@ -554,8 +648,19 @@ Kokoro Hub 安装完成
 日志查看：journalctl -u kokoro-hub -f
 安装目录：$INSTALL_DIR
 数据目录：$DATA_DIR
-管理员用户名：$ADMIN_USER
 EOF
+if [ "$CREDENTIALS_EXISTING" -eq 1 ]; then
+  cat <<'EOF'
+管理员账户：沿用安装前已有的账户（本次输入的用户名和密码没有生效）
+如需换成本次输入的凭据，在 VPS 运行 kokoro，选择「重置唯一管理员账户」，
+或执行：kokoro passwd --user 新用户名 --password '新密码'
+EOF
+else
+  printf '管理员用户名：%s\n' "$ADMIN_USER"
+fi
+if [ "$EXISTING_DATA" -eq 1 ]; then
+  printf '数据目录：%s（沿用了安装前的数据，节点和文章都还在）\n' "$DATA_DIR"
+fi
 INSTALL_SUCCEEDED=1
 if [ "$GENERATED_PASSWORD" -eq 1 ]; then
   printf '管理员密码（请立即保存）：%s\n' "$ADMIN_PASSWORD"

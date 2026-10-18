@@ -1,8 +1,14 @@
 param(
-    [string]$ReleaseDirectory = 'dist\release'
+    [string]$ReleaseDirectory = 'dist\release',
+    # 只在面板尚未安装时才用得到：安装分支用它作为面板域名与管理员的默认用户名。
+    [string]$Domain = 'kokoro.mjfuns.lat',
+    [string]$AdminUser = 'admin'
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Domain -notmatch '^[A-Za-z0-9.-]+$' -or $AdminUser -notmatch '^[A-Za-z0-9_.@-]+$') {
+    throw '域名或管理员用户名含有不允许的字符。'
+}
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $releasePath = Join-Path $repoRoot $ReleaseDirectory
 $assetNames = @(
@@ -40,6 +46,15 @@ try {
         Copy-Item -LiteralPath (Join-Path $releasePath $name) -Destination $stage
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'deploy-zgo-remote.sh') -Destination $stage
+    # 安装分支要用官方安装器；远端脚本从这里读域名和管理员用户名。
+    # 走文件而不是往远端命令里拼字符串：PowerShell 传长命令会被拆词，
+    # here-string 里的 $() 还会被本地抢先展开。
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-hub.sh') -Destination $stage
+    [IO.File]::WriteAllText(
+        (Join-Path $stage 'deploy.env'),
+        "KOKORO_DOMAIN=$Domain`nKOKORO_ADMIN_USER=$AdminUser`n",
+        [Text.Encoding]::ASCII
+    )
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -CompressionLevel Optimal
 
     $env:ZGO_HOST = $zgoHost

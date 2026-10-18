@@ -2367,6 +2367,11 @@ func (h *Hub) handleAdminAccount(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin?err=mismatch", http.StatusSeeOther)
 			return
 		}
+		if err := ValidateAdminPassword(pass); err != nil {
+			// 走到这里只剩控制字符一种情况（长度和一致性已经查过）。
+			http.Redirect(w, r, "/admin?err=chars", http.StatusSeeOther)
+			return
+		}
 		if err := h.setAdminCredentials(user, pass); err != nil {
 			log.Printf("[hub] 修改管理员账号失败: %v", err)
 			http.Redirect(w, r, "/admin?err=io", http.StatusSeeOther)
@@ -2600,6 +2605,8 @@ func (h *Hub) renderAdmin(w http.ResponseWriter, r *http.Request) {
 		data.AccountMsg, data.AccountBad = "新密码至少 8 位", true
 	case "mismatch":
 		data.AccountMsg, data.AccountBad = "两次输入的新密码不一致", true
+	case "chars":
+		data.AccountMsg, data.AccountBad = "新密码不能包含控制字符，请手动输入", true
 	case "user":
 		data.AccountMsg, data.AccountBad = "用户名太长（最多 32 字）", true
 	case "io":
