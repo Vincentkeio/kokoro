@@ -634,6 +634,7 @@
     {{end}}
   </section>
 
+  {{template "update-panel" .}}
   {{template "migration-panel" .}}
   <section class="panel" id="account" data-atab="sys">
     <h3>唯一管理员账户</h3>
@@ -684,6 +685,7 @@
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
 <script src="/static/app.js?v=155"></script>
 <script src="/static/migration.js?v=1" defer></script>
+<script src="/static/panelupdate.js?v=1" defer></script>
 <script>
 /* 后台的告警与通知用的是 JSON 接口，这里用 fetch 提交，失败就地提示，不整页刷新。 */
 (function () {

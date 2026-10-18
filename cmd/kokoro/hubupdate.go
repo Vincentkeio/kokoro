@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Vincentkeio/kokoro/internal/panelupdate"
 )
 
 // 面板（Hub）自更新：从 GitHub Release 取已发布版本，按架构下载并校验，
@@ -671,27 +673,7 @@ func pruneHubBackups(target string, keep int) {
 }
 
 // compareKokoroVersion 比较两个版本号：正式版大于同号预览版，预览段按点分段比较。
-func compareKokoroVersion(a, b string) int {
-	an, ap := parseKokoroVersion(a)
-	bn, bp := parseKokoroVersion(b)
-	for i := 0; i < 3; i++ {
-		if an[i] != bn[i] {
-			if an[i] < bn[i] {
-				return -1
-			}
-			return 1
-		}
-	}
-	switch {
-	case ap == "" && bp == "":
-		return 0
-	case ap == "":
-		return 1
-	case bp == "":
-		return -1
-	}
-	return comparePreRelease(ap, bp)
-}
+func compareKokoroVersion(a, b string) int { return panelupdate.Compare(a, b) }
 
 func parseKokoroVersion(v string) ([3]int, string) {
 	v = strings.TrimSpace(v)

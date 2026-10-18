@@ -165,7 +165,7 @@ func (h *Hub) handleAdminMigration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer h.transferMu.Unlock()
-	if h.restoreQueued {
+	if h.restoreQueued || h.updateBusy() {
 		writeErr(w, 409, "面板正在恢复")
 		return
 	}

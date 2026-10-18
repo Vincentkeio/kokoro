@@ -190,12 +190,7 @@ func (a *Agent) execCommand(cmd model.Command) model.CommandResult {
 		res.Stdout = "准备退出，由 systemd 拉起"
 		return res
 	case "upgrade":
-		// 本阶段只做占位：实际升级交给安装脚本，避免自更新出事故。
-		target := payloadString(cmd.Payload, "version")
-		res.OK = true
-		res.Stdout = fmt.Sprintf("upgrade 占位：当前版本 %s，目标版本 %s；本版本不支持自更新，请由安装脚本升级", Version, target)
-		logger.Printf("收到 upgrade 指令（目标版本 %s），仅占位不执行", target)
-		return res
+		return a.upgrade(cmd)
 	case "uninstall":
 		res.OK = false
 		res.Stderr = "uninstall 本版本未实现：不做任何删除操作，请人工处理"

@@ -1,0 +1,10 @@
+{{define "update-panel"}}
+<section class="panel" id="updates" data-atab="sys" data-panel-update>
+  <div class="update-heading"><h3>程序更新</h3><button class="btn ghost" type="button" data-update-check>检查更新</button></div>
+  <p class="hint">从 GitHub 官方发布检查更新。面板更新时会短暂重启；探针更新保留原有节点和配置。</p>
+  <div class="update-row"><div><h4 class="sub">面板程序</h4><p class="hint" data-hub-update-message>点击“检查更新”获取更新状态。</p></div><button class="btn" type="button" data-update-hub disabled>更新面板</button></div>
+  <div class="update-row"><div><h4 class="sub">全部探针</h4><p class="hint" data-agents-update-message>只更新有可用更新的节点；离线节点上线后继续，最多等待 20 分钟。</p></div><button class="btn" type="button" data-update-agents disabled>更新全部探针</button></div>
+  <p class="hint update-feedback" role="status" aria-live="polite" aria-atomic="true" data-update-message></p>
+  <div class="tbl-wrap" data-update-table hidden><table class="tbl"><thead><tr><th>节点</th><th>更新状态</th><th>说明</th></tr></thead><tbody data-update-rows></tbody></table></div>
+</section>
+{{end}}

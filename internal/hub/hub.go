@@ -35,7 +35,7 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 // Version is set from the CLI build version before serving registrations.
-var Version = "v0.1.3-preview.33"
+var Version = "v0.1.3-preview.34"
 
 // Hub 是一个运行中的主控实例。
 type Hub struct {
@@ -62,6 +62,11 @@ type Hub struct {
 	migrationLoaded  bool
 	migrationPlan    *panelMigrationPlan
 	migrationSyncAt  time.Time
+	updateMu         sync.Mutex
+	updatePlan       *agentUpdatePlan
+	updateLoaded     bool
+	updateReleaseAt  time.Time
+	updateReleaseTag string
 	alerts           *alert.Manager
 
 	// themes 是主题注册表（内置 + 导入），theme 缓存当前主题的渲染产物。
@@ -293,6 +298,7 @@ func (h *Hub) routes() {
 	h.adminOnly("/admin/backup/status", h.handleBackupStatus)
 	h.adminOnly("/admin/backup/import", h.handleBackupImport)
 	h.adminOnly("/admin/migration", h.handleAdminMigration)
+	h.adminOnly("/admin/update", h.handleAdminUpdate)
 	h.mux.HandleFunc("/api/v1/migration/check", h.handleMigrationCheck)
 	h.mux.HandleFunc("/api/v1/migration/node", h.handleMigrationNode)
 	h.mux.HandleFunc("/admin/profile", h.handleAdminProfile)

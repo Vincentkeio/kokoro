@@ -4,6 +4,8 @@
 // 单位约定：内存/磁盘/流量总量用字节，速率用字节每秒，时间用毫秒 Unix 时间戳。
 package model
 
+import "github.com/Vincentkeio/kokoro/internal/panelupdate"
+
 // 协议版本。agent 与 hub 主版本号必须一致。
 const ProtocolVersion = 1
 
@@ -12,15 +14,18 @@ const ProtocolVersion = 1
 // Metrics 是一次上报的完整快照。采集失败的字段省略（指针或 omitempty），
 // 以便 Hub 区分「没采到」和「真的是 0」。
 type Metrics struct {
-	MigrationVersion int             `json:"migration_v,omitempty"`
-	Connectivity     *IPConnectivity `json:"connectivity,omitempty"`
-	V                int             `json:"v"`
-	Ts               int64           `json:"ts"`
-	Seq              int64           `json:"seq"`
-	Host             HostStat        `json:"host"`
-	CPU              CPUStat         `json:"cpu"`
-	Mem              MemStat         `json:"mem"`
-	Disk             DiskStat        `json:"disk"`
+	AgentVersion     string             `json:"agent_version,omitempty"`
+	UpdateVersion    int                `json:"update_v,omitempty"`
+	UpdateState      *panelupdate.State `json:"update_state,omitempty"`
+	MigrationVersion int                `json:"migration_v,omitempty"`
+	Connectivity     *IPConnectivity    `json:"connectivity,omitempty"`
+	V                int                `json:"v"`
+	Ts               int64              `json:"ts"`
+	Seq              int64              `json:"seq"`
+	Host             HostStat           `json:"host"`
+	CPU              CPUStat            `json:"cpu"`
+	Mem              MemStat            `json:"mem"`
+	Disk             DiskStat           `json:"disk"`
 
 	IO    *IOStat    `json:"io,omitempty"`
 	Net   NetStat    `json:"net"`

@@ -71,7 +71,7 @@ func (h *Hub) handleBackupExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer h.transferMu.Unlock()
-	if h.restoreQueued {
+	if h.restoreQueued || h.updateBusy() {
 		writeErr(w, 409, "面板正在恢复")
 		return
 	}
@@ -169,7 +169,7 @@ func (h *Hub) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	busy := true
 	if h.transferMu.TryLock() {
-		busy = h.restoreQueued
+		busy = h.restoreQueued || h.updateBusy()
 		h.transferMu.Unlock()
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "busy": busy})
@@ -184,7 +184,7 @@ func (h *Hub) handleBackupImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer h.transferMu.Unlock()
-	if h.restoreQueued {
+	if h.restoreQueued || h.updateBusy() {
 		writeErr(w, 409, "面板正在恢复")
 		return
 	}

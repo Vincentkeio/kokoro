@@ -39,7 +39,7 @@ import (
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。
-var Version = "v0.1.3-preview.33"
+var Version = "v0.1.3-preview.34"
 
 const usage = `kokoro - 每台小鸡都有一颗心
 
@@ -88,6 +88,8 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		os.Exit(runServe(os.Args[2:]))
+	case "apply-update":
+		os.Exit(runWebUpdate(os.Args[2:]))
 	case "agent", "run":
 		// run 是 agent 的别名：systemd 里的写法 kokoro-agent run 更自然
 		os.Exit(runAgent(os.Args[2:]))

@@ -32,10 +32,11 @@ import (
 	"time"
 
 	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/panelupdate"
 )
 
 // Version 是 agent 版本，注册时上报给 Hub。
-var Version = "v0.1.3-preview.33"
+var Version = "v0.1.3-preview.34"
 
 const logPrefix = "[kokoro-agent] "
 
@@ -572,6 +573,11 @@ func (a *Agent) sendReport(ctx context.Context, m *model.Metrics) (*model.Report
 	// Refresh delivery state at send time, including when replaying old metrics.
 	snapshot := *m
 	snapshot.MigrationVersion = 1
+	snapshot.AgentVersion = Version
+	if panelupdate.Supported() {
+		snapshot.UpdateVersion = 1
+	}
+	snapshot.UpdateState = a.updateHeartbeat()
 	snapshot.Tasks = a.taskHeartbeat()
 	body, err := json.Marshal(&snapshot)
 	if err != nil {

@@ -4982,3 +4982,14 @@ body[data-k-theme="kokoro.mist"] .card .spark-range-form select {
 /* 分类栏和卡片之间只保留网格自身的行距，避免默认内边距叠加后出现大空档。
    放在各主题规则之后，确保所有主题的首页节点列表使用同一间距。 */
 body[data-k-theme] .home-node-grid { padding-top:0; }
+/* System updates use the same panel, controls and theme tokens as other settings. */
+.update-heading,.update-row{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.update-heading h3{margin:0}
+.update-row{padding:1rem 0;border-bottom:1px solid var(--line)}
+.update-row>div{min-width:0}
+.update-row .sub{margin:0 0 .35rem}
+.update-row .hint{margin:0;overflow-wrap:anywhere}
+.update-row>.btn,.update-heading>.btn{flex-shrink:0}
+.update-feedback:empty{display:none}
+[data-update-table] td:last-child{overflow-wrap:anywhere;max-width:34rem}
+@media(max-width:560px){.update-row{align-items:flex-start;flex-direction:column}.update-row>.btn{width:100%}}

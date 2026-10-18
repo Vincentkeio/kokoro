@@ -238,6 +238,10 @@ func (h *Hub) handleReport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "硬件或网络信息超出允许范围")
 		return
 	}
+	if len(m.AgentVersion) > 100 || (m.UpdateState != nil && (len(m.UpdateState.Message) > 2048 || len(m.UpdateState.ID) > 64 || len(m.UpdateState.Target) > 100 || len(m.UpdateState.Status) > 32)) {
+		writeErr(w, 400, "更新状态无效")
+		return
+	}
 	if m.Ts == 0 {
 		m.Ts = time.Now().UnixMilli()
 	}
@@ -301,6 +305,9 @@ func (h *Hub) handleReport(w http.ResponseWriter, r *http.Request) {
 		h.broadcastTaskCard(node.ID)
 	}
 	commands := h.pendingCommands(node.ID, m.NetQProvinces, m.NetQCatalogVer, m.NetQIntervalMin, m.Tasks)
+	if c := h.updateCommand(node, &m); c != nil {
+		commands = append(commands, *c)
+	}
 	if c := h.migrationCommand(node.ID, m.MigrationVersion); c != nil {
 		commands = append(commands, *c)
 	}
@@ -407,6 +414,10 @@ func (h *Hub) handleCommandResult(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, "保存迁移状态失败，请重试")
 			return
 		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+		return
+	}
+	if h.updateResult(node.ID, res) {
 		writeJSON(w, 200, map[string]bool{"ok": true})
 		return
 	}
