@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Vincentkeio/kokoro/internal/model"
 )
@@ -25,6 +26,11 @@ func TestSwapGiBToMiB(t *testing.T) {
 func TestDispatchSwapUsesStructuredCommand(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "测试节点 JP", "JP", "日本 · 东京", "")
+	if err := st.InsertMetrics(n.ID, &model.Metrics{
+		V: 1, Ts: time.Now().UnixMilli(), Mem: model.MemStat{SwapTotal: 1 << 30},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	task, err := h.DispatchSwap(n.ID, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +51,7 @@ func TestDispatchSwapRejectsTargetBelowReportedCurrentCapacity(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "zgo · 洛杉矶", "US", "美国 · 洛杉矶", "")
 	if err := st.InsertMetrics(n.ID, &model.Metrics{
-		V: 1, Ts: 1, Mem: model.MemStat{SwapTotal: 4 << 30},
+		V: 1, Ts: time.Now().UnixMilli(), Mem: model.MemStat{SwapTotal: 4 << 30},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -59,9 +65,41 @@ func TestDispatchSwapRejectsTargetBelowReportedCurrentCapacity(t *testing.T) {
 	}
 }
 
+func TestDispatchSwapRejectsMissingOrStaleCapacityWithoutCreatingTask(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ts   int64
+	}{
+		{name: "missing"},
+		{name: "stale", ts: time.Now().Add(-time.Minute).UnixMilli()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, st := newTestHub(t)
+			n := mkNode(t, st, "SWAP "+tc.name, "JP", "日本 · 东京", "")
+			if tc.ts != 0 {
+				if err := st.InsertMetrics(n.ID, &model.Metrics{V: 1, Ts: tc.ts, Mem: model.MemStat{SwapTotal: 1 << 30}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := h.DispatchSwap(n.ID, 2*1024); err == nil || !strings.Contains(err.Error(), "未创建任务") {
+				t.Fatalf("missing/stale SWAP state should reject before queueing, got %v", err)
+			}
+			tasks, err := st.ListTasks(n.ID, 10)
+			if err != nil || len(tasks) != 0 {
+				t.Fatalf("rejected SWAP request created a task: tasks=%+v err=%v", tasks, err)
+			}
+		})
+	}
+}
+
 func TestAdminCanQueueSwapForSelectedNode(t *testing.T) {
 	h, st := newTestHub(t)
 	n := mkNode(t, st, "测试节点 JP", "JP", "日本 · 东京", "")
+	if err := st.InsertMetrics(n.ID, &model.Metrics{
+		V: 1, Ts: time.Now().UnixMilli(), Mem: model.MemStat{SwapTotal: 1 << 30},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	rec := postToAdmin(t, h, url.Values{
 		"action":   {"swap"},
 		"id":       {n.ID},

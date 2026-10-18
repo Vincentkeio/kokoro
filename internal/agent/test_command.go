@@ -22,7 +22,7 @@ import (
 	benchtool "github.com/Vincentkeio/kokoro/scripts"
 )
 
-const testToolSHA256 = "e25d02de9e81b9ec8b3d056387ff7cb4406c064972ab75ef89ca09bdf92aa58e"
+const testToolSHA256 = "32d6d8f8ece734c57c09829f1b64f6752590290f74776508d1ec6881acf20913"
 const testToolLimit = 1024 * 1024
 
 // Invoked by a fixed local oneshot service, outside the Agent filesystem

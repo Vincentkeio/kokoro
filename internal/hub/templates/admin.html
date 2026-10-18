@@ -263,7 +263,7 @@
               <button class="btn danger small" type="submit">删除</button>
             </form>
             <a class="btn small ghost" href="/admin/tasks?node={{.ID}}">测试</a>
-            <button class="btn small ghost" type="button" data-swap-open data-node-id="{{.ID}}" data-node-name="{{.Name}}">调整 SWAP</button>
+            <button class="btn small ghost" type="button" data-swap-open data-node-id="{{.ID}}" data-node-name="{{.Name}}">增加 SWAP</button>
             <div class="admin-article-actions">
               <a class="btn small ghost" href="/admin/post?node={{.ID}}">编辑文章</a>
               {{if gt (index $.ArticleCounts .ID) 0}}<form method="post" action="/admin/nodes" onsubmit="return confirm('确认删除「{{.Name}}」的文章？此操作不可撤销。')">
@@ -286,17 +286,17 @@
 
     <dialog class="swap-dialog" id="swap-dialog" aria-labelledby="swap-dialog-title">
       <div class="swap-dialog-body">
-        <h3 id="swap-dialog-title">调整 SWAP <span data-swap-node-name></span></h3>
-        <p class="hint">SWAP 只支持增加，不支持减少；目标容量不能低于当前总容量。</p>
+        <h3 id="swap-dialog-title">增加 SWAP <span data-swap-node-name></span></h3>
+        <p class="hint">只支持增加，不支持减少；目标容量不能低于当前总容量。</p>
         <form method="post" action="/admin/nodes" class="col">
           <input type="hidden" name="action" value="swap">
           <input type="hidden" name="id" data-swap-node-id>
-          <label for="swap-size-gib">目标容量（GiB）</label>
+          <label for="swap-size-gib">增加至容量（GiB）</label>
           <input id="swap-size-gib" name="swap_gib" type="number" min="0.5" max="512" step="0.5" value="2" required>
-          <span class="hint">范围：0.5–512 GiB，每次以 0.5 GiB 调整。更改会排队执行。</span>
+          <span class="hint">范围：0.5–512 GiB，容量按目标值设置，任务会排队执行。</span>
           <div class="row swap-dialog-actions">
             <button class="btn ghost" type="button" data-swap-close>取消</button>
-            <button class="btn" type="submit">确认调整</button>
+            <button class="btn" type="submit">排队增加</button>
           </div>
         </form>
       </div>

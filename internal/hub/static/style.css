@@ -4361,7 +4361,7 @@ body[data-k-theme] .globe-body.is-motion-paused .globe-flow-streak { animation-p
   body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="jiwo.blackgold"]) .globe-body::after { animation:none; }
 }
 body[data-k-theme][data-k-list-mode="card"] .task-result-row { grid-template-columns:30px minmax(0,1fr); align-items:center; gap:6px; }
-body[data-k-theme][data-k-list-mode="card"] .task-result-row.is-route .task-result-value { display:grid; grid-template-columns:max-content minmax(0,1fr) max-content minmax(14px,.4fr); gap:3px; align-items:center; white-space:nowrap; }
+body[data-k-theme][data-k-list-mode="card"] .task-result-row.is-route .task-result-value { display:grid; grid-template-columns:max-content minmax(0,.95fr) max-content minmax(14px,.48fr); gap:3px; align-items:center; white-space:nowrap; }
 .card .task-result-row.is-route .route-badge { min-width:0; max-width:100%; box-sizing:border-box; justify-self:start; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .card .task-result-row.is-route .route-badge:not(.route-family) { padding-inline:2px; }
 

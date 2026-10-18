@@ -70,6 +70,13 @@ func TestDualRouteCardShowsOneFinalLinePerFamily(t *testing.T) {
 	}
 }
 
+func TestDualRouteCardCompactsMissingASNStatus(t *testing.T) {
+	row, ok := dualRouteCardRow("回程 电信 V4 CN2 GIA V6 路由有响应，但 ASN 数据缺失")
+	if !ok || row.Badges[len(row.Badges)-1].Text != "未知" || row.Value != "V4 CN2 GIA V6 未知" {
+		t.Fatalf("expected concise one-line IPv6 status, got %#v", row)
+	}
+}
+
 func TestRouteCardUnknownDescriptionsStayShort(t *testing.T) {
 	for _, line := range []string{
 		"未能定位中国大陆路由，线路 ASN 不可见",

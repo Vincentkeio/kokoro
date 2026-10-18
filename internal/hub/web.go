@@ -3116,11 +3116,11 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 		}
 		_, err = h.DispatchSwap(node.ID, sizeMB)
 		if err != nil {
-			http.Redirect(w, r, "/admin?taskmsg="+urlQueryEscape("SWAP 调整未排入："+err.Error())+"&taskmsg_error=1#nodes", http.StatusSeeOther)
+			http.Redirect(w, r, "/admin?taskmsg="+urlQueryEscape("增加 SWAP 未排入："+err.Error())+"&taskmsg_error=1#nodes", http.StatusSeeOther)
 			return
 		}
 		_ = h.store.AddAudit("admin", "node.swap", node.ID, swapSizeLabel(sizeMB))
-		msg := fmt.Sprintf("已为 %s 排入 SWAP 调整（%s）；节点下次上报时开始执行", node.Name, swapSizeLabel(sizeMB))
+		msg := fmt.Sprintf("已为 %s 排入增加 SWAP（%s）；节点下次上报时开始执行", node.Name, swapSizeLabel(sizeMB))
 		http.Redirect(w, r, "/admin?taskmsg="+urlQueryEscape(msg)+"#nodes", http.StatusSeeOther)
 		return
 	}

@@ -952,7 +952,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
   });
 })();
 
-/* ---- 节点 SWAP 调整弹窗 ---- */
+/* ---- 节点增加 SWAP 弹窗 ---- */
 (function () {
   var dialog = document.getElementById('swap-dialog');
   if (!dialog) return;

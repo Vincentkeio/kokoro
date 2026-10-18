@@ -42,6 +42,7 @@ ONLY=""
 WANT_INSTALL=1
 PREPARE_ONLY=0
 APT_REFRESHED=0
+APT_PREFER_BASE_RELEASE=0
 FAILED=""
 PKG_ERROR=""
 
@@ -113,6 +114,15 @@ pkg_run() {
     elif grep -qi 'could not resolve\|temporary failure resolving' "$log"; then PKG_ERROR="软件源 DNS 解析失败"
     elif grep -qi 'could not get lock\|unable to acquire.*lock' "$log"; then PKG_ERROR="包管理器正在被其他进程占用"
     elif grep -qi 'unable to locate package\|no match for argument' "$log"; then PKG_ERROR="软件源中找不到所需组件"
+    elif grep -qiE '404[[:space:]]+Not Found|Failed to fetch .*404' "$log"; then
+      PKG_ERROR="软件源索引引用的包已不存在（HTTP 404）"
+      # Debian 11 reached end of LTS in 2026; its security index may still
+      # advertise package files that have already been removed upstream.
+      # Prefer the distro's base suite for benchmark tools, without editing
+      # the machine's apt sources or installing unrelated system upgrades.
+      if [ -r /etc/os-release ] && grep -q '^ID=debian$' /etc/os-release && grep -q '^VERSION_CODENAME=' /etc/os-release; then
+        APT_PREFER_BASE_RELEASE=1
+      fi
     elif grep -qi 'seteuid .*operation not permitted\|setresuid .*operation not permitted' "$log"; then
       PKG_ERROR="受限 VPS 禁止 apt 切换到 _apt 用户，将改用 root 下载"
       APT_NEEDS_ROOT_SANDBOX=1
@@ -129,6 +139,7 @@ install_pkg() {
   [ "$WANT_INSTALL" = "1" ] || return 1
   [ "$(id -u)" = "0" ] || { say "安装依赖需要 root 权限: $*"; return 1; }
   local pkgs=("$@")
+  local apt_release_args=()
   say "安装依赖: ${pkgs[*]}"
   if [ ! -w /usr ] && have systemctl && [ "$(systemctl show kokoro-test-dependencies.service -p LoadState --value 2>/dev/null)" = loaded ]; then
     say "通过本机固定组件安装服务准备测试依赖"
@@ -145,10 +156,15 @@ install_pkg() {
   local i=0
   while [ $i -lt 3 ]; do
     if have apt-get; then
+      apt_release_args=()
+      if [ "$APT_PREFER_BASE_RELEASE" = "1" ] && [ -r /etc/os-release ]; then
+        . /etc/os-release
+        [ -n "${VERSION_CODENAME:-}" ] && apt_release_args=(-o "APT::Default-Release=$VERSION_CODENAME")
+      fi
       if [ "${APT_NEEDS_ROOT_SANDBOX:-0}" = "1" ]; then
-        DEBIAN_FRONTEND=noninteractive pkg_run apt-get -o APT::Sandbox::User=root -o DPkg::Lock::Timeout=60 -o Acquire::Retries=1 -o Acquire::http::Timeout=20 install -y -qq "${pkgs[@]}" && return 0
+        DEBIAN_FRONTEND=noninteractive pkg_run apt-get -o APT::Sandbox::User=root -o DPkg::Lock::Timeout=60 -o Acquire::Retries=1 -o Acquire::http::Timeout=20 "${apt_release_args[@]}" install -y -qq "${pkgs[@]}" && return 0
       else
-        DEBIAN_FRONTEND=noninteractive pkg_run apt-get -o DPkg::Lock::Timeout=60 -o Acquire::Retries=1 -o Acquire::http::Timeout=20 install -y -qq "${pkgs[@]}" && return 0
+        DEBIAN_FRONTEND=noninteractive pkg_run apt-get -o DPkg::Lock::Timeout=60 -o Acquire::Retries=1 -o Acquire::http::Timeout=20 "${apt_release_args[@]}" install -y -qq "${pkgs[@]}" && return 0
       fi
       if [ "$APT_REFRESHED" = "0" ]; then
         APT_REFRESHED=1

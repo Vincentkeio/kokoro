@@ -94,5 +94,12 @@ func dualRouteCardRow(row string) (taskSummaryRow, bool) {
 }
 
 func compactRouteLabel(value string) string {
-	return cardBackboneName(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	switch value {
+	case "路由有响应，但 ASN 数据缺失", "路径有响应，但 ASN 信息缺失":
+		return "未知"
+	case "未收到有效路由响应（目标过滤或探测超时）":
+		return "无响应"
+	}
+	return cardBackboneName(value)
 }
