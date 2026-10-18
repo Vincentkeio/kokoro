@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestHubUpdateDoesNotKeepDatabaseCopyAfterFailedHealth(t *testing.T) {
