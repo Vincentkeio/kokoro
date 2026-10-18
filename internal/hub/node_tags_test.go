@@ -154,3 +154,43 @@ func TestAdminRenameWithoutTagsKeepsThem(t *testing.T) {
 		t.Errorf("名字应已更新，实际 %q", saved.Name)
 	}
 }
+
+func TestAdminNodeForeverExpiryWithoutDateField(t *testing.T) {
+	h, st := newTestHub(t)
+	node := &model.Node{Name: "永久节点", Visibility: model.VisibilityPublic}
+	if err := st.CreateNode(node); err != nil {
+		t.Fatalf("造节点失败: %v", err)
+	}
+	cookies := loginAsAdmin(t, h)
+	// 勾选永久后日期框会被禁用，因此浏览器只提交复选框，不会提交 expire_at。
+	form := url.Values{
+		"action":         {"rename"},
+		"id":             {node.ID},
+		"name":           {node.Name},
+		"expire_forever": {"1"},
+		"price":          {""},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/nodes", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	h.mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("保存状态码 = %d，应为 303", rec.Code)
+	}
+	profile, err := st.GetProfile(node.ID)
+	if err != nil {
+		t.Fatalf("读取节点资料失败: %v", err)
+	}
+	if profile.ExpireAt != expireForever {
+		t.Fatalf("永久选项未保存，expire_at=%q", profile.ExpireAt)
+	}
+
+	seedMetrics(t, st, node.ID)
+	body := renderBody(t, h, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(body, "∞ 天到期") {
+		t.Error("永久节点首页标签应显示「∞ 天到期」")
+	}
+}

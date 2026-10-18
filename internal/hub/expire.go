@@ -35,7 +35,7 @@ func expireTag(raw string) (text, level string) {
 	// 它的语义是"不会到期" —— 所以给一个明确的标签，
 	// 而不是像没填那样什么都不显示。
 	if raw == expireForever {
-		return "永久", "exp-perm"
+		return "∞ 天到期", "exp-perm"
 	}
 	// 只取日期部分：万一带了时间（2027-03-15T00:00）也认
 	if i := strings.IndexAny(raw, "T "); i > 0 {

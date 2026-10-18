@@ -3007,9 +3007,10 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 		// ⚠️ 只在表单**真的带了资料字段**时才写：这个 rename 分支
 		// 还被别处复用（比如只改个名字），无脑覆盖会把已填的抹掉。
 		_, hasExpire := r.Form["expire_at"]
+		_, hasExpireForever := r.Form["expire_forever"]
 		_, hasStructuredPrice := r.Form["price_amount"]
 		_, hasFreePrice := r.Form["price"]
-		if hasExpire || hasStructuredPrice || hasFreePrice {
+		if hasExpire || hasExpireForever || hasStructuredPrice || hasFreePrice {
 			prof, _ := h.store.GetProfile(node.ID)
 			if prof == nil {
 				prof = &model.NodeProfile{NodeID: node.ID}
@@ -3018,12 +3019,10 @@ func (h *Hub) handleAdminNodes(w http.ResponseWriter, r *http.Request) {
 			//
 			// ⚠️ 勾了永久时浏览器**不会提交**被禁用的日期框，
 			// 所以不能只看 expire_at —— 会变成空串（= 没填）。
-			if hasExpire {
-				if r.FormValue("expire_forever") != "" {
-					prof.ExpireAt = expireForever
-				} else {
-					prof.ExpireAt = clampRunes(normalizeExpireDateInput(r.FormValue("expire_at")), 32)
-				}
+			if hasExpireForever && r.FormValue("expire_forever") != "" {
+				prof.ExpireAt = expireForever
+			} else if hasExpire {
+				prof.ExpireAt = clampRunes(normalizeExpireDateInput(r.FormValue("expire_at")), 32)
 			}
 			// 自由文本续费信息直接保存；旧版结构化表单仍兼容。
 			if hasFreePrice {

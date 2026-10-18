@@ -86,8 +86,8 @@ func TestExpireTagAcceptsDateTime(t *testing.T) {
 // 站长看到空白分不清是"不限时间"还是"我忘了填"。
 func TestExpireForeverIsAState(t *testing.T) {
 	text, level := expireTag(expireForever)
-	if text != "永久" {
-		t.Errorf("「永久」应显示成「永久」，实际 %q", text)
+	if text != "∞ 天到期" {
+		t.Errorf("「永久」应显示成「∞ 天到期」，实际 %q", text)
 	}
 	if level == "" {
 		t.Error("「永久」要有自己的档位，不能和普通标签一样")
