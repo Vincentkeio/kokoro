@@ -235,10 +235,10 @@
         <td>{{if .Region}}{{.Region}}{{else}}{{.Country}}{{end}}</td>
         <td>{{if .Online}}<span class="ok">在线</span>{{else}}<span class="bad">离线</span>{{end}}</td>
         <td>
-          <div class="node-netq-family" role="group" aria-label="三网探测 IP 协议">
-            <label><input form="node-edit-{{.ID}}" type="radio" name="netq_ip_version" value="v4" {{if ne .NetQIPVersion "v6"}}checked{{end}}>IPv4</label>
-            <label><input form="node-edit-{{.ID}}" type="radio" name="netq_ip_version" value="v6" {{if eq .NetQIPVersion "v6"}}checked{{end}}>IPv6</label>
-          </div>
+          <select class="node-netq-select" form="node-edit-{{.ID}}" name="netq_ip_version" aria-label="{{.Name}} 三网探测 IP 协议">
+            <option value="v4" {{if ne .NetQIPVersion "v6"}}selected{{end}}>IPv4</option>
+            <option value="v6" {{if eq .NetQIPVersion "v6"}}selected{{end}}>IPv6</option>
+          </select>
         </td>
         <td>
           {{$shown := ne .Visibility "private"}}
