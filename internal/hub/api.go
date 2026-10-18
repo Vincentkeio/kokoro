@@ -540,6 +540,16 @@ func (h *Hub) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	hubURL := (&url.URL{Scheme: scheme, Host: host}).String()
+	releaseTag := Version
+	if releaseTag == "" {
+		releaseTag = "latest"
+	}
+	for _, c := range releaseTag {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-') {
+			releaseTag = "latest"
+			break
+		}
+	}
 
 	script := fmt.Sprintf(`#!/bin/sh
 # Kokoro 一键安装（由 Hub 生成，token 已内置）
@@ -547,27 +557,39 @@ set -e
 KOKORO_HUB="%s"
 KOKORO_TOKEN="%s"
 KOKORO_NODE_NAME=%s
+KOKORO_RELEASE_TAG=%s
 echo "==> Kokoro 安装: $KOKORO_HUB"
 TMP=$(mktemp -d 2>/dev/null) || { echo "无法创建临时目录，请先安装 mktemp。" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
+GH_ASSET_BASE="https://github.com/Vincentkeio/kokoro/releases/download/$KOKORO_RELEASE_TAG"
 if command -v curl >/dev/null 2>&1; then
-  if curl -fsSL "$KOKORO_HUB/api/v1/dl/install.sh" -o "$TMP/install.sh"; then
-    :
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$TMP/install.sh" "$KOKORO_HUB/api/v1/dl/install.sh" || { echo "下载安装脚本失败。" >&2; exit 1; }
-  else
-    echo "curl 下载失败，且未安装 wget。" >&2
-    exit 1
-  fi
+  curl -fsSL "$GH_ASSET_BASE/install.sh" -o "$TMP/install.sh" || { echo "从 GitHub 下载 Kokoro 安装脚本失败。" >&2; exit 1; }
+  curl -fsSL "$GH_ASSET_BASE/install.sh.sha256" -o "$TMP/install.sh.sha256" || { echo "从 GitHub 下载安装脚本校验文件失败。" >&2; exit 1; }
 elif command -v wget >/dev/null 2>&1; then
-  wget -qO "$TMP/install.sh" "$KOKORO_HUB/api/v1/dl/install.sh" || { echo "下载安装脚本失败。" >&2; exit 1; }
+  wget -qO "$TMP/install.sh" "$GH_ASSET_BASE/install.sh" || { echo "从 GitHub 下载 Kokoro 安装脚本失败。" >&2; exit 1; }
+  wget -qO "$TMP/install.sh.sha256" "$GH_ASSET_BASE/install.sh.sha256" || { echo "从 GitHub 下载安装脚本校验文件失败。" >&2; exit 1; }
 else
-  echo "需要 curl 或 wget 才能下载安装脚本。" >&2
+  echo "需要 curl 或 wget 才能从 GitHub 下载 Kokoro 安装脚本。" >&2
+  exit 1
+fi
+EXPECTED_SHA=$(awk '{print $1}' "$TMP/install.sh.sha256")
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL_SHA=$(sha256sum "$TMP/install.sh" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL_SHA=$(shasum -a 256 "$TMP/install.sh" | awk '{print $1}')
+elif command -v openssl >/dev/null 2>&1; then
+  ACTUAL_SHA=$(openssl dgst -sha256 "$TMP/install.sh" | awk '{print $NF}')
+else
+  echo "找不到 SHA256 校验工具。" >&2
+  exit 1
+fi
+if [ -z "$EXPECTED_SHA" ] || [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+  echo "GitHub 安装脚本 SHA256 校验失败。" >&2
   exit 1
 fi
 if [ -n "$KOKORO_NODE_NAME" ]; then set -- --name "$KOKORO_NODE_NAME" "$@"; fi
-sh "$TMP/install.sh" --hub "$KOKORO_HUB" --token "$KOKORO_TOKEN" "$@"
-`, hubURL, token, shellLiteral(name))
+GH_TAG="$KOKORO_RELEASE_TAG" sh "$TMP/install.sh" --github --hub "$KOKORO_HUB" --token "$KOKORO_TOKEN" "$@"
+`, hubURL, token, shellLiteral(name), shellLiteral(releaseTag))
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Disposition", "inline; filename=kokoro-install.sh")

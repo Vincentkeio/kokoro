@@ -12,7 +12,7 @@
 #
 # 说明:
 #   - 重复执行等同升级: 停服务 -> 换二进制 -> 启服务，配置缺省沿用旧值。
-#   - 制品优先从 Hub 的 /api/v1/dl/ 拉取，失败或指定 --github 时回退 GitHub Release。
+#   - 默认从 Hub 的 /api/v1/dl/ 拉取；一键安装命令使用 --github 直接从 GitHub Release 下载并校验。
 #   - 大陆机器可设 GH_PROXY=https://ghproxy.net/ 之类的前缀镜像。
 
 set -e
