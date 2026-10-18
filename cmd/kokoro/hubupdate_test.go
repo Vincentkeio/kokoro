@@ -223,18 +223,15 @@ func TestHubUpdateReplacesBinaryOnSuccess(t *testing.T) {
 		t.Fatalf("二进制未被替换：%q", got)
 	}
 	backups, _ := filepath.Glob(binaryPath + ".bak-*")
-	if len(backups) != 1 {
-		t.Fatalf("应保留 1 份回滚备份，得到 %d", len(backups))
-	}
-	if bak, _ := os.ReadFile(backups[0]); !bytes.Equal(bak, old) {
-		t.Fatalf("备份内容应为旧程序，得到 %q", bak)
+	if len(backups) != 0 {
+		t.Fatalf("更新后不应保留旧程序副本，得到 %v", backups)
 	}
 	if svc.restarts != 1 {
 		t.Fatalf("成功路径应只重启 1 次，实际 %d", svc.restarts)
 	}
 }
 
-func TestHubUpdateRollsBackWhenHealthFails(t *testing.T) {
+func TestHubUpdateDoesNotKeepCopyWhenHealthFails(t *testing.T) {
 	dir := t.TempDir()
 	binaryPath := filepath.Join(dir, "kokoro")
 	old := []byte("old-hub-binary")
@@ -261,15 +258,15 @@ func TestHubUpdateRollsBackWhenHealthFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("健康检查失败时 Run 应返回错误")
 	}
-	if !strings.Contains(err.Error(), "回滚") {
-		t.Errorf("错误信息应说明已回滚，得到 %v", err)
+	if !strings.Contains(err.Error(), "未保留旧程序") {
+		t.Errorf("错误信息应说明未保留旧程序，得到 %v", err)
 	}
 	got, _ := os.ReadFile(binaryPath)
-	if !bytes.Equal(got, old) {
-		t.Fatalf("回滚后应恢复旧程序，得到 %q", got)
+	if !bytes.Equal(got, newBin) {
+		t.Fatalf("失败后仍应为已下载的新程序，得到 %q", got)
 	}
-	if svc.restarts != 2 {
-		t.Fatalf("应重启 2 次（更新 + 回滚），实际 %d", svc.restarts)
+	if svc.restarts != 1 {
+		t.Fatalf("失败后应只尝试启动新程序 1 次，实际 %d", svc.restarts)
 	}
 }
 
@@ -336,26 +333,6 @@ func TestHubUpdateReportsNoUpdateWhenLatestIsOlder(t *testing.T) {
 	got, err := os.ReadFile(binaryPath)
 	if err != nil || string(got) != "old" {
 		t.Fatalf("没有更新时程序应保持不变，内容=%q err=%v", got, err)
-	}
-}
-
-func TestPruneHubBackupsKeepsNewest(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "kokoro")
-	for _, ts := range []string{"20260101-000001", "20260102-000002", "20260103-000003", "20260104-000004", "20260105-000005"} {
-		if err := os.WriteFile(target+".bak-"+ts, []byte(ts), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	pruneHubBackups(target, 3)
-	left, _ := filepath.Glob(target + ".bak-*")
-	if len(left) != 3 {
-		t.Fatalf("应保留 3 份，得到 %d：%v", len(left), left)
-	}
-	for _, keep := range []string{"20260105-000005", "20260104-000004", "20260103-000003"} {
-		if _, err := os.Stat(target + ".bak-" + keep); err != nil {
-			t.Errorf("最新的 %s 应被保留：%v", keep, err)
-		}
 	}
 }
 

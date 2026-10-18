@@ -13,9 +13,6 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $releasePath = Join-Path $repoRoot $ReleaseDirectory
 $assetNames = @(
     'kokoro-linux-amd64', 'kokoro-linux-amd64.sha256',
-    'kokoro-agent-linux-amd64', 'kokoro-agent-linux-amd64.sha256',
-    'kokoro-linux-arm64', 'kokoro-linux-arm64.sha256',
-    'kokoro-agent-linux-arm64', 'kokoro-agent-linux-arm64.sha256',
     'install.sh', 'install.sh.sha256', 'kokoro-bench.sh', 'kokoro-bench.sh.sha256'
 )
 foreach ($name in $assetNames) {

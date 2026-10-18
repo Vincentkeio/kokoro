@@ -210,8 +210,8 @@ func applyWebUpdate(ctx context.Context, role, target, data, config, health stri
 	if e = verifyHubArtifact(hr, name, binary, sum, runtime.GOARCH); e != nil {
 		return e
 	}
-	backup, e := replaceHubBinary(exe, binary, time.Now())
-	if e != nil {
+	removeHubUpdateCopies(exe, "")
+	if e = replaceHubBinary(exe, binary); e != nil {
 		return e
 	}
 	svc := systemdHubService{unit: "kokoro-agent"}
@@ -232,12 +232,7 @@ func applyWebUpdate(ctx context.Context, role, target, data, config, health stri
 		return errors.New("探针重启检查失败")
 	}
 	if e = check(); e != nil {
-		rollbackCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		re := restoreHubBinary(exe, backup)
-		se := svc.Restart(rollbackCtx)
-		return errors.Join(fmt.Errorf("探针更新失败，已尝试回退：%w", e), re, se)
+		return fmt.Errorf("探针更新后检查失败；未保留旧程序副本：%w", e)
 	}
-	pruneHubBackups(exe, hubBackupsToKeep)
 	return nil
 }

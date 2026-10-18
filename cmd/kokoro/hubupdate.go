@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -24,11 +23,7 @@ import (
 )
 
 // 面板（Hub）自更新：从 GitHub Release 取已发布版本，按架构下载并校验，
-// 原子替换 Hub 二进制后重启服务，健康检查失败则回滚。
-//
-// 语义对齐部署端 scripts/deploy-zgo-remote.sh：备份二进制 → 替换 → 重启 →
-// 轮询 is-active 与 127.0.0.1:8799 健康端点 → 失败还原旧二进制和数据库。
-// 数据库在停服后备份，迁移由新 Hub 启动时执行。
+// 原子替换 Hub 二进制后重启服务并检查健康状态，不保留旧程序或数据库副本。
 
 const (
 	hubRepoName    = "Vincentkeio/kokoro"
@@ -42,8 +37,6 @@ const (
 	maxHubReleaseBytes = 4 << 20
 
 	hubReleasePageSize = 100
-	hubBackupsToKeep   = 3
-
 	hubHealthAttempts = 10
 	hubHealthInterval = 2 * time.Second
 )
@@ -226,15 +219,11 @@ type hubUpdater struct {
 	precheck       func() error
 	healthAttempts int
 	healthInterval time.Duration
-	now            func() time.Time
 }
 
 func (u *hubUpdater) Run(ctx context.Context) error {
 	if u.out == nil {
 		u.out = os.Stdout
-	}
-	if u.now == nil {
-		u.now = time.Now
 	}
 	if u.healthAttempts <= 0 {
 		u.healthAttempts = hubHealthAttempts
@@ -268,9 +257,8 @@ func (u *hubUpdater) Run(ctx context.Context) error {
 		fmt.Fprintln(u.out, "已取消。")
 		return nil
 	}
-	fmt.Fprintln(u.out, "正在更新面板；更新失败时会自动还原旧程序。")
-	fmt.Fprintln(u.out, "更新只替换 Hub 程序并重启服务；数据库迁移由 Hub 启动时自行执行，")
-	fmt.Fprintln(u.out, "更新前会备份数据库；迁移或启动失败会一并还原数据库和旧程序。")
+	fmt.Fprintln(u.out, "正在更新面板；更新文件会直接替换现有程序，不保留旧程序或数据库副本。")
+	fmt.Fprintln(u.out, "数据库迁移由 Hub 启动时自行执行。")
 
 	assetName := hubAssetPrefix + u.arch
 	binURL, sumURL, err := hubAssetURLs(rel, assetName)
@@ -289,58 +277,24 @@ func (u *hubUpdater) Run(ctx context.Context) error {
 		return err
 	}
 
-	var dbBackup string
-	if u.databasePath != "" {
-		if err := u.service.Stop(ctx); err != nil {
-			return err
-		}
-		dbBackup, err = backupHubDatabase(u.databasePath, u.now())
-		if err != nil {
-			recoveryCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
-			restartErr := u.service.Restart(recoveryCtx)
-			return errors.Join(fmt.Errorf("备份数据库失败，未替换程序: %w", err), restartErr)
-		}
+	if err := u.service.Stop(ctx); err != nil {
+		return err
 	}
-	backup, err := replaceHubBinary(u.binaryPath, binary, u.now())
+	removeHubUpdateCopies(u.binaryPath, u.databasePath)
+	err = replaceHubBinary(u.binaryPath, binary)
 	if err != nil {
-		if dbBackup != "" {
-			recoveryCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
-			err = errors.Join(err, u.service.Restart(recoveryCtx))
-		}
+		recoveryCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		err = errors.Join(err, u.service.Restart(recoveryCtx))
 		return fmt.Errorf("替换 Hub 程序失败：%w", err)
 	}
-	fmt.Fprintf(u.out, "已替换 %s（回滚备份 %s）\n", u.binaryPath, backup)
+	fmt.Fprintf(u.out, "已替换 %s\n", u.binaryPath)
 	fmt.Fprintf(u.out, "正在重启 %s 并检查健康……\n", hubUnitName)
 
 	if err := u.restartAndCheck(ctx); err != nil {
-		fmt.Fprintf(u.out, "健康检查未通过（%v），正在回滚……\n", err)
-		recoveryCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		if dbBackup != "" {
-			if rerr := u.service.Stop(recoveryCtx); rerr != nil {
-				return fmt.Errorf("回滚前停止新程序失败，数据库备份保留在 %s: %w", dbBackup, rerr)
-			}
-		}
-		if rerr := restoreHubBinary(u.binaryPath, backup); rerr != nil {
-			return fmt.Errorf("回滚失败：%v；原错误：%w；旧程序备份保留在 %s", rerr, err, backup)
-		}
-		if dbBackup != "" {
-			if rerr := restoreHubDatabase(u.databasePath, dbBackup); rerr != nil {
-				return fmt.Errorf("数据库回滚失败，备份保留在 %s: %w", dbBackup, rerr)
-			}
-		}
-		if rerr := u.service.Restart(recoveryCtx); rerr != nil {
-			return fmt.Errorf("已还原旧程序但重启失败：%v；旧程序备份保留在 %s", rerr, backup)
-		}
-		return fmt.Errorf("更新失败，已回滚到 %s：%w", u.currentVersion, err)
+		return fmt.Errorf("更新后健康检查失败；未保留旧程序或数据库副本：%w", err)
 	}
 
-	pruneHubBackups(u.binaryPath, hubBackupsToKeep)
-	if dbBackup != "" {
-		pruneHubDatabaseBackups(u.databasePath, hubBackupsToKeep)
-	}
 	fmt.Fprintln(u.out, "面板更新完成。")
 	return nil
 }
@@ -523,39 +477,45 @@ func hubUpdatePrecheck(binaryPath, arch string) error {
 	return nil
 }
 
-// replaceHubBinary 备份现有程序后原子替换，返回备份路径供回滚。
-func replaceHubBinary(target string, data []byte, now time.Time) (string, error) {
+// replaceHubBinary 原子替换程序，不保留旧程序副本。
+func replaceHubBinary(target string, data []byte) error {
 	info, err := os.Stat(target)
 	if err != nil {
-		return "", fmt.Errorf("读取现有 Hub 程序失败：%w", err)
+		return fmt.Errorf("读取现有程序失败：%w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("%s 不是普通文件", target)
+		return fmt.Errorf("%s 不是普通文件", target)
 	}
 	mode := info.Mode().Perm()
 	uid, gid, hasOwner := fileOwnership(info)
-	backup := fmt.Sprintf("%s.bak-%s", target, now.Format("20060102-150405"))
-	if err := copyFile(target, backup, mode, uid, gid, hasOwner); err != nil {
-		return "", fmt.Errorf("备份现有程序失败：%w", err)
-	}
 	if err := atomicWriteFile(target, data, mode, uid, gid, hasOwner); err != nil {
-		return "", fmt.Errorf("写入新程序失败（原程序未改动）：%w", err)
+		return fmt.Errorf("写入新程序失败（原程序未改动）：%w", err)
 	}
-	return backup, nil
+	return nil
 }
 
-// restoreHubBinary 用备份覆盖回目标程序，保留备份自身的权限与属主。
-func restoreHubBinary(target, backup string) error {
-	info, err := os.Stat(backup)
-	if err != nil {
-		return fmt.Errorf("找不到回滚备份 %s：%w", backup, err)
+func removeHubUpdateCopies(binaryPath, databasePath string) {
+	removeMatches(binaryPath + ".bak-*")
+	if databasePath == "" {
+		return
 	}
-	data, err := os.ReadFile(backup)
-	if err != nil {
-		return err
+	backupDir := filepath.Join(filepath.Dir(databasePath), "backups")
+	for _, pattern := range []string{"hub-update-*.db", "kokoro-preview-*.db"} {
+		matches, _ := filepath.Glob(filepath.Join(backupDir, pattern))
+		for _, path := range matches {
+			for _, suffix := range []string{"", "-wal", "-shm"} {
+				_ = os.Remove(path + suffix)
+			}
+		}
 	}
-	uid, gid, hasOwner := fileOwnership(info)
-	return atomicWriteFile(target, data, info.Mode().Perm(), uid, gid, hasOwner)
+	_ = os.Remove(backupDir)
+}
+
+func removeMatches(pattern string) {
+	matches, _ := filepath.Glob(pattern)
+	for _, path := range matches {
+		_ = os.Remove(path)
+	}
 }
 
 // atomicWriteFile 同目录写临时文件 → 同步 → 原子改名，避免半截文件替换目标。
@@ -598,111 +558,6 @@ func atomicWriteFile(target string, data []byte, mode os.FileMode, uid, gid int,
 	}
 	removeTmp = false
 	return nil
-}
-
-func copyFile(src, dst string, mode os.FileMode, uid, gid int, hasOwner bool) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.CreateTemp(filepath.Dir(dst), ".kokoro-copy-*.new")
-	if err != nil {
-		return err
-	}
-	tmp := out.Name()
-	defer os.Remove(tmp)
-	defer out.Close()
-	if err := out.Chmod(mode); err != nil {
-		return err
-	}
-	if hasOwner {
-		if err := chownPath(tmp, uid, gid); err != nil {
-			return err
-		}
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	if err := out.Sync(); err != nil {
-		return err
-	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, dst)
-}
-
-// Called only while the service is stopped. Include SQLite sidecars when an
-// unclean earlier shutdown left a WAL; never load a potentially large DB in RAM.
-func backupHubDatabase(path string, now time.Time) (string, error) {
-	if _, err := os.Stat(path); err != nil {
-		return "", err
-	}
-	dir := filepath.Join(filepath.Dir(path), "backups")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", err
-	}
-	backup := filepath.Join(dir, "hub-update-"+now.Format("20060102-150405.000000000")+".db")
-	for _, suffix := range []string{"", "-wal", "-shm"} {
-		info, err := os.Stat(path + suffix)
-		if os.IsNotExist(err) && suffix != "" {
-			continue
-		}
-		if err != nil {
-			return "", err
-		}
-		uid, gid, owned := fileOwnership(info)
-		if err := copyFile(path+suffix, backup+suffix, 0600, uid, gid, owned); err != nil {
-			return "", err
-		}
-	}
-	return backup, nil
-}
-
-func restoreHubDatabase(path, backup string) error {
-	for _, suffix := range []string{"", "-wal", "-shm"} {
-		info, err := os.Stat(backup + suffix)
-		if os.IsNotExist(err) && suffix != "" {
-			if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		uid, gid, owned := fileOwnership(info)
-		if err := copyFile(backup+suffix, path+suffix, info.Mode().Perm(), uid, gid, owned); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func pruneHubDatabaseBackups(path string, keep int) {
-	paths, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "backups", "hub-update-*.db"))
-	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
-	if keep < 0 || len(paths) <= keep {
-		return
-	}
-	for _, backup := range paths[keep:] {
-		for _, suffix := range []string{"", "-wal", "-shm"} {
-			_ = os.Remove(backup + suffix)
-		}
-	}
-}
-
-// pruneHubBackups 只保留最近的若干份回滚备份，别让程序目录越堆越乱。
-func pruneHubBackups(target string, keep int) {
-	matches, err := filepath.Glob(target + ".bak-*")
-	if err != nil || len(matches) <= keep {
-		return
-	}
-	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
-	for _, path := range matches[keep:] {
-		_ = os.Remove(path)
-	}
 }
 
 // compareKokoroVersion 比较两个版本号：正式版大于同号预览版，预览段按点分段比较。

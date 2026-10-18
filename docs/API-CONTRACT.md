@@ -122,8 +122,8 @@
 
 ### `GET /api/v1/dl/kokoro-agent-{os}-{arch}` — 下载 agent 制品
 
-Hub 自带分发，安装脚本优先从这里拉，避免依赖 GitHub。`{os}` ∈ linux/darwin/windows，`{arch}` ∈ amd64/arm64/armv7。
-同路径提供 `.sha256`。
+从 Hub 数据目录 `dist/` 分发已安装的制品；文件不存在时返回 404。常规一键安装和探针更新直接从固定版本的 GitHub Release 下载 Agent，因此 Hub 默认不缓存 Agent 二进制。`{os}` ∈ linux/darwin/windows，`{arch}` ∈ amd64/arm64/armv7。
+若手动放入 Agent 制品，同路径可提供 `.sha256`。
 
 ---
 

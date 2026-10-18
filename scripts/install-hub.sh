@@ -3,7 +3,7 @@
 set -eu
 
 REPO="Vincentkeio/kokoro"
-RELEASE_TAG="v0.2.0-beta.1"
+RELEASE_TAG="v0.2.0-beta.2"
 INSTALL_DIR="/opt/kokoro"
 DATA_DIR="/var/lib/kokoro"
 SERVICE_FILE="/etc/systemd/system/kokoro-hub.service"
@@ -362,12 +362,9 @@ if [ -n "$ASSETS_DIR" ]; then
   [ -d "$ASSETS_DIR" ] || fail "本地发布目录不存在：$ASSETS_DIR"
   info "从本地发布包安装：$ASSETS_DIR（逐个校验 SHA-256）"
 else
-  info "下载并校验 Kokoro Hub、Agent 和安装资源（Release $RELEASE_TAG）"
+  info "下载并校验当前架构的 Hub 与所需脚本（Release $RELEASE_TAG）"
 fi
 download_verified "$ASSET"
-for TARGET_ARCH in amd64 arm64; do
-  download_verified "kokoro-agent-linux-$TARGET_ARCH"
-done
 download_verified install.sh
 download_verified kokoro-bench.sh
 
@@ -431,11 +428,9 @@ HUB_FILES_INSTALLED=1
 install -o root -g root -m 0644 "$TMP_DIR/install.sh" "$DATA_DIR/dist/install.sh"
 install -o root -g root -m 0644 "$TMP_DIR/install.sh.sha256" "$DATA_DIR/dist/install.sh.sha256"
 install -o root -g root -m 0644 "$TMP_DIR/kokoro-bench.sh" "$DATA_DIR/dist/kokoro-bench.sh"
-for TARGET_ARCH in amd64 arm64; do
-  AGENT_ASSET="kokoro-agent-linux-$TARGET_ARCH"
-  install -o root -g root -m 0644 "$TMP_DIR/$AGENT_ASSET" "$DATA_DIR/dist/$AGENT_ASSET"
-  install -o root -g root -m 0644 "$TMP_DIR/$AGENT_ASSET.sha256" "$DATA_DIR/dist/$AGENT_ASSET.sha256"
-done
+# Install and update commands fetch Hub/Agent binaries directly from GitHub.
+# Keep only the scripts the Hub itself serves; remove binaries left by older installers.
+rm -f "$DATA_DIR"/dist/kokoro-agent-linux-* "$DATA_DIR"/dist/kokoro-linux-*
 set_data_ownership() {
   chown kokoro:kokoro "$DATA_DIR"
   find "$DATA_DIR" -mindepth 1 -maxdepth 1 ! -name swapfile ! -name swapfile.new ! -name swapfile.old \

@@ -2,7 +2,7 @@
 
 Kokoro 是一个用于管理多台 VPS 的主控面板与轻量探针。Hub 部署在主机上，负责节点管理、任务下发和结果展示；Agent 安装在子机上，定期上报状态并执行 Hub 下发的固定任务。
 
-> **版本状态：Alpha 2.0.0。** 当前发布标签为 [v0.1.3-preview.43](https://github.com/Vincentkeio/kokoro/releases/tag/v0.1.3-preview.43)，兼容既有数字版本更新器。适合在可恢复的测试环境中试用并反馈问题。功能、配置和接口仍可能调整；重要数据请先备份。
+> **版本状态：Beta 2.0.0。** 当前发布标签为 [v0.2.0-beta.2](https://github.com/Vincentkeio/kokoro/releases/tag/v0.2.0-beta.2)，兼容既有数字版本更新器。适合在可恢复的测试环境中试用并反馈问题。功能、配置和接口仍可能调整；重要数据请先备份。
 
 ## 功能
 
@@ -56,13 +56,13 @@ sudo sh install-hub.sh --domain panel.example.com --assets-dir /path/to/release
 
 安装目录为 `/opt/kokoro`，数据目录为 `/var/lib/kokoro`。安装完成后运行 `kokoro` 打开管理菜单；可用 `systemctl status kokoro-hub` 查看服务状态，用 `journalctl -u kokoro-hub -f` 查看实时日志。Nginx 模式下也可检查 `nginx` 和 `caddy` 服务。菜单里面板与探针的更新、卸载是分开的，且只显示本机实际装了的角色。三个更新选项都会自动检测当前角色是否有可用更新：没有更新时直接提示；有更新时询问是否立即更新，不让用户选择版本。「更新面板（Hub 主程序）」从 GitHub Release 获取制品并校验 SHA-256，替换 Hub 二进制后重启服务，健康检查失败自动还原旧程序和更新前数据库；「更新探针程序」只更新 Agent；「更新安装脚本」单独更新 Hub 提供给后续节点安装和升级的 `install.sh`，不替换 Hub 或 Agent 二进制。管理菜单中的「卸载面板」会**分别询问配置和数据**：数据（数据库、上传文件、备份）输入 `delete` 才彻底删除，直接回车保留；配置（服务单元、程序目录、反代配置、快捷命令、`kokoro` 系统账户）输入 `keep` 才保留，直接回车删除。默认取向与以前一致——数据默认留着，方便重装或迁移。**SWAP 不算面板数据**：卸载不 `swapoff`、不改 `/etc/fstab`、也不删交换文件；旧版把交换文件放在数据目录里时，那个目录会因此保留下来，卸载结束会如实说明。删除配置时会收回安装器写下的反代配置：从 `/etc/caddy/Caddyfile` 里**只摘掉标记之间那段**（别人的站点原样保留，Caddy 继续为它们服务；只有整份配置都归 Kokoro 时才停用 Caddy）、删除 `kokoro-hub-*.conf` 形式的 Nginx 站点、`kokoro-update` 与 `kokoro-nginx-reload` 单元、`/usr/local/lib/kokoro` 下的脚本，并在彻底删除数据时一并删掉 `kokoro` 系统账户（只认 shell 是 `nologin` 的那一个）。Caddy 软件包和它的 apt 源有意保留，因为可能还有别的站点在用；卸载结束会把保留了什么列出来。面板只卸载了一半（服务没了、配置还在）时，菜单会多出「清理面板残留」一项把主机收拾干净。「卸载 Agent」只卸载子机探针，不会动面板及其数据。
 
-安装器从 GitHub Release 下载 Hub、Linux amd64/arm64 Agent、Agent 安装脚本和固定测试脚本，并校验 SHA-256。目标主机不需要 Go 或编译工具；建议预留约 100 MB 临时空间和运行空间。可用 `scripts/build-release.ps1 -Version v版本号` 构建候选制品；确认下载包已公开后，再更新 [`scripts/install-hub.sh`](scripts/install-hub.sh) 中的 `RELEASE_TAG`，避免安装入口指向尚不存在的制品。
+安装器从 GitHub Release 下载当前架构的 Hub、安装脚本和固定测试脚本，并校验 SHA-256；不会下载或缓存 Agent 二进制。目标主机不需要 Go 或编译工具；建议预留约 100 MB 临时空间和运行空间。可用 `scripts/build-release.ps1 -Version v版本号` 构建候选制品；确认下载包已公开后，再更新 [`scripts/install-hub.sh`](scripts/install-hub.sh) 中的 `RELEASE_TAG`，避免安装入口指向尚不存在的制品。
 
-`scripts/deploy-zgo.ps1` 负责把本机构建好的发布包送到 zgo：面板已安装时按升级处理（备份数据库与程序，健康检查失败回滚），面板不存在时直接用同一份发布包现场安装，不需要再走一遍联网安装。`-Domain` 只在安装分支生效。
+`scripts/deploy-zgo.ps1` 负责把本机构建好的发布包送到 zgo：面板已安装时按升级处理，面板不存在时直接用同一份发布包现场安装，不需要再走一遍联网安装。升级不保留数据库或旧程序副本；若健康检查失败，部署会报告失败但不回滚。`-Domain` 只在安装分支生效。
 
 ### Agent 子机
 
-在 Hub 后台为子机生成一键安装命令，在目标 VPS 上以 root 执行。安装器从 Hub 下载经过校验的 Agent，写入配置并注册服务；Agent 开始上报后即可在面板中看到节点。
+在 Hub 后台为子机生成一键安装命令，在目标 VPS 上以 root 执行。命令直接从对应的 GitHub Release 下载引导脚本和 Agent 制品并校验 SHA-256，然后写入配置并注册服务；Agent 开始上报后即可在面板中看到节点。Hub 不常驻缓存 Agent 二进制。
 
 也可以使用安装令牌直接安装：
 
@@ -70,7 +70,7 @@ sudo sh install-hub.sh --domain panel.example.com --assets-dir /path/to/release
 curl -fsSL https://<Hub域名>/i/<安装令牌> | sh
 ```
 
-请从 Hub 后台复制实际生成的命令，不要把安装令牌提交到代码仓库或公开分享。在子机上以 root 运行 `kokoro`，选择“更新探针程序”；也可直接运行 `sh /usr/local/lib/kokoro/install.sh --upgrade`。这会更新 Agent，不会更新 Hub。Hub 主程序在面板主机上运行 `kokoro` 选择「更新面板」更新，也可继续用部署端脚本更新。发布包中的 Agent 安装脚本会将 GitHub 回退下载固定到对应发布标签，避免 Hub 分发暂时不可用时回退到旧正式版。Agent 安装入口见 [`scripts/install.sh`](scripts/install.sh)，部署单元示例见 [`deploy/`](deploy/)。
+请从 Hub 后台复制实际生成的命令，不要把安装令牌提交到代码仓库或公开分享。在子机上以 root 运行 `kokoro`，选择“更新探针程序”；也可直接运行 `sh /usr/local/lib/kokoro/install.sh --upgrade`。这会更新 Agent，不会更新 Hub。Hub 主程序在面板主机上运行 `kokoro` 选择「更新面板」更新，也可继续用部署端脚本更新。安装和更新都从 GitHub 获取 Agent 二进制；Hub 只保存本地安装器及固定测试脚本，不缓存各架构的程序文件。Agent 安装入口见 [`scripts/install.sh`](scripts/install.sh)，部署单元示例见 [`deploy/`](deploy/)。
 
 ## 数据存储与保留
 

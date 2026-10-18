@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -8,10 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
-func TestHubUpdateRestoresDatabaseAfterFailedMigrationHealth(t *testing.T) {
+func TestHubUpdateDoesNotKeepDatabaseCopyAfterFailedHealth(t *testing.T) {
 	dir := t.TempDir()
 	binPath := filepath.Join(dir, "kokoro")
 	dbPath := filepath.Join(dir, "kokoro.db")
@@ -61,38 +61,13 @@ func TestHubUpdateRestoresDatabaseAfterFailedMigrationHealth(t *testing.T) {
 	if err := db.QueryRow(`SELECT value FROM important_data`).Scan(&value); err != nil {
 		t.Fatal(err)
 	}
-	if version != 19 || value != "original" {
-		t.Fatalf("database not restored: schema=%d value=%q", version, value)
+	if version != 99 || value != "migrated" {
+		t.Fatalf("database should remain as migrated: schema=%d value=%q", version, value)
 	}
-	if data, _ := os.ReadFile(binPath); string(data) != "original" {
-		t.Fatal("binary not restored")
+	if data, _ := os.ReadFile(binPath); !bytes.Equal(data, newBin) {
+		t.Fatal("new binary should remain installed")
 	}
-}
-
-func TestHubDatabaseRestoreRemovesNewSidecars(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "kokoro.db")
-	if err := os.WriteFile(path, []byte("old"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	backup, err := backupHubDatabase(path, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, suffix := range []string{"", "-wal", "-shm"} {
-		if err := os.WriteFile(path+suffix, []byte("new"), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := restoreHubDatabase(path, backup); err != nil {
-		t.Fatal(err)
-	}
-	for _, suffix := range []string{"-wal", "-shm"} {
-		if _, err := os.Stat(path + suffix); !os.IsNotExist(err) {
-			t.Fatal("stale sidecar survived", suffix, err)
-		}
-	}
-	if data, _ := os.ReadFile(path); string(data) != "old" {
-		t.Fatal("database not restored")
+	if _, err := os.Stat(filepath.Join(dir, "backups")); !os.IsNotExist(err) {
+		t.Fatalf("backup directory should not exist: %v", err)
 	}
 }
