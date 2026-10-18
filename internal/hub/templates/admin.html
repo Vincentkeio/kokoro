@@ -193,7 +193,7 @@
               <span>自定义标签</span>
               <input name="tags" value="{{joinTags .Tags}}" placeholder="逗号分隔" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 4 个" aria-label="自定义标签">
             </label>
-            <fieldset class="ip-family-options node-netq-family">
+            <fieldset class="ip-family-options">
               <legend>三网延迟 IP 协议</legend>
               <label><input type="radio" name="netq_ip_version" value="v4" {{if ne .NetQIPVersion "v6"}}checked{{end}}>IPv4</label>
               <label><input type="radio" name="netq_ip_version" value="v6" {{if eq .NetQIPVersion "v6"}}checked{{end}}>IPv6</label>
