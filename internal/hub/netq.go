@@ -86,6 +86,7 @@ type NetQSummary struct {
 	Stale      bool // 超过 6 小时没更新，页面上要提示
 	ISPs       []NetQIspStat
 	Rows       []NetQRow
+	DetailRows []NetQRow // 省份明细表不重复列出上海固定基准
 	Overseas   []NetQRow // 港澳台与境外，单独列，不混进三网统计
 	Best       []NetQRow
 	Worst      []NetQRow
@@ -626,6 +627,11 @@ func (h *Hub) LoadNetQRange(nodeID, waveRange string) *NetQSummary {
 		return sum.Rows[i].Province < sum.Rows[j].Province
 	})
 	sum.Provinces = len(sum.Rows)
+	for _, row := range sum.Rows {
+		if row.Province != "上海" {
+			sum.DetailRows = append(sum.DetailRows, row)
+		}
+	}
 	for _, r := range overseas {
 		if r.Telecom != nil && r.Telecom.HasData && r.Telecom.OK {
 			r.Avg = r.Telecom.Latency

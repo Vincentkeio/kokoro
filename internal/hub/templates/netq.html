@@ -98,15 +98,14 @@
   </div>
   {{end}}
 
-  {{/* 上海固定基准已在上方三网卡片展示。没有选择其他省份时不重复渲染
-      只有上海的一行，避免空明细格的小波形被误看成斜杠/错行。 */}}
-  {{if gt (len .Rows) 1}}
+  {{/* 上海固定基准已在上方三网卡片展示，分省表只列其他省份。 */}}
+  {{if .DetailRows}}
   <table>
     <thead>
       <tr><th>省份</th><th>电信</th><th>联通</th><th>移动</th><th>平均</th></tr>
     </thead>
     <tbody>
-      {{range $i, $r := .Rows}}
+      {{range $i, $r := .DetailRows}}
       <tr{{if ge $i 10}} class="nq-hidden nq-extra"{{end}}>
         <td class="p">{{$r.Province}}</td>
         <td>{{with $r.Telecom}}{{template "nqcell" .}}{{end}}</td>
@@ -118,9 +117,9 @@
     </tbody>
   </table>
 
-  {{if gt (len .Rows) 10}}
+  {{if gt (len .DetailRows) 10}}
   <div class="nq-more">
-      <button class="link" id="nq-toggle" type="button" data-total="{{len .Rows}}">展开全部 {{len .Rows}} 个省 ▾</button>
+      <button class="link" id="nq-toggle" type="button" data-total="{{len .DetailRows}}">展开全部 {{len .DetailRows}} 个省 ▾</button>
   </div>
   {{end}}
   {{end}}
@@ -139,7 +138,7 @@
   </table>
   {{end}}
 
-  {{if or (gt (len .Rows) 1) .Overseas}}
+  {{if or .DetailRows .Overseas}}
   <p class="nq-note">
     延迟单位 ms。上方三网以本机到上海三网节点为基准；下表按省份显示各自最近一次实际上报，未轮到时保留上次结果，无历史显示横线。<br>
     境外为当地单点。运营商 DNS 常限制跨网访问，「不通」仅表示该探测点未响应。
