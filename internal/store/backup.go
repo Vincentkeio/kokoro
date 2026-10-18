@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 const SchemaVersion = schemaVersion
@@ -47,5 +48,22 @@ func (s *Store) ValidateBackup(ctx context.Context) error {
 // Jobs exported from the source must never run a second time on a restored Hub.
 func (s *Store) PrepareBackupRestore(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM settings WHERE key LIKE 'adm_sess:%' OR key IN ('panel_migration_plan','panel_agent_update_plan'); DELETE FROM sessions; UPDATE node_tasks SET status='failed', error='面板迁移后已取消旧任务' WHERE status IN ('queued','running')")
+	return err
+}
+
+// DeleteSettings removes the listed settings rows. Which keys belong to the
+// machine rather than to the data is the caller's call, so this stays key-agnostic.
+func (s *Store) DeleteSettings(ctx context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	placeholders := make([]string, 0, len(keys))
+	args := make([]any, 0, len(keys))
+	for _, key := range keys {
+		placeholders = append(placeholders, "?")
+		args = append(args, key)
+	}
+	_, err := s.db.ExecContext(ctx,
+		"DELETE FROM settings WHERE key IN ("+strings.Join(placeholders, ",")+")", args...)
 	return err
 }

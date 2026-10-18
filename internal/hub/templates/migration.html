@@ -5,7 +5,7 @@
   <div class="migration-forms">
     <form method="post" action="/admin/backup/export" target="backup-download" data-backup-export>
       <h4 class="sub">导出备份</h4>
-      <p class="hint">包含节点、历史数据、文章、主题、图片和通知设置，使用密码加密。下载后请妥善保存密码。</p>
+      <p class="hint">包含节点、历史数据、文章、主题、图片和通知设置，使用密码加密。<strong>不含管理员账号和密码</strong>——账密属于面板本身，不随备份走。下载后请妥善保存密码。</p>
       <label>备份密码<input type="password" name="password" minlength="12" maxlength="256" autocomplete="new-password" required placeholder="至少 12 个字符"></label>
       <label>再输一次<input type="password" name="confirm_password" minlength="12" maxlength="256" autocomplete="new-password" required></label>
       <input type="hidden" name="download_id">
@@ -14,7 +14,7 @@
     </form>
     <form method="post" action="/admin/backup/import" enctype="multipart/form-data" data-backup-import>
       <h4 class="sub">导入恢复</h4>
-      <p class="hint">在新面板操作，将覆盖这里现有的数据。恢复后使用原面板的管理员账号登录；失败会回退原数据。</p>
+      <p class="hint">在新面板操作，将覆盖这里现有的数据，但<strong>保留当前面板的管理员账号和密码</strong>。恢复后仍用当前账密登录；失败会回退原数据。</p>
       <label>备份文件<input type="file" name="backup" accept=".kokoro" required></label>
       <label>备份密码<input type="password" name="password" autocomplete="off" required></label>
       <label>确认覆盖<input name="confirm" autocomplete="off" placeholder="输入：覆盖并恢复" required></label>

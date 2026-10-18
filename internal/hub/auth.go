@@ -275,6 +275,53 @@ func SetAdminCredentials(st *store.Store, user, pass string) error {
 	return nil
 }
 
+// adminCredentials 是唯一管理员在 settings 里存的那两项（口令是哈希，不是明文）。
+type adminCredentials struct {
+	User     string
+	PassHash string
+}
+
+// snapshotAdminCredentials 读当前管理员凭据；还没设置过账户时返回 nil。
+func snapshotAdminCredentials(st *store.Store) *adminCredentials {
+	if st == nil {
+		return nil
+	}
+	hash, err := st.GetSetting(settingAdminPass)
+	if err != nil || hash == "" {
+		return nil
+	}
+	user, err := st.GetSetting(settingAdminUser)
+	if err != nil || strings.TrimSpace(user) == "" {
+		user = "admin"
+	}
+	return &adminCredentials{User: user, PassHash: hash}
+}
+
+// applyAdminCredentials 把凭据原样写进另一份数据库，并注销里面已有的会话。
+//
+// 这里只能写已有的哈希，不能走 SetAdminCredentials：那条路会重新加盐哈希，
+// 而调用方手里只有摘要、没有明文。导入备份时用它把本机现在的账密带过去，
+// 免得操作者被备份里那份旧密码挡在门外。
+func applyAdminCredentials(st *store.Store, cred *adminCredentials) error {
+	if st == nil || cred == nil {
+		return nil
+	}
+	if err := st.SetSetting(settingAdminUser, cred.User); err != nil {
+		return err
+	}
+	if err := st.SetSetting(settingAdminPass, cred.PassHash); err != nil {
+		return err
+	}
+	all, err := st.ListSettings(sessionKeyPrefix)
+	if err != nil {
+		return nil
+	}
+	for k := range all {
+		_ = st.SetSetting(k, "")
+	}
+	return nil
+}
+
 // AdminCredentialsConfigured reports whether the single administrator has a
 // password configured. The deploy bootstrapper uses this to avoid prompting or
 // overwriting credentials on ordinary upgrades.

@@ -146,10 +146,43 @@ func TestServeHubImportReopensDatabaseAndInvalidatesSessions(t *testing.T) {
 	if oldResp.StatusCode == 200 {
 		t.Fatal("target session survived restore")
 	}
-	if login("source-admin", "source-password-long") != 303 {
-		t.Fatal("restored credentials do not work")
+	// 导入的是数据，不是登录凭据：面板保留导入前那套账密，备份里的那份不生效。
+	if login("target-admin", "target-password-long") != 303 {
+		t.Fatal("导入后应当仍能用当前面板的账密登录")
 	}
-	if login("target-admin", "target-password-long") != 200 {
-		t.Fatal("old target credentials still authenticate")
+	if login("source-admin", "source-password-long") != 200 {
+		t.Fatal("备份里的旧账密不该顶掉当前面板的账密")
+	}
+}
+
+// 备份文件里不该出现管理员账密：账密属于面板本身，跟着备份走就会在导入时
+// 把目标面板现有的账密顶掉（会话同时被清空，操作者会以为密码突然失效）。
+func TestPrepareExportSnapshotOmitsAdminCredentials(t *testing.T) {
+	dir := t.TempDir()
+	st, e := store.Open(filepath.Join(dir, "kokoro.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer st.Close()
+	hash := sha256.Sum256([]byte("nt_keepme"))
+	n := &model.Node{Name: "node-a", TokenHash: hex.EncodeToString(hash[:])}
+	if e = st.CreateNode(n); e != nil {
+		t.Fatal(e)
+	}
+	if e = hub.SetAdminCredentials(st, "source-admin", "source-password-long"); e != nil {
+		t.Fatal(e)
+	}
+	if e = hub.PrepareExportSnapshot(context.Background(), st); e != nil {
+		t.Fatal(e)
+	}
+	if hub.AdminCredentialsConfigured(st) {
+		t.Error("备份里不该包含管理员口令")
+	}
+	if value, err := st.GetSetting("admin_user"); err == nil && value != "" {
+		t.Errorf("备份里不该包含管理员用户名，得到 %q", value)
+	}
+	// 数据本身必须原样留在快照里，别把账密和数据一起清了。
+	if _, e = st.GetNodeByTokenHash(hex.EncodeToString(hash[:])); e != nil {
+		t.Errorf("备份应当仍然包含节点数据: %v", e)
 	}
 }

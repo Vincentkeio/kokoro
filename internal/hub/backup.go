@@ -20,6 +20,19 @@ import (
 
 var ErrRestoreReady = errors.New("hub: restore is ready")
 
+// prepareExportSnapshot 把快照整理成"可以离开这台机器"的样子：注销其中的会话、
+// 取消未完成的任务，并去掉管理员账密。
+//
+// 账密属于面板本身，不是要迁移的数据。留在备份里的话，导入端会拿它顶掉目标
+// 面板现有的账密（会话又刚被清空，操作者会以为密码凭空失效了）。要迁移登录
+// 凭据没有意义：目标面板自己的凭据继续用 kokoro passwd 管理。
+func PrepareExportSnapshot(ctx context.Context, st *store.Store) error {
+	if err := st.PrepareBackupRestore(ctx); err != nil {
+		return err
+	}
+	return st.DeleteSettings(ctx, settingAdminUser, settingAdminPass)
+}
+
 func randomMigrationID() string {
 	b := make([]byte, 32)
 	if _, e := rand.Read(b); e != nil {
@@ -111,7 +124,7 @@ func (h *Hub) handleBackupExport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "校验快照失败")
 		return
 	}
-	e = st.PrepareBackupRestore(r.Context())
+	e = PrepareExportSnapshot(r.Context(), st)
 	if e == nil {
 		e = st.SetSetting("panel_restored_backup_id", id)
 	}
@@ -236,6 +249,12 @@ func (h *Hub) handleBackupImport(w http.ResponseWriter, r *http.Request) {
 	e = st.ValidateBackup(r.Context())
 	if e == nil {
 		e = st.PrepareBackupRestore(r.Context())
+	}
+	if e == nil {
+		// 导入的是数据，不是这台面板的登录凭据。备份本身也不带账密，这里再把
+		// 当前面板的账密写进去：操作者现在的密码必须继续可用，否则他刚导入完
+		// 就被旧凭据挡在门外（会话同时也被清空了，看起来就像密码突然不对）。
+		e = applyAdminCredentials(st, snapshotAdminCredentials(h.store))
 	}
 	if e == nil {
 		e = st.SetSetting("panel_restored_backup_id", m.ID)
