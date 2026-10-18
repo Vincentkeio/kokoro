@@ -881,7 +881,7 @@ window.addEventListener('resize',function(){document.querySelectorAll('.rate-cha
     function paint(shown) {
       button.classList.toggle('on', shown);
       button.setAttribute('aria-checked', String(shown));
-      button.querySelector('.switch-text').textContent = shown ? '显示中' : '已隐藏';
+      button.querySelector('.switch-text').textContent = shown ? '显示' : '隐藏';
     }
     var data = new URLSearchParams(new FormData(form));
     data.set('visibility', wasShown ? 'private' : 'public');

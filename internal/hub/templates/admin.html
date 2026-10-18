@@ -166,10 +166,10 @@
     <table class="tbl admin-node-table">
       {{/* 没有「架构」列：所有节点都是 amd64，一列全一样的值没有信息量。
          地区/国家码也不在这里编辑 —— 那是 agent 上报的（见 hostFactsOf）。 */}}
-      <thead><tr><th class="node-select-cell"><label class="node-select-control"><input type="checkbox" data-node-select-all aria-label="全选节点"></label></th><th title="数字越小越靠前；相同则按名称排列">排序 ID</th><th>名称</th><th>分组</th><th>地区</th><th>状态</th><th>展示</th><th>操作</th></tr></thead>
+      <thead><tr><th class="node-select-cell"><label class="node-select-control"><input type="checkbox" data-node-select-all aria-label="全选节点"></label></th><th title="数字越小越靠前；相同则按名称排列">排序 ID</th><th>名称</th><th>分组</th><th>地区</th><th>状态</th><th>三网协议</th><th>展示</th><th>操作</th></tr></thead>
       <tbody>
       {{range .NodeGroups}}
-      <tr class="admin-node-group" data-group-section="{{.Name}}"><th colspan="8"><div class="admin-node-group-head"><div><span>{{.Name}}</span><small>{{len .Nodes}} 台服务器</small></div><button class="btn small ghost" type="button" data-group-assign-open {{if not $.Groups}}disabled{{end}}>加入分组</button></div></th></tr>
+      <tr class="admin-node-group" data-group-section="{{.Name}}"><th colspan="9"><div class="admin-node-group-head"><div><span>{{.Name}}</span><small>{{len .Nodes}} 台服务器</small></div><button class="btn small ghost" type="button" data-group-assign-open {{if not $.Groups}}disabled{{end}}>加入分组</button></div></th></tr>
       {{range .Nodes}}
       <tr data-node-group-row="{{if .Group}}{{.Group}}{{else}}未分组{{end}}" data-node-sort="{{.SortOrder}}" data-node-name="{{.Name}}" data-node-id="{{.ID}}">
         <td class="node-select-cell"><label class="node-select-control"><input type="checkbox" name="node_ids" value="{{.ID}}" form="node-selected-tests" data-node-select-item aria-label="选择 {{.Name}}"></label></td>
@@ -182,7 +182,7 @@
           </form>
         </td>
         <td>
-          <form class="row admin-node-edit" method="post" action="/admin/nodes">
+          <form id="node-edit-{{.ID}}" class="row admin-node-edit" method="post" action="/admin/nodes">
             <input type="hidden" name="action" value="rename">
             <input type="hidden" name="id" value="{{.ID}}">
             <label class="fld node-name-entry">
@@ -193,11 +193,6 @@
               <span>自定义标签</span>
               <input name="tags" value="{{joinTags .Tags}}" placeholder="逗号分隔" title="自定义标签，会以小标签显示在小鸡卡片上。逗号/顿号/空格分隔，最多 4 个" aria-label="自定义标签">
             </label>
-            <fieldset class="ip-family-options">
-              <legend>三网延迟 IP 协议</legend>
-              <label><input type="radio" name="netq_ip_version" value="v4" {{if ne .NetQIPVersion "v6"}}checked{{end}}>IPv4</label>
-              <label><input type="radio" name="netq_ip_version" value="v6" {{if eq .NetQIPVersion "v6"}}checked{{end}}>IPv6</label>
-            </fieldset>
             {{/* 续费与到期都是节点资料，在这里单独维护，不放进文章内容。 */}}
             {{$price := ""}}{{with index $.Profiles .ID}}{{$price = .Price}}{{end}}
             <label class="fld renewal-entry">
@@ -240,13 +235,20 @@
         <td>{{if .Region}}{{.Region}}{{else}}{{.Country}}{{end}}</td>
         <td>{{if .Online}}<span class="ok">在线</span>{{else}}<span class="bad">离线</span>{{end}}</td>
         <td>
+          <fieldset class="ip-family-options node-netq-family">
+            <legend>三网延迟 IP 协议</legend>
+            <label><input form="node-edit-{{.ID}}" type="radio" name="netq_ip_version" value="v4" {{if ne .NetQIPVersion "v6"}}checked{{end}}>IPv4</label>
+            <label><input form="node-edit-{{.ID}}" type="radio" name="netq_ip_version" value="v6" {{if eq .NetQIPVersion "v6"}}checked{{end}}>IPv6</label>
+          </fieldset>
+        </td>
+        <td>
           {{$shown := ne .Visibility "private"}}
           <form method="post" action="/admin/nodes" class="inline" data-node-visibility>
             <input type="hidden" name="action" value="toggle">
             <input type="hidden" name="id" value="{{.ID}}">
             <button type="submit" class="switch {{if $shown}}on{{end}}" role="switch" aria-checked="{{if $shown}}true{{else}}false{{end}}" aria-label="展示 {{.Name}}" title="一键显示/隐藏">
               <span class="knob"></span>
-              <span class="switch-text">{{if $shown}}显示中{{else}}已隐藏{{end}}</span>
+              <span class="switch-text">{{if $shown}}显示{{else}}隐藏{{end}}</span>
             </button>
           </form>
         </td>
