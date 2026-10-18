@@ -418,6 +418,11 @@ body[data-k-tag="text"] .tag::before { content: "#"; opacity: .5; }
 
 /* Backup controls follow the existing console form rhythm and theme tokens. */
 .migration-forms { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--s5); }
+/* 导出的内容复选：默认竖排一行一项，别继承表单里"整列铺满"的输入框样式 */
+.backup-scope { border: 0; padding: 0; margin: 0 0 var(--s3); min-width: 0; }
+.backup-scope legend { padding: 0; margin-bottom: var(--s2); font-size: var(--kokoro-font-size-sm, 13px); color: var(--muted); }
+.migration-forms .backup-scope label.chk { display: flex; flex-direction: row; align-items: center; gap: 6px; margin-bottom: 4px; font-size: var(--kokoro-font-size-sm, 13px); }
+.migration-forms .backup-scope input[type="checkbox"] { width: 15px; min-width: 15px; flex: none; }
 .migration-forms > form { min-width: 0; padding-top: var(--s3); border-top: 1px solid var(--line); }
 .migration-forms label, .migration-agents label { display: flex; flex-direction: column; align-items: stretch; gap: var(--s1); font-size: var(--kokoro-font-size-sm,13px); }
 .migration-forms label { margin-bottom: var(--s3); }

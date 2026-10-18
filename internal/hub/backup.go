@@ -67,6 +67,18 @@ func (h *Hub) handleBackupExport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "表单无效")
 		return
 	}
+	// 导出内容范围：界面默认全选；取消勾选的分组不写进备份。
+	// 一项都不勾时直接拒绝，不再对旧表单做兼容。
+	selected := make(map[string]bool, len(backup.Groups))
+	for _, group := range backup.Groups {
+		selected[group.Key] = r.FormValue("include_"+group.Key) != ""
+	}
+	includeFiles := r.FormValue("include_files") != ""
+	sel := backup.SelectGroups(selected)
+	if len(sel.Tables) == 0 {
+		writeErr(w, 400, "至少选择一项要导出的内容")
+		return
+	}
 	downloadID := r.FormValue("download_id")
 	if len(downloadID) > 64 || strings.ContainsAny(downloadID, ";\r\n ") {
 		downloadID = ""
@@ -114,7 +126,14 @@ func (h *Hub) handleBackupExport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	snapshot := filepath.Join(stage, "kokoro.db")
-	if e = h.store.Snapshot(r.Context(), snapshot); e != nil {
+	if sel.All {
+		e = h.store.Snapshot(r.Context(), snapshot)
+	} else {
+		// 只导出选中的分组：按当前 schema 建空库，再复制这些表，
+		// 保证导入时的完整性校验能通过。
+		e = h.store.SnapshotSelection(r.Context(), snapshot, sel.Tables, sel.SettingsKeys)
+	}
+	if e != nil {
 		log.Printf("[backup] snapshot: %v", e)
 		writeErr(w, 500, "生成数据库快照失败")
 		return
@@ -147,8 +166,13 @@ func (h *Hub) handleBackupExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	m := backup.Manifest{Format: 1, ID: id, Version: Version, Schema: store.SchemaVersion, CreatedAt: time.Now().UnixMilli(), Source: h.cfg.Domain}
-	if e = backup.Create(f, pass, h.cfg.DataDir, snapshot, m); e != nil {
+	m := backup.Manifest{
+		Format: 1, ID: id, Version: Version, Schema: store.SchemaVersion,
+		CreatedAt: time.Now().UnixMilli(), Source: h.cfg.Domain,
+		Partial: !(sel.All && includeFiles), Includes: sel.Groups, Files: includeFiles,
+	}
+	log.Printf("[backup] 导出内容：%v（含图片文件：%v）", sel.Groups, includeFiles)
+	if e = backup.CreateWithFiles(f, pass, h.cfg.DataDir, snapshot, m, includeFiles); e != nil {
 		log.Printf("[backup] archive: %v", e)
 		writeErr(w, 500, "生成备份失败，请检查磁盘空间和数据文件")
 		return

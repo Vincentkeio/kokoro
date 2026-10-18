@@ -116,3 +116,37 @@ func TestInterruptedRestoreRecoversOriginalData(t *testing.T) {
 		t.Fatal("imported asset survived rollback")
 	}
 }
+
+// 未勾选"图片文件"时，归档里只有数据库，不含 images/ 与头像壁纸。
+func TestCreateWithFilesOmitsImages(t *testing.T) {
+	dir := t.TempDir()
+	if e := os.Mkdir(filepath.Join(dir, "images"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(filepath.Join(dir, "images", "fixture.webp"), []byte("image"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	snap := filepath.Join(t.TempDir(), "snapshot")
+	if e := os.WriteFile(snap, []byte("database"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	var out bytes.Buffer
+	m := Manifest{Format: 1, ID: "id", Schema: 23, Partial: true, Includes: []string{"nodes"}}
+	if e := CreateWithFiles(&out, password, dir, snap, m, false); e != nil {
+		t.Fatal(e)
+	}
+	stage := t.TempDir()
+	got, e := Extract(bytes.NewReader(out.Bytes()), password, stage)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !got.Partial || len(got.Includes) != 1 || got.Includes[0] != "nodes" || got.Files {
+		t.Errorf("清单没有记录导出范围：%+v", got)
+	}
+	if _, e := os.Stat(filepath.Join(stage, "kokoro.db")); e != nil {
+		t.Fatal("数据库必须始终包含")
+	}
+	if _, e := os.Stat(filepath.Join(stage, "images", "fixture.webp")); !os.IsNotExist(e) {
+		t.Error("未勾选图片时不该打包图片")
+	}
+}

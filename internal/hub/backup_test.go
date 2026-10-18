@@ -24,7 +24,11 @@ func TestBackupExportImportPreservesIdentityAndRejectsBadPassword(t *testing.T) 
 	}
 	st.SetSetting("site_name", "Original")
 	os.WriteFile(filepath.Join(h.cfg.DataDir, "avatar.png"), []byte("avatar fixture"), 0600)
-	form := url.Values{"password": {"long-backup-password"}, "confirm_password": {"long-backup-password"}, "download_id": {"test"}}
+	form := url.Values{
+		"password": {"long-backup-password"}, "confirm_password": {"long-backup-password"}, "download_id": {"test"},
+		"include_nodes": {"1"}, "include_config": {"1"}, "include_themes": {"1"},
+		"include_history": {"1"}, "include_content": {"1"}, "include_files": {"1"},
+	}
 	req := withCookies(httptest.NewRequest("POST", "/admin/backup/export", strings.NewReader(form.Encode())), loginAsAdmin(t, h))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", "http://example.com")

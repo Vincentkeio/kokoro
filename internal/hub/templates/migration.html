@@ -5,7 +5,17 @@
   <div class="migration-forms">
     <form method="post" action="/admin/backup/export" target="backup-download" data-backup-export>
       <h4 class="sub">导出备份</h4>
-      <p class="hint">包含节点、历史数据、文章、主题、图片和通知设置，使用密码加密。<strong>不含管理员账号和密码</strong>——账密属于面板本身，不随备份走。下载后请妥善保存密码。</p>
+      <p class="hint">按下面的勾选打包，使用密码加密。<strong>不含管理员账号和密码</strong>——账密属于面板本身，不随备份走。下载后请妥善保存密码。</p>
+      <fieldset class="backup-scope">
+        <legend>导出内容（默认全选）</legend>
+        <label class="chk"><input type="checkbox" name="include_nodes" checked> 节点信息（节点身份、分组、节点名片）</label>
+        <label class="chk"><input type="checkbox" name="include_config" checked> 配置（站点设置、通知与告警、安装令牌）</label>
+        <label class="chk"><input type="checkbox" name="include_themes" checked> 自定义主题（不含内置主题）</label>
+        <label class="chk"><input type="checkbox" name="include_history" checked> 历史数据（监控指标、网络质量、事件与任务记录）</label>
+        <label class="chk"><input type="checkbox" name="include_content" checked> 内容（文章、评论、购买留言、站内消息）</label>
+        <label class="chk"><input type="checkbox" name="include_files" checked> 图片文件（头像、壁纸、文章图片）</label>
+        <p class="hint">至少选一项。勾选历史或内容时会自动带上节点身份（它们引用节点）；只搬节点时只勾"节点信息"。导入仍会整体覆盖目标面板的数据。</p>
+      </fieldset>
       <label>备份密码<input type="password" name="password" minlength="12" maxlength="256" autocomplete="new-password" required placeholder="至少 12 个字符"></label>
       <label>再输一次<input type="password" name="confirm_password" minlength="12" maxlength="256" autocomplete="new-password" required></label>
       <input type="hidden" name="download_id">

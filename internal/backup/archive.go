@@ -23,6 +23,12 @@ type Manifest struct {
 	Schema    int    `json:"schema"`
 	CreatedAt int64  `json:"created_at"`
 	Source    string `json:"source"`
+
+	// Partial 为 true 时 Includes/Files 才有效。旧版整份备份里这两个字段
+	// 是零值，读到时按"全都包含"处理。
+	Partial  bool     `json:"partial,omitempty"`
+	Includes []string `json:"includes,omitempty"`
+	Files    bool     `json:"files,omitempty"`
 }
 
 // Managed limits restores to application data; binaries, scripts, backups and
@@ -52,6 +58,12 @@ func Managed(name string) bool {
 }
 
 func Create(dst io.Writer, pass, dataDir, snapshot string, m Manifest) error {
+	return CreateWithFiles(dst, pass, dataDir, snapshot, m, true)
+}
+
+// CreateWithFiles 与 Create 相同，但可以选择是否把上传图片一起打包。
+// 数据库快照本身已经由调用方按分组裁剪好。
+func CreateWithFiles(dst io.Writer, pass, dataDir, snapshot string, m Manifest, includeFiles bool) error {
 	ew, e := newEncryptWriter(dst, pass)
 	if e != nil {
 		return e
@@ -97,31 +109,33 @@ func Create(dst io.Writer, pass, dataDir, snapshot string, m Manifest) error {
 	if e = addFile("kokoro.db", snapshot); e != nil {
 		return e
 	}
-	e = filepath.WalkDir(dataDir, func(p string, d os.DirEntry, e error) error {
-		if e != nil {
-			return e
-		}
-		if p == dataDir {
-			return nil
-		}
-		rel, e := filepath.Rel(dataDir, p)
-		if e != nil {
-			return e
-		}
-		name := filepath.ToSlash(rel)
-		if d.IsDir() {
-			if name == "images" {
+	if includeFiles {
+		e = filepath.WalkDir(dataDir, func(p string, d os.DirEntry, e error) error {
+			if e != nil {
+				return e
+			}
+			if p == dataDir {
 				return nil
 			}
-			return filepath.SkipDir
+			rel, e := filepath.Rel(dataDir, p)
+			if e != nil {
+				return e
+			}
+			name := filepath.ToSlash(rel)
+			if d.IsDir() {
+				if name == "images" {
+					return nil
+				}
+				return filepath.SkipDir
+			}
+			if !Managed(name) || name == "kokoro.db" {
+				return nil
+			}
+			return addFile(name, p)
+		})
+		if e != nil {
+			return e
 		}
-		if !Managed(name) || name == "kokoro.db" {
-			return nil
-		}
-		return addFile(name, p)
-	})
-	if e != nil {
-		return e
 	}
 	if e = tw.Close(); e != nil {
 		return e
