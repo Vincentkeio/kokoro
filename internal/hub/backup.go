@@ -302,7 +302,7 @@ func (h *Hub) handleBackupImport(w http.ResponseWriter, r *http.Request) {
 	// handlers, closes the old DB, and restores before reopening the listener.
 	h.restoreQueued = true
 	keep = true
-	writeJSON(w, 200, map[string]any{"ok": true, "message": "备份已校验，正在恢复。请稍后使用原面板的管理员账号登录。"})
+	writeJSON(w, 200, map[string]any{"ok": true, "message": "备份已校验，正在恢复。请稍后使用当前面板的管理员账号登录。"})
 	h.restoreCh <- stage
 }
 
