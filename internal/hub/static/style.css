@@ -4232,6 +4232,9 @@ html[data-k-mode="dark"] .route-standard { color:#c8c8c8; border-color:#494949; 
 .ip-family-options legend { float:left; padding:0 8px 0 0; font-size:12px; color:var(--muted); }
 .ip-family-options label { display:inline-flex; gap:5px; align-items:center; cursor:pointer; min-height:32px; font-size:12px; }
 .ip-family-options input { accent-color:var(--accent); }
+.admin-node-edit > .ip-family-options { display:flex; flex-direction:column; align-items:flex-start; gap:0; margin:0; }
+.admin-node-edit > .ip-family-options legend { float:none; padding:0; }
+.admin-node-edit > .ip-family-options label { min-height:20px; }
 .map-region-count { font:400 11px var(--mono); color:var(--muted); white-space:nowrap; margin-left:6px; }
 .map-card .map-head { flex-wrap:wrap; gap:6px; }
 .globe-mode-switch { display:flex; align-self:flex-end; gap:3px; margin:0 12px 4px; }

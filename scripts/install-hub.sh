@@ -3,7 +3,7 @@
 set -eu
 
 REPO="Vincentkeio/kokoro"
-RELEASE_TAG="v0.2.0-beta.9"
+RELEASE_TAG="v0.2.0-beta.10"
 INSTALL_DIR="/opt/kokoro"
 DATA_DIR="/var/lib/kokoro"
 SERVICE_FILE="/etc/systemd/system/kokoro-hub.service"
