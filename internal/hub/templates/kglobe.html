@@ -21,6 +21,44 @@
   }
   if (!data || !Array.isArray(data.places)) return;
 
+  // Decorative text is generated once. CSS moves identical repeated halves
+  // upward, keeping the loop seamless without a timer or animation JS loop.
+  if (document.body.getAttribute('data-k-globe-backdrop') === 'matrix' && host.parentElement.classList.contains('globe-body')) {
+    var matrix = document.createElement('div');
+    matrix.className = 'theme-matrix';
+    matrix.setAttribute('aria-hidden', 'true');
+    var glyphMode = document.body.getAttribute('data-k-globe-matrix-glyphs') || 'mixed';
+    var alphabets = {
+      numeric: '0123456789',
+      binary: '01',
+      hex: '0123456789ABCDEF',
+      katakana: 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ',
+      mixed: '0123456789ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ'
+    };
+    var alphabet = alphabets[glyphMode] || alphabets.mixed;
+    var matrixStyle = getComputedStyle(document.documentElement);
+    var density = Math.max(8, Math.min(64, parseInt(matrixStyle.getPropertyValue('--kokoro-globe-matrix-density'), 10) || 24));
+    var speed = Math.max(.25, Math.min(3, parseFloat(matrixStyle.getPropertyValue('--kokoro-globe-matrix-speed')) || 1));
+    matrix.style.opacity = String(Math.max(0, Math.min(1, parseFloat(matrixStyle.getPropertyValue('--kokoro-globe-matrix-opacity')) || 0)));
+    for (var column = 0; column < density; column++) {
+      var strip = document.createElement('span');
+      strip.className = 'matrix-column';
+      var glyphs = [];
+      for (var row = 0; row < 32; row++) {
+        glyphs.push(alphabet.charAt(Math.floor(Math.random() * alphabet.length)));
+      }
+      var run = glyphs.join('\n') + '\n';
+      strip.textContent = run + run.trimEnd();
+      var duration = (16 + (column * 7 % 19)) / speed;
+      strip.style.left = (1 + column * 97 / density) + '%';
+      strip.style.animationDuration = duration + 's';
+      strip.style.animationDelay = -(column * 11 % duration) + 's';
+      strip.style.opacity = String(.58 + (column * 5 % 7) * .05);
+      matrix.appendChild(strip);
+    }
+    host.parentElement.insertBefore(matrix, host);
+  }
+
   function cssVar(el, name, fb) {
     var v = getComputedStyle(el).getPropertyValue(name).trim();
     return v || fb;

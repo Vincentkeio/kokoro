@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "kokoro.paper",
   "name": "纸页",
-  "version": "1.3.4",
+  "version": "1.3.7",
   "description": "暖白纸色、墨黑正文与朱砂点睛，采用统一清晰的无衬线字体和表格布局。",
   "author": "Kokoro",
   "license": "MIT",
@@ -124,7 +124,7 @@
     "--kokoro-globe-lit-day": "#c3a17b",
     "--kokoro-globe-lit-night": "#927756"
   },
-  "layoutSchemaVersion": 1,
+  "layoutSchemaVersion": 2,
   "layout": {
     "shell": {
       "contentMaxWidth": "2080px",
@@ -191,7 +191,7 @@
     },
     "misc": {
       "statusDotStyle": "solid",
-      "usageBarStyle": "segmented",
+      "usageBarStyle": "ruled",
       "tagStyle": "square",
       "badgeStyle": "outline",
       "showUptime": true,

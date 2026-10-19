@@ -116,7 +116,15 @@ starting fio...
 	if !strings.Contains(body, "回程") {
 		t.Error("线路结果应该显示在卡片摘要上")
 	}
-	if strings.Contains(body, "4567") {
+	start := strings.Index(body, `<div class="task-line task-summary"`)
+	if start < 0 {
+		t.Fatal("卡片摘要容器缺失")
+	}
+	end := strings.Index(body[start:], `<div class="task-pop"`)
+	if end < 0 {
+		t.Fatal("测试结果浮窗缺失")
+	}
+	if strings.Contains(body[start:start+end], "4567") {
 		t.Error("硬件跑分不该出现在卡片摘要里（详情页和浮窗里仍然有）")
 	}
 }

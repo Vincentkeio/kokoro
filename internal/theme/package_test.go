@@ -41,8 +41,8 @@ func sampleManifest() *Manifest {
 func TestPackageRoundTrip(t *testing.T) {
 	m := sampleManifest()
 	assets := map[string][]byte{
-		"bg.png":     []byte("\x89PNG fake background"),
-		"font.woff2": []byte("fake font"),
+		"bg.png":       []byte("\x89PNG fake background"),
+		"texture.webp": []byte("fake texture"),
 	}
 	raw, err := BuildPackage(m, assets, []byte("fake preview"), "MIT License", "# 午夜雨")
 	if err != nil {
@@ -207,6 +207,19 @@ func TestPackageRejectsMissingManifest(t *testing.T) {
 	}
 }
 
+func TestPackageRejectsFontsAndExecutableAssets(t *testing.T) {
+	manifest, _ := json.Marshal(sampleManifest())
+	for _, name := range []string{"font.woff2", "font.ttf", "vector.svg", "script.js", "style.css", "page.html"} {
+		raw := zipWithEntries(t, map[string]string{"theme.json": string(manifest), "assets/" + name: "untrusted"})
+		if _, err := ExtractPackage(raw); err == nil {
+			t.Errorf("extract accepted %s", name)
+		}
+		if _, err := BuildPackage(sampleManifest(), map[string][]byte{name: []byte("untrusted")}, nil, "", ""); err == nil {
+			t.Errorf("builder accepted %s", name)
+		}
+	}
+}
+
 // 官方前缀保护在包格式里同样生效。
 func TestPackageRejectsOfficialPrefix(t *testing.T) {
 	m := sampleManifest()
@@ -297,7 +310,15 @@ func TestBuiltinManifestsCanBePackaged(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, m := range reg.List() {
-		raw, err := BuildPackage(m, nil, nil, m.License, "")
+		files, err := BuiltinAssets(m.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assets := make(map[string][]byte, len(files))
+		for _, file := range files {
+			assets[strings.TrimPrefix(file.Name, "assets/")] = file.Data
+		}
+		raw, err := BuildPackage(m, assets, nil, m.License, "")
 		if err != nil {
 			t.Fatalf("内置主题 %s 打包失败: %v", m.ID, err)
 		}
@@ -313,7 +334,7 @@ func TestBuiltinManifestsCanBePackaged(t *testing.T) {
 
 // 确认 docs 里给出的最小示例确实是合法的（避免文档与实现漂移）。
 func TestDocMinimalExampleIsValid(t *testing.T) {
-	for _, name := range []string{"minimal.json", "example-terminal.json", "example-paper.json"} {
+	for _, name := range []string{"minimal.json", "example-terminal.json", "example-paper.json", "example-effects.json"} {
 		p := filepath.Join("..", "..", "docs", "themes", name)
 		data, err := os.ReadFile(p)
 		if err != nil {

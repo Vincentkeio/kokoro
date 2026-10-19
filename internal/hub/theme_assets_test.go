@@ -22,7 +22,7 @@ func TestThemeAssetsServesWhitelistedTypes(t *testing.T) {
 	cookies := loginAsAdmin(t, h)
 	uploadBundle(t, h, cookies, makeBundle(t, "acme.assets", map[string][]byte{
 		"bg.png":        []byte("PNGDATA"),
-		"fonts/x.woff2": []byte("WOFFDATA"),
+		"texture.webp": []byte("WEBPDATA"),
 	}))
 
 	cases := []struct {
@@ -31,7 +31,7 @@ func TestThemeAssetsServesWhitelistedTypes(t *testing.T) {
 		body string
 	}{
 		{"/_theme-assets/acme.assets/bg.png", "image/png", "PNGDATA"},
-		{"/_theme-assets/acme.assets/fonts/x.woff2", "font/woff2", "WOFFDATA"},
+		{"/_theme-assets/acme.assets/texture.webp", "image/webp", "WEBPDATA"},
 	}
 	for _, c := range cases {
 		req := httptest.NewRequest(http.MethodGet, c.path, nil)
@@ -56,19 +56,18 @@ func TestThemeAssetsServesWhitelistedTypes(t *testing.T) {
 
 // SVG 必须被拒：它是唯一能在"图片"位置执行脚本的格式，
 // 而主题包来自第三方。这条一旦放松，等于给主题作者一个 XSS 后门。
-func TestThemeAssetsRejectsSVG(t *testing.T) {
+func TestThemeAssetsRejectsCodeAndFonts(t *testing.T) {
 	dir := t.TempDir()
 	st := newStoreOn(t, dir)
 	h := newHubOn(t, st, dir)
 	cookies := loginAsAdmin(t, h)
-	uploadBundle(t, h, cookies, makeBundle(t, "acme.svg", map[string][]byte{
-		"logo.svg": []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`),
-	}))
-
-	for _, p := range []string{
-		"/_theme-assets/acme.svg/logo.svg",
-		"/_theme-assets/acme.svg/logo.SVG",
-	} {
+	for _, name := range []string{"logo.svg", "logo.SVG", "font.woff2", "font.ttf", "script.js", "style.css"} {
+		raw := zipEntries(t, map[string]string{"theme.json":`{"id":"acme.blocked","name":"Blocked","version":"1","tokens":{"--kokoro-color-primary":"#fff"}}`, "assets/"+name:"untrusted"})
+		uploadBundle(t, h, cookies, raw)
+		if h.themes.Get("acme.blocked") != nil { t.Fatalf("unsupported file %s imported",name) }
+		// The serving boundary also blocks bytes from any legacy cache.
+		h.themeAssets.set("acme.blocked", []theme.Asset{{Name:"assets/"+name,Data:[]byte("untrusted")}})
+		p := "/_theme-assets/acme.blocked/"+name
 		req := httptest.NewRequest(http.MethodGet, p, nil)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, req)

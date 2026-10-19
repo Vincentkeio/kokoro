@@ -105,7 +105,7 @@ func isThemeFile(p string) bool {
 }
 
 // grabGitHubTheme 按解析出的目标抓取主题。
-func (h *Hub) grabGitHubTheme(src string, target githubThemeTarget) (*theme.Manifest, string, error) {
+func (h *Hub) grabGitHubTheme(src string, target githubThemeTarget, replace ...bool) (*theme.Manifest, string, error) {
 	fetch := themeFetcher(newThemeGrabClient(themeFetchTimeout, h.themeFetchPolicy()))
 
 	// 直指文件：按后缀决定走清单还是包。
@@ -114,25 +114,23 @@ func (h *Hub) grabGitHubTheme(src string, target githubThemeTarget) (*theme.Mani
 		if err != nil {
 			return nil, "", err
 		}
-		return h.installFetchedTheme(raw, src)
+		return h.installFetchedTheme(raw, src, replace...)
 	}
 
-	// 目录：先找 theme.json。
+	// 目录：完整包优先，避免资源主题被降级成只有配色的 theme.json。
+	if raw, err := fetch(target.Dir + "/theme" + theme.PackageExt); err == nil {
+		return h.installGrabBundle(raw, src, replace...)
+	}
 	if raw, err := fetch(target.Dir + "/theme.json"); err == nil {
-		return h.importGrabManifest(raw, src)
+		return h.importGrabManifest(raw, src, replace...)
 	}
-	// 再找仓库里的主题包（约定名 theme.kokoro-theme）。
-	raw, err := fetch(target.Dir + "/theme" + theme.PackageExt)
-	if err != nil {
-		return nil, "", fmt.Errorf("该目录下既没有 theme.json，也没有 theme%s", theme.PackageExt)
-	}
-	return h.installGrabBundle(raw, src)
+	return nil, "", fmt.Errorf("该目录下既没有 theme%s，也没有 theme.json", theme.PackageExt)
 }
 
 // installFetchedTheme 按内容判断抓来的是清单还是包，分别走对应安装路径。
-func (h *Hub) installFetchedTheme(raw []byte, src string) (*theme.Manifest, string, error) {
+func (h *Hub) installFetchedTheme(raw []byte, src string, replace ...bool) (*theme.Manifest, string, error) {
 	if len(raw) >= 2 && raw[0] == 'P' && raw[1] == 'K' {
-		return h.installGrabBundle(raw, src)
+		return h.installGrabBundle(raw, src, replace...)
 	}
-	return h.importGrabManifest(raw, src)
+	return h.importGrabManifest(raw, src, replace...)
 }

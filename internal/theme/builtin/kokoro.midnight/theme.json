@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "kokoro.midnight",
   "name": "极夜",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "炭灰夜色、柔和莫兰迪数据色与低对比面板，安静耐看的深色控制台。",
   "author": "Kokoro",
   "license": "MIT",
@@ -193,7 +193,7 @@
     },
     "misc": {
       "statusDotStyle": "solid",
-      "usageBarStyle": "gradient",
+      "usageBarStyle": "segmented",
       "tagStyle": "square",
       "badgeStyle": "outline",
       "showUptime": true,

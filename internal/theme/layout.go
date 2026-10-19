@@ -28,7 +28,9 @@ var enums = map[string]map[string]bool{
 	"charts.type":                 {"line": true, "area": true, "bar": true, "dot": true, "step": true},
 	"charts.tooltip":              {"axis": true, "item": true, "none": true},
 	"misc.statusDotStyle":         {"solid": true, "ring": true, "glow": true, "none": true},
-	"misc.usageBarStyle":          {"solid": true, "gradient": true, "segmented": true, "striped": true, "dotted": true, "soft": true, "none": true},
+	"misc.usageBarStyle":          {"solid": true, "gradient": true, "segmented": true, "striped": true, "dotted": true, "soft": true, "laser": true, "ruled": true, "none": true},
+	"globe.backdrop":              {"none": true, "matrix": true},
+	"globe.matrixGlyphs":          {"numeric": true, "binary": true, "hex": true, "katakana": true, "mixed": true},
 	"misc.uptimeBarStyle":         {"solid": true, "pill": true, "hatch": true, "ruled": true, "tiles": true, "dots": true},
 	"misc.tagStyle":               {"pill": true, "square": true, "text": true},
 	"misc.badgeStyle":             {"soft": true, "outline": true, "solid": true},
@@ -112,6 +114,8 @@ func ValidateLayout(l *Layout) error {
 		return err
 	}
 	for key, val := range map[string]string{
+		"globe.backdrop":      l.Globe.Backdrop,
+		"globe.matrixGlyphs":  l.Globe.MatrixGlyphs,
 		"misc.statusDotStyle": l.Misc.StatusDotStyle,
 		"misc.usageBarStyle":  l.Misc.UsageBarStyle,
 		"misc.uptimeBarStyle": l.Misc.UptimeBarStyle,
@@ -144,5 +148,5 @@ func ValidateLayout(l *Layout) error {
 			return fmt.Errorf("layout.%s: %w", key, err)
 		}
 	}
-	return nil
+	return ValidateVisuals(l.Visuals)
 }

@@ -1,3 +1,12 @@
+// Pause declarative theme motion while the document is hidden.
+(function () {
+  function syncThemeMotion() {
+    document.documentElement.classList.toggle('k-effects-paused', document.hidden);
+  }
+  document.addEventListener('visibilitychange', syncThemeMotion);
+  syncThemeMotion();
+})();
+
 // Theme chart geometry shared by live, server-rendered and detail histories.
 function kokoroFormatLocalTaskTimes(root) {
   root = root || document;

@@ -1,8 +1,8 @@
 # Kokoro 主题范例
 
-把这份范例发给 AI，再描述你想要的视觉效果（例如“暖白纸感、朱红强调色、衬线标题、列表用表格”）。请 AI 只修改需要的设计变量和布局选项，最后输出完整、可导入的 `theme.json`。
+把这份范例发给 AI，再描述你想要的视觉效果（例如“暖白纸感、朱红强调色、衬线标题”）。请 AI 只修改需要的设计变量和布局选项，最后输出完整、可导入的 `theme.json`。
 
-本文件列出 Kokoro 当前支持的全部 168 个设计变量（CSS tokens）、布局字段、枚举取值和限制。设计变量用于控制颜色、字体、间距等视觉样式；布局字段用于选择已经内置的页面结构。JSON 文件本身不能包含注释，下面的说明供你和 AI 参考。
+本文件列出 Kokoro 当前支持的全部 185 个设计变量（CSS tokens）、布局字段、枚举取值和限制。设计变量用于控制颜色、字体、间距等视觉样式；布局字段用于选择已经内置的页面结构。JSON 文件本身不能包含注释，下面的说明供你和 AI 参考。
 
 ## 最小可用范例
 
@@ -43,13 +43,11 @@
 
 ## 全部设计变量（CSS tokens）
 
-只写需要覆盖的变量。颜色支持十六进制、`rgb()`、`hsl()`、`color-mix()` 和引用其他 `--kokoro-*` 变量；长度使用 CSS 长度值；字体应使用字体栈。`--kokoro-bg-image` 只允许 `none` 或站内 `/_theme-assets/` 路径，不接受远程网址；data URI 若含被禁止的字符也会被拒绝。
+只覆盖需要的变量，其余沿用默认值。当前为 tokens v3，兼容旧版本；下文视觉扩展变量必须显式使用 `tokensSchemaVersion: 3`。颜色、长度、数字、时间、字体栈按各自类型校验；单值最多 512 字节。允许多层渐变、受校验的 `var()`、本地图片和栅格遮罩，拒绝外部资源、CSS 注入、脚本和 SVG。
 
-安全规则同样适用于 `tokensDark` 和布局长度字段：不能包含控制字符、`;`、花括号、HTML 标签、反斜杠或 CSS 注释。合法的 `calc()`、`clamp()`、`var()`、渐变和字体栈继续支持。每个 `url()` 都会独立校验，必须指向规范的 `/_theme-assets/` 本地资源路径；即使外部网址中带有该字样，也会被拒绝。不能混入外部 URL、目录回退或 `image-set()`、`image()`、`src()` 等其他资源函数。带引号的本地 `url()` 可以使用，SVG data URI 会被拒绝。
+本地资源写 `url(/_theme-assets/ambient.webp)`，对应包内 `assets/ambient.webp`，由引擎补全当前主题 ID。不要引用其他主题 ID 的文件。若需要本地文件，必须交付完整 `.kokoro-theme`，不能只交付 JSON。
 
-背景图示例：`"--kokoro-bg-image": "url(/_theme-assets/wallpaper.webp)"`。在 `.kokoro-theme` 包中把图片放到 `assets/wallpaper.webp`；Hub 会自动补上当前主题 ID。包内每个路径必须唯一，不能重复放置 `theme.json` 或同名资源。
-
-| 可用变量 |
+| 变量名 |
 | --- |
 | `--kokoro-backdrop-blur` |
 | `--kokoro-bg-attachment` |
@@ -65,6 +63,7 @@
 | `--kokoro-chart-axis` |
 | `--kokoro-chart-bar-opacity` |
 | `--kokoro-chart-bar-radius` |
+| `--kokoro-chart-filter` |
 | `--kokoro-chart-grid` |
 | `--kokoro-chart-line-width` |
 | `--kokoro-chart-point-radius` |
@@ -125,6 +124,8 @@
 | `--kokoro-font-weight-medium` |
 | `--kokoro-font-weight-normal` |
 | `--kokoro-footer-bg` |
+| `--kokoro-globe-background` |
+| `--kokoro-globe-background-size` |
 | `--kokoro-globe-day` |
 | `--kokoro-globe-flow` |
 | `--kokoro-globe-flow-core` |
@@ -140,6 +141,15 @@
 | `--kokoro-globe-hub-ring-size` |
 | `--kokoro-globe-hub-ring-width` |
 | `--kokoro-globe-hub-size` |
+| `--kokoro-globe-lit-day` |
+| `--kokoro-globe-lit-night` |
+| `--kokoro-globe-matrix-color` |
+| `--kokoro-globe-matrix-density` |
+| `--kokoro-globe-matrix-font-size` |
+| `--kokoro-globe-matrix-highlight` |
+| `--kokoro-globe-matrix-opacity` |
+| `--kokoro-globe-matrix-secondary` |
+| `--kokoro-globe-matrix-speed` |
 | `--kokoro-globe-night` |
 | `--kokoro-globe-node-halo-size` |
 | `--kokoro-globe-node-muted-ring-size` |
@@ -216,12 +226,18 @@
 | `--kokoro-uptime-bar-gap` |
 | `--kokoro-uptime-bar-height` |
 | `--kokoro-uptime-bar-radius` |
+| `--kokoro-usage-bar-fill` |
+| `--kokoro-usage-bar-glow` |
+| `--kokoro-usage-bar-height` |
+| `--kokoro-usage-bar-radius` |
+| `--kokoro-usage-bar-track` |
 | `--kokoro-z-dropdown` |
 | `--kokoro-z-modal` |
 | `--kokoro-z-toast` |
+
 ## 全部布局字段与可选值
 
-以下字段均可省略。布尔字段只能填 `true` 或 `false`；尺寸字段使用 CSS 长度；文本字段受长度限制。未列出的字段会被拒绝。
+以下字段位于 `layout` 内，均可省略。布尔字段只能填 `true` 或 `false`；尺寸字段使用 CSS 长度；文本字段受长度限制。未列出的字段会被拒绝。
 
 | 字段 | 可选值 / 类型 | 用途 |
 | --- | --- | --- |
@@ -270,7 +286,7 @@
 | `charts.height` | CSS 长度 | 通用图表高度 |
 | `charts.heightDetail` | CSS 长度 | 详情页图表高度 |
 | `misc.statusDotStyle` | `solid` / `ring` / `glow` / `none` | 状态点样式 |
-| `misc.usageBarStyle` | `solid` / `gradient` / `segmented` / `striped` / `dotted` / `none` | 资源占用条形态 |
+| `misc.usageBarStyle` | `solid` / `gradient` / `segmented` / `striped` / `dotted` / `soft` / `laser` / `ruled` / `none` | 资源占用条形态；`laser` 为外发光激光，`ruled` 为墨线刻度，二者需 layout v2 |
 | `misc.uptimeBarStyle` | `solid` / `pill` / `hatch` / `ruled` / `tiles` / `dots` | 在线率时间轴形态，每天一格 |
 | `misc.tagStyle` | `pill` / `square` / `text` | 标签样式 |
 | `misc.badgeStyle` | `soft` / `outline` / `solid` | 徽标样式 |
@@ -280,6 +296,14 @@
 | `globe.showRoutes` | boolean | 显示或隐藏地球航线 |
 | `globe.showFlow` | boolean | 显示或隐藏航线流光 |
 | `globe.autoRotate` | boolean | 开关地球自动旋转，仍尊重系统减少动态效果偏好 |
+| `globe.backdrop` | `none` / `matrix` | 地球背景；`matrix` 为冰蓝字符列向上循环，需 layout v2 |
+
+| `globe.matrixGlyphs` | `numeric` / `binary` / `hex` / `katakana` / `mixed` | 字符雨字符集，默认 mixed，需 layout v2 |
+| `visuals` | 下文列出的组件规则 | 材质、裁切、光效与预设动效，需 layout v2 |
+
+### 动效随主题获取
+
+使用 `layoutSchemaVersion: 2`，并声明 `layout.misc.usageBarStyle: "laser"`、`layout.globe.backdrop: "matrix"`，即可携带激光条与字符雨配置。这些能力由接收面板的通用渲染器实现，不依赖主题 ID；接收面板需先更新到支持 layout v2 的版本。主题包不执行第三方 CSS 或脚本。已获取过旧主题时，可勾选「覆盖本地同名主题」重新获取完整包。
 
 ## 顶层字段
 
@@ -290,13 +314,13 @@
 | `name` / `version` | 必填；主题显示名与版本 |
 | `description` / `author` / `homepage` / `license` / `tags` | 主题说明和署名信息 |
 | `sourceUrl` | 来源地址；获取其他站点主题时自动记录，通常不要手写 |
-| `tokensSchemaVersion` | 当前为 `2` |
+| `tokensSchemaVersion` | 当前支持 `3`，兼容 `1`、`2`；新视觉变量需使用 `3` |
 | `tokens` | 必填；浅色或唯一模式下需要覆盖的设计变量 |
 | `tokensDark` | 可选；深色模式覆盖，未写的变量沿用 `tokens` |
 | `mode.default` | `light` / `dark` / `auto` |
 | `mode.allowUserSwitch` / `mode.supportsDark` | boolean |
-| `layoutSchemaVersion` | 当前为 `1` |
-| `layout` | 可选；使用上表中列出的布局字段 |
+| `layoutSchemaVersion` | 当前支持 `2`，兼容 `1`；激光条、刻度条和字符雨需使用 `2` |
+| `layout` | 可选；还可使用下文 `visuals` 组件规则，需 layout v2 |
 | `package` | `.kokoro-theme` 打包元数据，由打包流程生成，通常不要手写 |
 
 ## 生成和导入
@@ -307,13 +331,15 @@
 
 ## 图表、BAR 与毛玻璃范例
 
+地球背景请使用 `--kokoro-globe-background` 或 `layout.visuals.globe-background`。Hero 背景与地球背景分别配置；接收面板不支持所需能力时，应更新面板后获取。
+
 图表类型会应用到全网速率、资源历史、节点卡片与三网波动图；`smooth` 仅平滑 `line` / `area`，`step` 保持阶梯。资源占用条与在线率时间轴是两个独立选项，形态会随主题导出与复制。
 
 | 内置主题 | 历史图 | 资源条 | 在线率时间轴 |
 | --- | --- | --- | --- |
 | 简洁 | 平滑面积图 | 实心 | 实心格 |
-| 纸页 | 柱状图 | 分段 | 印刷线纹 |
-| 极夜 | 阶梯图 | 渐变 | 银蓝镶边格 |
+| 纸页 | 柱状图 | 墨线刻度 | 印刷线纹 |
+| 极夜 | 阶梯图 | 金属分段 | 银蓝镶边格 |
 | 朦胧 | 平滑曲线 | 点阵 | 圆点 |
 
 ```json
@@ -341,3 +367,142 @@
 把这些字段合并进上方完整范例，不要直接导入这段局部配置。磨砂面板需要同时设置模糊长度与半透明背景；航线开关、流光和自动旋转分别控制。
 
 双栏卡片的在线状态与在线率文字共享第一行，标签与在线率条共享第二行。“近 N 天”统计说明保留在在线率文字行，整行会自适应缩小。条形高度和形状继续由主题定义，组件会居中对齐。两栏剩余空间分配在内容区块之间，底部操作和分隔线保持对齐。
+
+## 创作与获取使用同一个能力边界
+
+当前版本支持 **tokens v3 + layout v2**。主题作者可以组合设计变量、下列组件样式、预设动效、字符雨和静态或动画 WebP / GIF。所有配置都在清单内，所有本地资源都在包内；任意名称的第三方主题都能使用，不依赖特定主题 ID。
+
+本地安装、导出、导入和一键获取使用相同的版本、属性、路径、资源和包大小校验。缺少图片、未知字段、不支持的能力版本、清单与包 ID 不一致，都应报错；不会把只有配色的残缺清单当作完整主题安装。GitHub 目录优先读取 `theme.kokoro-theme`。裸 JSON 只适合不引用本地文件的主题。
+
+旧面板需先更新到支持相应能力的版本。既有同名主题默认保留；主动更新时勾选「覆盖本地同名主题」，失败保留旧主题及资源。主题图片随完整包复制，站长另外设置的站点壁纸和账号配置属于站点数据，不是主题包内容。
+
+### 新视觉变量（tokens v3）
+
+| 变量 | 用途与范围 |
+| --- | --- |
+| `--kokoro-globe-background` | 地球区域的单层或多层背景图片 / 渐变；本地文件必须入包 |
+| `--kokoro-globe-background-size` | 如 `cover`、`contain`、`180% 180%` |
+| `--kokoro-globe-matrix-color` / `highlight` / `secondary` | 字符雨主色、亮部和次色；后两项也有完整 `--kokoro-globe-matrix-` 前缀 |
+| `--kokoro-globe-matrix-opacity` | 整体透明度，限制在 0–1 |
+| `--kokoro-globe-matrix-speed` | 移动倍率，限制在 0.25–3，默认 1 |
+| `--kokoro-globe-matrix-density` | 列数，限制在 8–64，默认 24 |
+| `--kokoro-globe-matrix-font-size` | 字符尺寸，限制在 8–20px，默认 12px |
+| `--kokoro-usage-bar-height` / `radius` | 资源条高度与圆角；后项完整名称为 `--kokoro-usage-bar-radius` |
+| `--kokoro-usage-bar-fill` / `track` | 填充层与轨道的背景，可用渐变；两项都带完整前缀 |
+| `--kokoro-usage-bar-glow` | 填充层阴影，如 `0 0 8px currentColor` |
+| `--kokoro-chart-filter` | 折线滤镜，如 `drop-shadow(0 0 2px #b8a5ff)` |
+
+BAR 的高度、圆角、背景与光晕只在主题显式设置时覆盖所选形态。`laser` 自带外发光；`ruled` 是墨线刻度。字符雨只生成一次有限数量的文本列，由 CSS 平移；尊重减少动态效果偏好和地球可见性暂停，不用每帧脚本。
+
+### 组件视觉配置 `layout.visuals`
+
+键名选择固定组件，不接受自定义选择器。规则应用于公开页面，后台操作界面不受这层扩展规则影响。深浅模式差异可通过 `var(--kokoro-...)` 引用 `tokensDark`。
+
+| 组件键 | 范围 |
+| --- | --- |
+| `header` / `hero` / `overview` | 顶栏、Hero、总览统计 |
+| `card` / `card-hover` / `card-offline` | 节点卡片、悬停、离线状态 |
+| `card-result` | 卡片测试结果与网络结果内层 |
+| `rate-panel` / `rate-chart` | 总览速率面板与流量趋势内层 |
+| `globe-panel` / `globe-background` | 地球外层面板与内部背景 |
+| `clock` | 总览时钟 |
+| `usage-track` / `usage-fill` | CPU、内存、磁盘资源条轨道与填充 |
+| `chart-line` / `chart-area` | 历史、卡片图表折线与面积层 |
+| `uptime-cell` / `button` / `tag` | 在线率格子、按钮、标签 |
+
+可用属性：
+
+`background`, `background-image`, `background-color`, `background-size`, `background-position`, `background-repeat`, `background-blend-mode`, `color`, `border`, `border-color`, `border-style`, `border-width`, `border-radius`, `box-shadow`, `text-shadow`, `filter`, `backdrop-filter`, `opacity`, `mix-blend-mode`, `mask-image`, `mask-size`, `mask-position`, `mask-repeat`, `clip-path`, `transform`, `transform-origin`, `outline-color`, `stroke`, `stroke-width`, `stroke-dasharray`, `fill`, `font-family`, `font-size`, `letter-spacing`, `transition-duration`。
+
+可用多层线性 / 径向 / 锥形 / 重复渐变，阴影、金属纹理、局部磨砂、渐变或本地栅格遮罩、几何 `clip-path`、折线虚线与光晕。CSS 值仍经过注入和资源校验；不接受任意 CSS 文件、`@import`、自定义选择器、任意 keyframes、伪元素内容、HTML、脚本、SVG、远程 URL、`!important` 或页面定位属性。
+
+| 动效字段 | 可选值 |
+| --- | --- |
+| `motion` | `none`、`breathe`（透明度呼吸）、`float`（轻微浮动）、`pan`（背景缓移） |
+| `motion-duration` | `2s`–`60s`，默认 `6s`；可写等价 `ms` |
+| `motion-distance` | float 位移，默认 `4px`，渲染时限制在 0–12px |
+
+pan 配合较大的 `background-size` 使用。优先把动效用于小面积装饰，不对密集文本持续做重滤镜。减少动态效果时关闭预设动效，页面隐藏时暂停；不要把核心信息或按钮可用性依赖于动画。
+
+### 字体边界
+
+字体仅使用系统字体栈，可调整字形风格、字重、字号和字距。主题包不接受或下发第三方字体文件，不生成 `@font-face`，也不从外部 CDN 加载字体。
+
+### 可直接导入的完整光效范例
+
+以下范例不依赖外部文件，可直接保存为 `theme.json`。独立文件在仓库 `docs/themes/example-effects.json`。
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "example.prism",
+  "name": "棱镜范例",
+  "version": "1.0.0",
+  "author": "example",
+  "description": "声明式材质、字符雨、激光资源条与呼吸动效范例",
+  "tokensSchemaVersion": 3,
+  "tokens": {
+    "--kokoro-color-bg": "#10101c",
+    "--kokoro-color-surface": "#181725",
+    "--kokoro-color-text": "#f1edf9",
+    "--kokoro-color-text-muted": "#b9b0cc",
+    "--kokoro-color-primary": "#b8a5ff",
+    "--kokoro-color-border": "#393047",
+    "--kokoro-globe-matrix-color": "#73609e",
+    "--kokoro-globe-matrix-highlight": "#e1d4ff",
+    "--kokoro-globe-matrix-secondary": "#d7a2aa",
+    "--kokoro-globe-matrix-speed": "0.7",
+    "--kokoro-globe-matrix-opacity": "0.7",
+    "--kokoro-globe-matrix-density": "32",
+    "--kokoro-globe-matrix-font-size": "11px",
+    "--kokoro-usage-bar-height": "5px",
+    "--kokoro-usage-bar-glow": "0 0 5px currentColor, 0 0 12px currentColor",
+    "--kokoro-chart-filter": "drop-shadow(0 0 2px rgba(184,165,255,.3))"
+  },
+  "mode": { "default": "dark", "allowUserSwitch": false },
+  "layoutSchemaVersion": 2,
+  "layout": {
+    "home": { "list": { "mode": "card" } },
+    "charts": { "type": "line", "smooth": true },
+    "misc": { "usageBarStyle": "laser", "uptimeBarStyle": "tiles" },
+    "globe": { "backdrop": "matrix", "matrixGlyphs": "hex", "showRoutes": true, "showFlow": true, "autoRotate": true },
+    "visuals": {
+      "card": {
+        "background": "linear-gradient(145deg, rgba(44,34,62,.95), rgba(19,19,32,.98))",
+        "border-color": "rgba(184,165,255,.25)",
+        "box-shadow": "inset 0 1px 0 rgba(255,255,255,.08), 0 6px 20px rgba(0,0,0,.16)"
+      },
+      "card-hover": { "transform": "translateY(-2px)", "box-shadow": "0 8px 28px rgba(130,105,200,.18)" },
+      "globe-background": {
+        "background": "radial-gradient(ellipse at 20% 30%, rgba(135,88,180,.2), transparent 60%), linear-gradient(120deg, #11101d, #261c36, #11101d)",
+        "background-size": "180% 180%",
+        "motion": "pan",
+        "motion-duration": "30s"
+      },
+      "usage-fill": { "motion": "breathe", "motion-duration": "8s" },
+      "chart-line": { "stroke-dasharray": "6 3" }
+    }
+  }
+}
+```
+
+### 带媒体资源的完整包
+
+```text
+theme.kokoro-theme（ZIP）
+├── theme.json
+├── assets/
+│   ├── ambient.webp
+│   └── texture.webp
+├── preview.png（可选）
+├── LICENSE（可选）
+└── README.md（可选）
+```
+
+静态壁纸可用高质量 WebP；需要独创动画时可携带动画 WebP / GIF 并用于固定组件背景。保证文字对比度，提供静态方案或避免强烈闪烁；不要为了小体积牺牲明显画质。压缩包最多 8 MiB、64 个条目，单文件最多 2 MiB、解压总量最多 12 MiB，最大压缩比 100:1。开发、打包与获取遵守同一限制。
+
+可用媒体为 png / jpg / jpeg / webp / gif / avif / bmp / ico；字体、SVG、CSS、脚本及可执行文件拒绝入包。资源路径必须规范，不得包含目录回退、符号链接、外部地址。若打包工具自动生成 `package.files` 和 `package.sha256`，必须与实际一致；手工 ZIP 可以省略整个 package 段，不要让 AI 编造校验和。
+
+### 发给 AI 的制作要求
+
+请先确定视觉方向、信息层级、对比度、桌面和窄屏布局，再组合本文件列出的真实能力。输出完整严格 JSON；需要媒体时同时交付真实文件与完整 `.kokoro-theme`，不要用不存在的资源占位。使用 tokens v3 / layout v2 声明新增能力，保持可读、可操作和减少动态效果支持。所有效果必须通过 tokens、layout.visuals 或打包静态媒体实现；如果目标超出这些范围，应明确说明所需的引擎扩展，不要声称仅凭主题已实现。完成后验证导入、导出、另一台兼容面板重新获取后的资源和效果都完整。

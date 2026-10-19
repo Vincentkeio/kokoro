@@ -8,7 +8,12 @@ const source = fs.readFileSync(path.join(__dirname, '../internal/hub/static/app.
 const geometry = source.slice(0, source.indexOf("window.addEventListener('resize'"));
 const renderer = source.slice(source.indexOf('  function styleServerSparks(root)'), source.indexOf('  // 主机时钟不再做'));
 let chartType = 'area';
+const documentListeners = {};
+const rootClasses = new Set();
 const document = {
+  hidden: false,
+  documentElement: { classList: { toggle(name, state) { state ? rootClasses.add(name) : rootClasses.delete(name); } } },
+  addEventListener(name, listener) { documentListeners[name] = listener; },
   body: { getAttribute: () => chartType },
   querySelectorAll: () => [],
   createElementNS: (_, tag) => ({ tagName: tag, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } })
@@ -18,6 +23,12 @@ const context = vm.createContext({
   getComputedStyle: () => ({ getPropertyValue: () => '2.5' })
 });
 vm.runInContext(geometry + renderer, context);
+document.hidden = true;
+documentListeners.visibilitychange();
+assert.ok(rootClasses.has('k-effects-paused'), 'hidden documents must pause theme motion');
+document.hidden = false;
+documentListeners.visibilitychange();
+assert.ok(!rootClasses.has('k-effects-paused'), 'visible documents must resume theme motion');
 function svg(d) {
   return {
     dataset: {}, innerHTML: '', viewBox: { baseVal: { width: 260, height: 40 } },

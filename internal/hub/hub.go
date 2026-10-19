@@ -35,7 +35,7 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 // Version is set from the CLI build version before serving registrations.
-var Version = "v0.2.0-beta.18"
+var Version = "v0.2.0-beta.19"
 
 // Hub 是一个运行中的主控实例。
 type Hub struct {
@@ -76,7 +76,8 @@ type Hub struct {
 	themes *theme.Registry
 	theme  themeCache
 	// themeAssets 缓存各主题包里的资源字节，供 /_theme-assets/ 路由直接吐出。
-	themeAssets *themeAssetCache
+	themeAssets    *themeAssetCache
+	themeInstallMu sync.Mutex
 
 	// snapMu/snapAt/snapData 缓存"每节点最新一条指标"。
 	// SSE 每秒取一次、首页与仪表盘每次请求也要，而原始表按秒在长；

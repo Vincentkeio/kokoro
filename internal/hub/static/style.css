@@ -4978,10 +4978,18 @@ body[data-k-theme="kokoro.mist"] .home-group-filter.is-active {
   background:rgba(117,149,141,.22);
   border-color:rgba(77,115,128,.45);
 }
+body[data-k-theme="kokoro.mist"] { --mist-inset-bg:rgba(224,236,239,.14); }
 body[data-k-theme="kokoro.mist"] .card :is(
   .task-summary,.netcard,.netqrows,.spark-empty,.specs > div.full
 ) {
-  background:rgba(224,236,239,.14);
+  background:var(--mist-inset-bg);
+  border-color:rgba(94,124,136,.22);
+  backdrop-filter:blur(20px) saturate(125%);
+  -webkit-backdrop-filter:blur(20px) saturate(125%);
+}
+body[data-k-theme="kokoro.mist"] #speed .rate-chart-wrap,
+body[data-k-theme="kokoro.mist"] #speed .rate-chart-wrap.is-empty {
+  background-color:var(--mist-inset-bg);
   border-color:rgba(94,124,136,.22);
   backdrop-filter:blur(20px) saturate(125%);
   -webkit-backdrop-filter:blur(20px) saturate(125%);
@@ -5012,3 +5020,117 @@ body[data-k-theme] .home-node-grid { padding-top:0; }
 .update-feedback:empty{display:none}
 [data-update-table] td:last-child{overflow-wrap:anywhere;max-width:34rem}
 @media(max-width:560px){.update-row{align-items:flex-start;flex-direction:column}.update-row>.btn{width:100%}}
+
+/* Distinct resource bars use exported layout choices, including custom themes. */
+body[data-k-theme][data-k-bar="striped"] .card .bar {
+  height:10px; border:1px solid var(--line-strong); border-radius:2px;
+  background:var(--sunken); box-shadow:inset 0 1px 3px rgba(0,0,0,.32);
+}
+body[data-k-theme][data-k-bar="striped"] .card .bar i {
+  border-radius:1px;
+  background-image:linear-gradient(180deg,rgba(255,255,255,.58),transparent 45%,rgba(0,0,0,.24)),repeating-linear-gradient(125deg,rgba(255,255,255,.30) 0 2px,transparent 2px 7px);
+  box-shadow:0 0 9px color-mix(in srgb,var(--accent) 24%,transparent);
+}
+body[data-k-theme][data-k-bar="segmented"] .card .bar {
+  height:10px; border-radius:1px; border:1px solid var(--line);
+  background:var(--sunken); box-shadow:inset 0 1px 3px rgba(0,0,0,.20);
+}
+body[data-k-theme][data-k-bar="segmented"] .card .bar i {
+  border-radius:0;
+  background-image:linear-gradient(180deg,rgba(255,255,255,.64),transparent 48%,rgba(0,0,0,.16));
+  -webkit-mask-image:repeating-linear-gradient(90deg,#000 0 6px,transparent 6px 8px);
+  mask-image:repeating-linear-gradient(90deg,#000 0 6px,transparent 6px 8px);
+}
+body[data-k-theme][data-k-bar="dotted"] .card .bar {
+  height:8px; border:0; border-radius:0; background:color-mix(in srgb,var(--muted) 17%,var(--panel));
+  -webkit-mask-image:radial-gradient(circle at 3px 50%,#000 2.6px,transparent 2.9px);
+  mask-image:radial-gradient(circle at 3px 50%,#000 2.6px,transparent 2.9px);
+  -webkit-mask-size:8px 100%; mask-size:8px 100%;
+}
+body[data-k-theme][data-k-bar="dotted"] .card .bar i { border-radius:0; background-image:none; }
+
+/* Paper: a ruled measuring strip with continuous ink, not Mist's dots. */
+body[data-k-bar="ruled"] .card .bar {
+  position:relative; height:10px; border-radius:0; overflow:hidden;
+  border:0; border-bottom:1px solid color-mix(in srgb,var(--fg) 32%,transparent);
+  background:transparent; box-shadow:none; mask-image:none; -webkit-mask-image:none;
+}
+body[data-k-bar="ruled"] .card .bar::after {
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:repeating-linear-gradient(90deg,var(--muted) 0 1px,transparent 1px 10%);
+  height:3px; top:auto; opacity:.55;
+}
+body[data-k-bar="ruled"] .card .bar i {
+  height:5px; margin-top:1px; border-radius:0;
+  background-image:repeating-linear-gradient(0deg,transparent 0 1px,rgba(251,245,231,.42) 1px 2px);
+  box-shadow:none; mask-image:none; -webkit-mask-image:none;
+}
+
+/* Titanium: a white-hot laser core and coloured bloom outside the track.
+   Overflow must remain visible: clipping was hiding the old fill's glow. */
+body[data-k-bar="laser"] .card .bar {
+  height:4px; position:relative; overflow:visible; border:0; border-radius:99px;
+  background:rgba(113,167,196,.14); box-shadow:0 0 0 1px rgba(120,192,216,.15);
+  mask-image:none; -webkit-mask-image:none;
+}
+body[data-k-bar="laser"] .card .gauges .bar i:is(.cpu,.mem,.disk) {
+  position:relative; border-radius:99px; color:var(--laser-color,var(--cpu));
+  background-color:currentColor;
+  background-image:linear-gradient(0deg,transparent,#efffff 45% 60%,transparent);
+  box-shadow:0 0 5px currentColor,0 0 13px currentColor;
+  mask-image:none; -webkit-mask-image:none;
+}
+body[data-k-bar="laser"] .card .bar i.mem { --laser-color:var(--mem); }
+body[data-k-bar="laser"] .card .bar i.disk { --laser-color:var(--disk); }
+
+/* Titanium's Matrix field uses 24 prebuilt text columns. Their repeated halves
+   scroll upward via transforms; no per-frame JS or decoded animation frames. */
+body[data-k-globe-backdrop="matrix"] .map-card .globe-body {
+  isolation:isolate; background:#050b14;
+  background-image:radial-gradient(ellipse at 50% 65%,rgba(40,75,113,.22),transparent 75%);
+  box-shadow:inset 0 0 38px #030810;
+  border:1px solid rgba(94,188,225,.18);
+}
+body[data-k-globe-backdrop="matrix"] .globe-body::before,
+body[data-k-globe-backdrop="matrix"] .globe-body::after { content:none; }
+body[data-k-globe-backdrop="matrix"] .theme-matrix {
+  position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none;
+  contain:paint; user-select:none;
+  mask-image:linear-gradient(transparent,#000 10% 88%,transparent);
+  -webkit-mask-image:linear-gradient(transparent,#000 10% 88%,transparent);
+}
+body[data-k-globe-backdrop="matrix"] .matrix-column {
+  position:absolute; top:0; width:14px; margin:0;
+  white-space:pre; text-align:center; font:clamp(8px,var(--kokoro-globe-matrix-font-size,12px),20px)/1.5 var(--mono);
+  --matrix-tail:var(--kokoro-globe-matrix-color,#3c8fb7);
+  --matrix-light:var(--kokoro-globe-matrix-highlight,#a4e8ff);
+  background-image:repeating-linear-gradient(to bottom,#edfbff 0 1%,var(--matrix-light) 2%,var(--matrix-tail) 15%,rgba(37,75,107,.25) 31%,transparent 41% 50%);
+  background-clip:text; -webkit-background-clip:text; color:transparent;
+  text-shadow:0 0 5px rgba(110,200,255,.17);
+  animation:kokoro-theme-matrix 24s linear infinite;
+}
+body[data-k-globe-backdrop="matrix"] .matrix-column:nth-child(4n) {
+  --matrix-tail:var(--kokoro-globe-matrix-secondary,#c5bfff);
+  --matrix-light:var(--kokoro-globe-matrix-highlight,#a4e8ff);
+}
+body[data-k-globe-backdrop="matrix"] .globe-body > .globe { z-index:1; background:transparent; }
+body[data-k-globe-backdrop="matrix"] .globe-body.is-motion-paused .matrix-column { animation-play-state:paused; }
+@keyframes kokoro-theme-matrix {
+  from { transform:translateY(0); }
+  to { transform:translateY(-50%); }
+}
+@keyframes kokoro-theme-breathe {
+  from { opacity:.75; }
+  to { opacity:1; }
+}
+@keyframes kokoro-theme-float {
+  from { transform:translateY(0); }
+  to { transform:translateY(calc(-1 * var(--k-visual-distance,4px))); }
+}
+@keyframes kokoro-theme-pan {
+  from { background-position:0% 50%; }
+  to { background-position:100% 50%; }
+}
+@media(prefers-reduced-motion:reduce) {
+  body[data-k-globe-backdrop="matrix"] .matrix-column { animation:none; transform:translateY(-20%); }
+}

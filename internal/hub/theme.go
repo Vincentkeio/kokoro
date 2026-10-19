@@ -525,7 +525,7 @@ func safeBackURL(back string) bool {
 //
 // 两种来源：
 //   - 粘贴 theme.json 原文（最容易，也最安全——纯文本，没有包结构可攻击）；
-//   - 上传 JSON 清单或 .kokoro-theme 包文件（包能带字体、背景图）。
+//   - 上传 JSON 清单或 .kokoro-theme 包文件（包能带背景图和纹理）。
 //
 // 两者都要过 theme.Parse 的同一套校验，最后都落库。
 func (h *Hub) handleThemeImport(w http.ResponseWriter, r *http.Request) {
@@ -632,20 +632,21 @@ func (h *Hub) installBundle(raw []byte, sourceURL string) (*theme.Manifest, erro
 	if m.SourceURL == "" {
 		m.SourceURL = sourceURL
 	}
-	// 资源先进缓存：/_theme-assets/ 路由要从这里取字节。
-	h.themeAssets.set(m.ID, b.Assets)
+	if err := theme.ValidateAssetReferences(m, b.Assets); err != nil {
+		return nil, err
+	}
+	h.themeInstallMu.Lock()
+	defer h.themeInstallMu.Unlock()
+	previous := h.themes.Get(m.ID)
 	if err := h.themes.Register(m); err != nil {
-		h.themeAssets.drop(m.ID)
 		return nil, err
 	}
 	if err := h.persistTheme(m, raw, sourceURL); err != nil {
-		// 落库失败要回滚注册表，否则下次重启这份主题就凭空消失，
-		// 而当前进程里还留着它——比「导入失败」更难排查。
-		if rerr := h.themes.Unregister(m.ID); rerr != nil {
-			log.Printf("[theme] 导入后落库失败且回滚注册表也失败: %v", rerr)
-		}
+		rollbackThemeRegistry(h, m.ID, previous)
 		return nil, err
 	}
+	// 资源缓存只在数据库和注册表都提交成功后替换，失败时保留旧版缓存。
+	h.themeAssets.set(m.ID, b.Assets)
 	// 导入的正是当前生效主题时，必须重建渲染缓存：buildThemeView 对站点
 	// 当前主题走的是 h.theme.tokens 这份启动时渲染好的快照，不重建的话
 	// 导入后页面还是旧配色/旧背景，要等到下次重启才生效——表现成
@@ -661,6 +662,12 @@ func (h *Hub) importManifest(raw []byte, sourceURL string) (*theme.Manifest, err
 	if err != nil {
 		return nil, err
 	}
+	if err := theme.ValidateAssetReferences(m, nil); err != nil {
+		return nil, err
+	}
+	h.themeInstallMu.Lock()
+	defer h.themeInstallMu.Unlock()
+	previous := h.themes.Get(m.ID)
 	if err := h.themes.Register(m); err != nil {
 		return nil, err
 	}
@@ -671,14 +678,24 @@ func (h *Hub) importManifest(raw []byte, sourceURL string) (*theme.Manifest, err
 		m.SourceURL = sourceURL
 	}
 	if err := h.persistTheme(m, nil, sourceURL); err != nil {
-		// 注册表已登记但没落库 = 重启即丢，主动撤掉。
-		if rerr := h.themes.Unregister(m.ID); rerr != nil {
-			log.Printf("[theme] 登记后落库失败且回滚失败: %v", rerr)
-		}
+		rollbackThemeRegistry(h, m.ID, previous)
 		return nil, err
 	}
+	h.themeAssets.drop(m.ID)
 	h.refreshActiveThemeIfChanged(m.ID)
 	return m, nil
+}
+
+func rollbackThemeRegistry(h *Hub, id string, previous *theme.Manifest) {
+	if previous != nil {
+		if err := h.themes.Register(previous); err != nil {
+			log.Printf("[theme] 回滚主题 %s 失败: %v", id, err)
+		}
+		return
+	}
+	if err := h.themes.Unregister(id); err != nil {
+		log.Printf("[theme] 回滚新主题 %s 失败: %v", id, err)
+	}
 }
 
 // decodeMaybeBase64 尝试把一段文本当 base64 解码，用于支持「把包粘成 base64」的场景。
@@ -699,7 +716,7 @@ func decodeMaybeBase64(s string) ([]byte, error) {
 //
 // 对方站点上有两种可获取物：
 //   - /theme.json                  —— 当前生效主题的清单（任何站都有）；
-//   - /theme-bundle/<id>           —— 当前生效主题的完整包（含字体/背景等资源）。
+//   - /theme-bundle/<id>           —— 当前生效主题的完整包（含背景和纹理等资源）。
 //
 // 优先抓包；对方没有包就退回清单。但「包存在却没过校验」是硬失败，
 // 不退回——理由见 grabTheme 里的注释。
@@ -718,7 +735,7 @@ func (h *Hub) handleThemeGrab(w http.ResponseWriter, r *http.Request) {
 		h.themeErr(w, "请填写 http(s) 开头的地址", r)
 		return
 	}
-	m, kind, err := h.grabTheme(src)
+	m, kind, err := h.grabTheme(src, r.PostFormValue("replace") == "1")
 	if err != nil {
 		h.themeErr(w, err.Error(), r)
 		return
@@ -809,9 +826,9 @@ func themeFetcher(client *http.Client) func(string) ([]byte, error) {
 //
 // 贴的是 GitHub 链接时走另一条路（见 theme_github.go）——那边要把仓库页面
 // 地址翻译成 raw 地址，不能按「站点根 + /theme.json」去拼。
-func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
+func (h *Hub) grabTheme(src string, replace ...bool) (*theme.Manifest, string, error) {
 	if target, ok := parseGitHubThemeURL(src); ok {
-		return h.grabGitHubTheme(src, target)
+		return h.grabGitHubTheme(src, target, replace...)
 	}
 	// The public per-theme copy link points directly at a complete package.
 	// Accept it as-is so users do not have to rewrite it to the site root.
@@ -822,7 +839,7 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
-		return h.installGrabBundle(raw, src)
+		return h.installGrabBundle(raw, src, replace...)
 	}
 	base, err := normalizeThemeBase(src)
 	if err != nil {
@@ -840,7 +857,13 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 			if perr != nil {
 				// 没有包端点是很常见的情况（对方只开放了清单），退回即可。
 				log.Printf("[theme] %s 没有提供主题包，按清单方式获取: %v", base, perr)
-			} else if m, kind, ierr := h.installGrabBundle(pkg, base); ierr != nil {
+			} else if bundled, ierr := theme.ExtractPackage(pkg); ierr != nil {
+				return nil, "", fmt.Errorf("对方的主题包无效：%w", ierr)
+			} else if bundledManifest, ierr := theme.Parse(bundled.ManifestRaw); ierr != nil {
+				return nil, "", ierr
+			} else if bundledManifest.ID != probe.ID {
+				return nil, "", fmt.Errorf("主题清单与完整包的 ID 不一致，已中止获取")
+			} else if m, kind, ierr := h.installGrabBundle(pkg, base, replace...); ierr != nil {
 				// 包拿到了但没过校验：这是明确的安全信号，不能装作没这回事
 				// 然后转头去装同一站点的清单——那样等于给对方一次免费重试机会，
 				// 攻击者只要把包做坏、清单做干净就能绕过。
@@ -850,7 +873,7 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 			}
 		}
 		// 第二步：退回裸清单。
-		m, kind, err := h.importGrabManifest(raw, base)
+		m, kind, err := h.importGrabManifest(raw, base, replace...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -864,7 +887,7 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
-		m, kind, err := h.importGrabManifest(raw, src)
+		m, kind, err := h.importGrabManifest(raw, src, replace...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -874,7 +897,7 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	m, kind, err := h.importGrabManifest(raw, base)
+	m, kind, err := h.importGrabManifest(raw, base, replace...)
 	if err != nil {
 		return nil, "", err
 	}
@@ -882,8 +905,8 @@ func (h *Hub) grabTheme(src string) (*theme.Manifest, string, error) {
 }
 
 // installGrabBundle keeps remote imports additive: an existing theme ID is
-// left untouched, while new IDs are installed with the full package assets.
-func (h *Hub) installGrabBundle(raw []byte, source string) (*theme.Manifest, string, error) {
+// left untouched unless the administrator explicitly enables replacement.
+func (h *Hub) installGrabBundle(raw []byte, source string, replace ...bool) (*theme.Manifest, string, error) {
 	b, err := theme.ExtractPackage(raw)
 	if err != nil {
 		return nil, "", err
@@ -896,7 +919,7 @@ func (h *Hub) installGrabBundle(raw []byte, source string) (*theme.Manifest, str
 	if err != nil {
 		return nil, "", err
 	}
-	if existing := h.themes.Get(m.ID); existing != nil {
+	if existing := h.themes.Get(m.ID); existing != nil && !replaceRequested(replace) {
 		return existing, "existing", nil
 	}
 	m, err = h.installBundle(raw, source)
@@ -906,12 +929,12 @@ func (h *Hub) installGrabBundle(raw []byte, source string) (*theme.Manifest, str
 	return m, "bundle", nil
 }
 
-func (h *Hub) importGrabManifest(raw []byte, source string) (*theme.Manifest, string, error) {
+func (h *Hub) importGrabManifest(raw []byte, source string, replace ...bool) (*theme.Manifest, string, error) {
 	m, err := theme.Parse(raw)
 	if err != nil {
 		return nil, "", err
 	}
-	if existing := h.themes.Get(m.ID); existing != nil {
+	if existing := h.themes.Get(m.ID); existing != nil && !replaceRequested(replace) {
 		return existing, "existing", nil
 	}
 	m, err = h.importManifest(raw, source)
@@ -920,6 +943,8 @@ func (h *Hub) importGrabManifest(raw []byte, source string) (*theme.Manifest, st
 	}
 	return m, "manifest", nil
 }
+
+func replaceRequested(replace []bool) bool { return len(replace) > 0 && replace[0] }
 
 // normalizeThemeURL 把用户填的地址规整成 theme.json 的完整 URL。
 func normalizeThemeURL(src string) (string, error) {
@@ -1016,21 +1041,24 @@ func (h *Hub) handleThemeDelete(w http.ResponseWriter, r *http.Request) {
 			http.StatusSeeOther)
 		return
 	}
+	h.themeInstallMu.Lock()
+	defer h.themeInstallMu.Unlock()
+	previous := h.themes.Get(id)
 	if err := h.themes.Unregister(id); err != nil {
 		http.Redirect(w, r, "/admin?msg="+url.QueryEscape(err.Error())+"#themes",
 			http.StatusSeeOther)
 		return
 	}
-	// 资源缓存也要一并丢掉，否则 /_theme-assets/ 还能吐出一套已删除主题的图。
-	h.themeAssets.drop(id)
 	// 注册表和数据库都要删。只删前者的话，重启后这份主题会从数据库里
 	// 满血复活——对管理员来说就是「我明明删了」。
 	if err := h.removeTheme(id); err != nil {
+		rollbackThemeRegistry(h, id, previous)
 		log.Printf("[theme] 删除主题存档失败 %s: %v", id, err)
-		http.Redirect(w, r, "/admin?msg="+url.QueryEscape("已从内存移除，但删除存档失败："+err.Error())+"#themes",
+		http.Redirect(w, r, "/admin?msg="+url.QueryEscape("删除主题失败："+err.Error())+"#themes",
 			http.StatusSeeOther)
 		return
 	}
+	h.themeAssets.drop(id)
 	_ = h.store.AddAudit("admin", "theme.delete", id, "")
 	// 删掉的正好是当前主题时，立刻切回默认，避免渲染时拿到已注销的主题。
 	if h.ActiveThemeID() == id {
@@ -1090,6 +1118,21 @@ func (h *Hub) handleThemeBundle(w http.ResponseWriter, r *http.Request) {
 	}
 	// 已有原始包就原样发出去（哈希与作者声明完全一致）。
 	if raw, ok := h.storedBundle(m.ID); ok {
+		bundle, err := theme.ExtractPackage(raw)
+		if err == nil {
+			var packaged *theme.Manifest
+			packaged, err = theme.Parse(bundle.ManifestRaw)
+			if err == nil && packaged.ID != m.ID {
+				err = fmt.Errorf("存档主题 ID 不一致")
+			}
+			if err == nil {
+				err = theme.ValidateAssetReferences(packaged, bundle.Assets)
+			}
+		}
+		if err != nil {
+			http.Error(w, "主题包不完整："+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		writeBundle(w, raw, m.ID)
 		return
 	}

@@ -430,7 +430,7 @@ func TestGrabThemePrefersBundle(t *testing.T) {
 			})
 		case strings.HasPrefix(r.URL.Path, "/theme-bundle/"):
 			w.Header().Set("Content-Type", "application/zip")
-			_, _ = w.Write(makeBundle(t, "peer.packaged", map[string][]byte{"a.txt": []byte("A")}))
+			_, _ = w.Write(makeBundle(t, "peer.packaged", map[string][]byte{"a.png": []byte("A")}))
 		default:
 			http.NotFound(w, r)
 		}

@@ -269,6 +269,7 @@ details.th-more > summary { cursor: pointer; color: var(--muted); font-size: 12.
       <form class="th-form" method="post" action="/admin/themes/grab">
         <input name="url" required
                placeholder="https://github.com/user/repo 或 https://vps.example.com">
+        <label class="chk"><input type="checkbox" name="replace" value="1">覆盖本地同名主题</label>
         <div><button class="btn" type="submit">获取并导入</button></div>
       </form>
     </section>

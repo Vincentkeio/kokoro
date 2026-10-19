@@ -3,7 +3,7 @@ package theme
 // .kokoro-theme 标准主题包的读写与安全校验。
 //
 // 为什么要有「包」这一层：裸 theme.json 只能换配色与布局偏好，而一套完整的
-// 皮肤往往还需要自定义字体、背景图、预览图。这些二进制资源没法塞进 JSON，
+// 皮肤往往还需要背景图、纹理和预览图。这些二进制资源没法塞进 JSON，
 // 于是定义一个 zip 容器——但 zip 天生是攻击面最大的格式之一：
 //
 //   - 路径穿越（zip-slip）：条目名写 ../../etc/cron.d/x 就能写到任意路径；
@@ -13,9 +13,8 @@ package theme
 //   - 远程资源：主题 CSS 里挂 url(https://evil.tld/x.js) 让访客浏览器去拉。
 //
 // 所以这里的每个环节都有硬上限，并且**校验全部通过之后才允许登记**。
-// 包只是「内容」，真正的能力边界还是 tokens 白名单 + layout 枚举：
-// 包里即便带了 css/overlay.css，Hub 也只把它当不可执行资源存放，
-// 绝不注入到页面里。
+// 能力边界是 tokens、layout 与固定组件的属性白名单。
+// 附加资源只接受栅格图片；字体、CSS、脚本和向量文档均拒绝入包。
 
 import (
 	"archive/zip"
@@ -188,6 +187,9 @@ func ExtractPackage(raw []byte) (*PackageBundle, error) {
 		case name == readmeName:
 			readmeTxt = limitText(data)
 		case strings.HasPrefix(name, assetsDir):
+			if _, allowed := AssetMIME(name); !allowed {
+				return nil, fmt.Errorf("主题资源 %q 不支持：只允许栅格图片，不接受字体、SVG、CSS 或脚本", name)
+			}
 			assets = append(assets, Asset{Name: name, Data: data})
 			names = append(names, name)
 		default:
@@ -437,6 +439,23 @@ func BuildPackage(m *Manifest, assets map[string][]byte, preview []byte, license
 	if m == nil {
 		return nil, fmt.Errorf("theme: 主题为空")
 	}
+	if err := m.Validate(); err != nil {
+		return nil, err
+	}
+	refs := make([]Asset, 0, len(assets))
+	for name := range assets {
+		full, err := SafeAssetPath(name)
+		if err != nil {
+			return nil, fmt.Errorf("theme: 资源路径无效：%w", err)
+		}
+		if _, allowed := AssetMIME(full); !allowed {
+			return nil, fmt.Errorf("theme: 资源 %q 不支持，只允许栅格图片", name)
+		}
+		refs = append(refs, Asset{Name: full})
+	}
+	if err := ValidateAssetReferences(m, refs); err != nil {
+		return nil, err
+	}
 
 	// 1. 资源按路径排序，汇总哈希。
 	names := make([]string, 0, len(assets))
@@ -511,6 +530,9 @@ func BuildPackage(m *Manifest, assets map[string][]byte, preview []byte, license
 	}
 	if err := zw.Close(); err != nil {
 		return nil, fmt.Errorf("theme: 关闭 zip 失败: %w", err)
+	}
+	if _, err := ExtractPackage(buf.Bytes()); err != nil {
+		return nil, fmt.Errorf("theme: 生成的包超出导入边界：%w", err)
 	}
 	return buf.Bytes(), nil
 }

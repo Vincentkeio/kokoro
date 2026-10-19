@@ -20,14 +20,15 @@ package theme
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 )
 
 // 版本号。tokensSchemaVersion 变化时，Hub 需要按 §8 的别名表迁移旧变量名。
 const (
-	TokensSchemaVersion = 2
-	LayoutSchemaVersion = 1
+	TokensSchemaVersion = 3
+	LayoutSchemaVersion = 2
 	ManifestVersion     = 1
 )
 
@@ -90,19 +91,22 @@ type Mode struct {
 
 // Layout 是第二层布局描述。
 type Layout struct {
-	Shell  ShellLayout  `json:"shell,omitempty"`
-	Home   HomeLayout   `json:"home,omitempty"`
-	Detail DetailLayout `json:"detail,omitempty"`
-	Charts ChartsLayout `json:"charts,omitempty"`
-	Misc   MiscLayout   `json:"misc,omitempty"`
-	Globe  GlobeLayout  `json:"globe,omitempty"`
+	Shell   ShellLayout                  `json:"shell,omitempty"`
+	Home    HomeLayout                   `json:"home,omitempty"`
+	Detail  DetailLayout                 `json:"detail,omitempty"`
+	Charts  ChartsLayout                 `json:"charts,omitempty"`
+	Misc    MiscLayout                   `json:"misc,omitempty"`
+	Globe   GlobeLayout                  `json:"globe,omitempty"`
+	Visuals map[string]map[string]string `json:"visuals,omitempty"`
 }
 
 // GlobeLayout 控制首页地球的动态层开关；具体样式由 --kokoro-globe-* tokens 控制。
 type GlobeLayout struct {
-	ShowRoutes *bool `json:"showRoutes,omitempty"`
-	ShowFlow   *bool `json:"showFlow,omitempty"`
-	AutoRotate *bool `json:"autoRotate,omitempty"`
+	ShowRoutes   *bool  `json:"showRoutes,omitempty"`
+	ShowFlow     *bool  `json:"showFlow,omitempty"`
+	AutoRotate   *bool  `json:"autoRotate,omitempty"`
+	Backdrop     string `json:"backdrop,omitempty"`     // none|matrix (layout v2)
+	MatrixGlyphs string `json:"matrixGlyphs,omitempty"` // numeric|binary|hex|katakana|mixed
 }
 
 // ShellLayout 是整站骨架。
@@ -192,7 +196,7 @@ type ChartsLayout struct {
 // MiscLayout 是零碎风格开关。
 type MiscLayout struct {
 	StatusDotStyle string `json:"statusDotStyle,omitempty"` // solid|ring|glow|none
-	UsageBarStyle  string `json:"usageBarStyle,omitempty"`  // solid|gradient|segmented|striped|dotted|soft|none
+	UsageBarStyle  string `json:"usageBarStyle,omitempty"`  // solid|gradient|segmented|striped|dotted|soft|laser|ruled|none
 	UptimeBarStyle string `json:"uptimeBarStyle,omitempty"` // solid|pill|hatch|ruled|tiles|dots
 	TagStyle       string `json:"tagStyle,omitempty"`       // pill|square|text
 	BadgeStyle     string `json:"badgeStyle,omitempty"`     // soft|outline|solid
@@ -206,11 +210,28 @@ type MiscLayout struct {
 // Parse 从 JSON 解析并校验一份清单。校验顺序刻意与 spec §2.5 一致：
 // 结构版本 → 标识字段 → tokens → layout。
 func Parse(data []byte) (*Manifest, error) {
+	// Report unsupported capability versions before the strict field decoder,
+	// so a newer layout does not merely look like a misspelled JSON field.
+	var version struct {
+		Layout int `json:"layoutSchemaVersion"`
+		Tokens int `json:"tokensSchemaVersion"`
+	}
+	if json.Unmarshal(data, &version) == nil {
+		if version.Layout > LayoutSchemaVersion {
+			return nil, fmt.Errorf("主题需要 layout v%d，当前面板支持 v%d，请更新面板后再导入", version.Layout, LayoutSchemaVersion)
+		}
+		if version.Tokens > TokensSchemaVersion {
+			return nil, fmt.Errorf("主题需要 tokens v%d，当前面板支持 v%d，请更新面板后再导入", version.Tokens, TokensSchemaVersion)
+		}
+	}
 	var m Manifest
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&m); err != nil {
 		return nil, fmt.Errorf("主题 JSON 解析失败: %w", err)
+	}
+	if err := dec.Decode(new(any)); err != io.EOF {
+		return nil, fmt.Errorf("主题文件只能包含一个 JSON 对象")
 	}
 	if err := m.Validate(); err != nil {
 		return nil, err
@@ -261,11 +282,23 @@ func (m *Manifest) Validate() error {
 	if m.TokensSchemaVersion > TokensSchemaVersion {
 		return fmt.Errorf("主题使用了 tokens v%d，当前 Hub 只认 v%d", m.TokensSchemaVersion, TokensSchemaVersion)
 	}
+	if m.TokensSchemaVersion < 3 {
+		for _, tokens := range []map[string]string{m.Tokens, m.TokensDark} {
+			for name := range tokens {
+				if isVisualV3Token(name) {
+					return fmt.Errorf("变量 %s 需要 tokensSchemaVersion: 3", name)
+				}
+			}
+		}
+	}
 	if m.LayoutSchemaVersion == 0 {
 		m.LayoutSchemaVersion = LayoutSchemaVersion
 	}
 	if m.LayoutSchemaVersion > LayoutSchemaVersion {
 		return fmt.Errorf("主题使用了 layout v%d，当前 Hub 只认 v%d", m.LayoutSchemaVersion, LayoutSchemaVersion)
+	}
+	if m.LayoutSchemaVersion < 2 && (m.Layout.Misc.UsageBarStyle == "laser" || m.Layout.Misc.UsageBarStyle == "ruled" || m.Layout.Globe.Backdrop != "" && m.Layout.Globe.Backdrop != "none" || m.Layout.Globe.MatrixGlyphs != "" || len(m.Layout.Visuals) > 0) {
+		return fmt.Errorf("主题视觉扩展和动态背景需要 layoutSchemaVersion: 2")
 	}
 	if err := ValidateTokens(m.Tokens, "tokens"); err != nil {
 		return err

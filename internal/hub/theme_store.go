@@ -122,13 +122,31 @@ func (h *Hub) loadStoredThemes() {
 				m.Package = &pkg
 			}
 		}
+		var assets []theme.Asset
+		if len(t.Bundle) > 0 {
+			bundle, err := theme.ExtractPackage(t.Bundle)
+			if err != nil {
+				log.Printf("[theme] 跳过资源包损坏的主题 %s：%v", m.ID, err)
+				continue
+			}
+			packaged, err := theme.Parse(bundle.ManifestRaw)
+			if err != nil || packaged.ID != m.ID {
+				log.Printf("[theme] 跳过资源包与清单不一致的主题 %s", m.ID)
+				continue
+			}
+			assets = bundle.Assets
+		}
+		if err := theme.ValidateAssetReferences(m, assets); err != nil {
+			log.Printf("[theme] 跳过资源缺失的主题 %s：%v", m.ID, err)
+			continue
+		}
 		if err := h.themes.Register(m); err != nil {
 			log.Printf("[theme] 登记存档 %s 失败：%v", m.ID, err)
 			continue
 		}
 		// 存档里带了原始包就顺便把资源解出来缓存，否则重启后
 		// /_theme-assets/ 会一直 404，背景图全丢。
-		h.rememberThemeAssets(m.ID, t.Bundle)
+		h.themeAssets.set(m.ID, assets)
 		n++
 	}
 	if n > 0 {

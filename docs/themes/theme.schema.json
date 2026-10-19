@@ -69,17 +69,17 @@
       "maxItems": 16
     },
     "tokensSchemaVersion": {
-      "description": "tokens 变量表版本。当前支持到 2；填 0 或不填按 2 处理，填大于 2 的值 Hub 会拒绝。",
+      "description": "变量表版本。当前支持 3，兼容 1、2；视觉扩展变量必须声明 3。高版本会拒绝并提示更新面板。",
       "type": "integer",
       "minimum": 1,
-      "maximum": 2,
-      "default": 2
+      "maximum": 3,
+      "default": 3
     },
     "tokens": {
       "type": "object",
-      "description": "主题颜色、字体、尺寸与组件样式。当前允许 168 个 CSS 变量。未知变量名会被拒绝。",
+      "description": "主题设计变量。允许 185 个变量；未知名称拒绝。",
       "propertyNames": {
-        "description": "变量名白名单，共 168 个，与 Hub 的 TokenSchema + Singles 完全一致。",
+        "description": "变量名白名单，共 185 个，与运行时一致。",
         "enum": [
           "--kokoro-backdrop-blur",
           "--kokoro-bg-attachment",
@@ -95,6 +95,7 @@
           "--kokoro-chart-axis",
           "--kokoro-chart-bar-opacity",
           "--kokoro-chart-bar-radius",
+          "--kokoro-chart-filter",
           "--kokoro-chart-grid",
           "--kokoro-chart-line-width",
           "--kokoro-chart-point-radius",
@@ -155,6 +156,8 @@
           "--kokoro-font-weight-medium",
           "--kokoro-font-weight-normal",
           "--kokoro-footer-bg",
+          "--kokoro-globe-background",
+          "--kokoro-globe-background-size",
           "--kokoro-globe-day",
           "--kokoro-globe-flow",
           "--kokoro-globe-flow-core",
@@ -170,6 +173,15 @@
           "--kokoro-globe-hub-ring-size",
           "--kokoro-globe-hub-ring-width",
           "--kokoro-globe-hub-size",
+          "--kokoro-globe-lit-day",
+          "--kokoro-globe-lit-night",
+          "--kokoro-globe-matrix-color",
+          "--kokoro-globe-matrix-density",
+          "--kokoro-globe-matrix-font-size",
+          "--kokoro-globe-matrix-highlight",
+          "--kokoro-globe-matrix-opacity",
+          "--kokoro-globe-matrix-secondary",
+          "--kokoro-globe-matrix-speed",
           "--kokoro-globe-night",
           "--kokoro-globe-node-halo-size",
           "--kokoro-globe-node-muted-ring-size",
@@ -246,6 +258,11 @@
           "--kokoro-uptime-bar-gap",
           "--kokoro-uptime-bar-height",
           "--kokoro-uptime-bar-radius",
+          "--kokoro-usage-bar-fill",
+          "--kokoro-usage-bar-glow",
+          "--kokoro-usage-bar-height",
+          "--kokoro-usage-bar-radius",
+          "--kokoro-usage-bar-track",
           "--kokoro-z-dropdown",
           "--kokoro-z-modal",
           "--kokoro-z-toast"
@@ -260,9 +277,9 @@
     },
     "tokensDark": {
       "type": "object",
-      "description": "只覆盖与浅色模式不同的项；未写项沿用 tokens。当前允许 168 个 CSS 变量。",
+      "description": "只覆盖深色差异，未写项继承 tokens。允许 185 个变量；未知名称拒绝。",
       "propertyNames": {
-        "description": "变量名白名单，共 168 个，与 Hub 的 TokenSchema + Singles 完全一致。",
+        "description": "变量名白名单，共 185 个，与运行时一致。",
         "enum": [
           "--kokoro-backdrop-blur",
           "--kokoro-bg-attachment",
@@ -278,6 +295,7 @@
           "--kokoro-chart-axis",
           "--kokoro-chart-bar-opacity",
           "--kokoro-chart-bar-radius",
+          "--kokoro-chart-filter",
           "--kokoro-chart-grid",
           "--kokoro-chart-line-width",
           "--kokoro-chart-point-radius",
@@ -338,6 +356,8 @@
           "--kokoro-font-weight-medium",
           "--kokoro-font-weight-normal",
           "--kokoro-footer-bg",
+          "--kokoro-globe-background",
+          "--kokoro-globe-background-size",
           "--kokoro-globe-day",
           "--kokoro-globe-flow",
           "--kokoro-globe-flow-core",
@@ -353,6 +373,15 @@
           "--kokoro-globe-hub-ring-size",
           "--kokoro-globe-hub-ring-width",
           "--kokoro-globe-hub-size",
+          "--kokoro-globe-lit-day",
+          "--kokoro-globe-lit-night",
+          "--kokoro-globe-matrix-color",
+          "--kokoro-globe-matrix-density",
+          "--kokoro-globe-matrix-font-size",
+          "--kokoro-globe-matrix-highlight",
+          "--kokoro-globe-matrix-opacity",
+          "--kokoro-globe-matrix-secondary",
+          "--kokoro-globe-matrix-speed",
           "--kokoro-globe-night",
           "--kokoro-globe-node-halo-size",
           "--kokoro-globe-node-muted-ring-size",
@@ -429,6 +458,11 @@
           "--kokoro-uptime-bar-gap",
           "--kokoro-uptime-bar-height",
           "--kokoro-uptime-bar-radius",
+          "--kokoro-usage-bar-fill",
+          "--kokoro-usage-bar-glow",
+          "--kokoro-usage-bar-height",
+          "--kokoro-usage-bar-radius",
+          "--kokoro-usage-bar-track",
           "--kokoro-z-dropdown",
           "--kokoro-z-modal",
           "--kokoro-z-toast"
@@ -465,11 +499,11 @@
       }
     },
     "layoutSchemaVersion": {
-      "description": "layout 结构版本。当前只支持 1；填 0 或不填按 1 处理，填大于 1 的值 Hub 会拒绝。",
+      "description": "布局版本。当前支持 2，兼容 1；视觉组件、激光条、刻度条和字符雨必须声明 2。",
       "type": "integer",
       "minimum": 1,
-      "maximum": 1,
-      "default": 1
+      "maximum": 2,
+      "default": 2
     },
     "layout": {
       "type": "object",
@@ -841,13 +875,16 @@
               "$comment": "layout.go enums['misc.statusDotStyle']"
             },
             "usageBarStyle": {
-              "description": "资源占用条形态：实心、渐变、分段、斜纹、点阵或隐藏。",
+              "description": "资源占用条形态；laser 为激光外发光，ruled 为墨线刻度，二者需 layout v2。",
               "enum": [
                 "solid",
                 "gradient",
                 "segmented",
                 "striped",
                 "dotted",
+                "soft",
+                "laser",
+                "ruled",
                 "none"
               ],
               "$comment": "layout.go enums['misc.usageBarStyle']"
@@ -920,7 +957,55 @@
             "autoRotate": {
               "description": "静止时是否自动旋转；仍尊重系统减少动态效果设置。不填默认为 true。",
               "type": "boolean"
+            },
+            "backdrop": {
+              "enum": [
+                "none",
+                "matrix"
+              ],
+              "description": "地球背景：none 或向上循环字符雨 matrix。需 layout v2。"
+            },
+            "matrixGlyphs": {
+              "enum": [
+                "numeric",
+                "binary",
+                "hex",
+                "katakana",
+                "mixed"
+              ],
+              "description": "字符雨字形集合，默认 mixed。需 layout v2。"
             }
+          }
+        },
+        "visuals": {
+          "type": "object",
+          "description": "公开页面的组件视觉规则；只接受固定组件和属性，无任意选择器或脚本。值中的本地资源必须在完整包内。",
+          "maxProperties": 19,
+          "propertyNames": {
+            "enum": [
+              "header",
+              "hero",
+              "overview",
+              "card",
+              "card-hover",
+              "card-offline",
+              "card-result",
+              "rate-panel",
+              "rate-chart",
+              "globe-panel",
+              "globe-background",
+              "clock",
+              "usage-track",
+              "usage-fill",
+              "chart-line",
+              "chart-area",
+              "uptime-cell",
+              "button",
+              "tag"
+            ]
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/visualStyle"
           }
         }
       }
@@ -1103,6 +1188,9 @@
             "segmented",
             "striped",
             "dotted",
+            "soft",
+            "laser",
+            "ruled",
             "none"
           ]
         },
@@ -1147,9 +1235,261 @@
             "tiles",
             "dots"
           ]
+        },
+        "globe.backdrop": {
+          "enum": [
+            "none",
+            "matrix"
+          ]
+        },
+        "globe.matrixGlyphs": {
+          "enum": [
+            "numeric",
+            "binary",
+            "hex",
+            "katakana",
+            "mixed"
+          ]
+        }
+      }
+    },
+    "visualStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 40,
+      "properties": {
+        "background": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "background-image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "background-color": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "background-size": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "background-position": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "background-repeat": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "background-blend-mode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "color": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "border": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "border-color": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "border-style": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "border-radius": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "box-shadow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "text-shadow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "filter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "backdrop-filter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "opacity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "mix-blend-mode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "mask-image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "mask-size": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "mask-position": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "mask-repeat": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "clip-path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "transform": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "transform-origin": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "outline-color": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "stroke": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "stroke-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "stroke-dasharray": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "fill": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "font-family": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "font-size": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "letter-spacing": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "transition-duration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "motion": {
+          "enum": [
+            "none",
+            "breathe",
+            "float",
+            "pan"
+          ]
+        },
+        "motion-duration": {
+          "type": "string",
+          "pattern": "^\\d+(?:\\.\\d+)?(?:ms|s)$",
+          "description": "周期限制为 2s–60s，默认 6s。"
+        },
+        "motion-distance": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$",
+          "description": "float 位移；运行时限制在 0–12px，默认 4px。"
         }
       }
     }
   },
-  "$comment": "这份 Schema 只描述格式与取值范围，不能替代 Hub 的校验。安全边界在 internal/theme.Parse（DisallowUnknownFields）、ValidateTokens（禁止注入字符和控制字符，逐个校验 url() 为规范本地资源，禁止 image-set 等替代资源函数）、ValidateLayout（枚举与共享 CSS 长度安全校验）以及 package.go（解压限制、禁止路径回退及重复条目、排序后校验资源哈希）。规则同时适用于 tokensDark；合法 calc/clamp/var、渐变、字体栈和带引号的本地 url() 继续可用。Schema 通过只代表格式正确，最终以 Hub 校验为准。"
+  "$comment": "此 Schema 与 tokens v3 / layout v2 对齐。运行时还会校验值类型、版本、URL、资源完整性和压缩包限制。渲染、导出、导入、一键获取使用相同能力范围；未知能力拒绝，缺资源拒绝，不降级成残缺主题。"
 }

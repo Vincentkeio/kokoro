@@ -26,7 +26,7 @@ type TokenGroup struct {
 	Defaults map[string]string // 完整变量名 → 默认值
 }
 
-// TokenSchema 是完整命名表（tokensSchemaVersion = 2）。
+// TokenSchema 与 Singles 组成完整命名表（tokensSchemaVersion = 3）。
 //
 // 数量刻意给足：主题能调的维度越多，「换皮」才不是换色。桌面全部给默认值，
 // 主题只需要写自己不一样的键——这既是省事，也是稀疏深色覆盖的前提。
@@ -209,6 +209,15 @@ func kindFor(name string) tokenKind {
 		}
 	}
 	switch {
+	case name == "--kokoro-globe-background" || name == "--kokoro-globe-background-size" ||
+		strings.HasPrefix(name, "--kokoro-usage-bar-") || name == "--kokoro-chart-filter":
+		return kindLoose
+	case name == "--kokoro-globe-matrix-opacity" || name == "--kokoro-globe-matrix-speed" || name == "--kokoro-globe-matrix-density":
+		return kindNumber
+	case name == "--kokoro-globe-matrix-font-size":
+		return kindLength
+	case strings.HasPrefix(name, "--kokoro-globe-matrix-"):
+		return kindColor
 	case name == "--kokoro-glow":
 		return kindShadow
 	case strings.HasPrefix(name, "--kokoro-shadow-"):
@@ -314,6 +323,21 @@ func kindFor(name string) tokenKind {
 // 否则 DefaultTokenMap 会出现重复键、渲染出的 CSS 里同一个变量写两遍，
 // 表现为「值被静默覆盖」。init 里有断言守着这条不变量。
 var Singles = map[string]string{
+	"--kokoro-globe-background":             "none",
+	"--kokoro-globe-background-size":        "cover",
+	"--kokoro-globe-matrix-color":           "#3c8fb7",
+	"--kokoro-globe-matrix-highlight":       "#a4e8ff",
+	"--kokoro-globe-matrix-secondary":       "#c5bfff",
+	"--kokoro-globe-matrix-opacity":         "1",
+	"--kokoro-globe-matrix-speed":           "1",
+	"--kokoro-globe-matrix-density":         "24",
+	"--kokoro-globe-matrix-font-size":       "12px",
+	"--kokoro-usage-bar-height":             "initial",
+	"--kokoro-usage-bar-radius":             "initial",
+	"--kokoro-usage-bar-glow":               "initial",
+	"--kokoro-usage-bar-fill":               "initial",
+	"--kokoro-usage-bar-track":              "initial",
+	"--kokoro-chart-filter":                 "none",
 	"--kokoro-backdrop-blur":                "0px",
 	"--kokoro-globe-day":                    "#93a4bd",
 	"--kokoro-globe-night":                  "#3b465c",
@@ -530,7 +554,7 @@ func validateTokenValue(name, val string, kind tokenKind) error {
 	case kindLoose:
 		// 表面别名类：只要求括号配对（挡住 "foo(" 这种残缺写法），
 		// 具体是颜色还是长度由 CSS 自己判断，我们不越权替作者决定。
-		if strings.ContainsAny(val, "()") && !balancedArgs(val) {
+		if !balancedCSSValue(val) {
 			return fmt.Errorf("括号不配对")
 		}
 		if strings.HasPrefix(val, "var(") && !strings.Contains(val, "--kokoro-") {
@@ -748,6 +772,33 @@ func balancedArgs(v string) bool {
 	return false
 }
 
+// Layered gradients, filters and backgrounds may contain several independent
+// functions. Check every pair while preserving quoted local resource paths.
+func balancedCSSValue(v string) bool {
+	depth := 0
+	var quote rune
+	for _, char := range v {
+		if quote != 0 {
+			if char == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch char {
+		case '\'', '"':
+			quote = char
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth < 0 {
+				return false
+			}
+		}
+	}
+	return depth == 0 && quote == 0
+}
+
 // ---- 渲染 ----
 
 // RenderTokens 把一份清单渲染成 <style> 内容。
@@ -889,6 +940,33 @@ func writeLayoutVars(b *strings.Builder, m *Manifest) {
 func RenderLayoutCSS(m *Manifest) string {
 	l := m.Layout
 	var b strings.Builder
+	// Opt-in visual tokens share the same variables used by the renderer. Rules
+	// are emitted only when a theme explicitly sets the property, preserving the
+	// built-in style defaults for every other theme.
+	if hasThemeToken(m, "--kokoro-globe-background") {
+		b.WriteString(`body[data-k-theme] .map-card .globe-body{background-image:var(--kokoro-globe-background);isolation:isolate}` + "\n")
+	}
+	if hasThemeToken(m, "--kokoro-globe-background-size") {
+		b.WriteString(`body[data-k-theme] .map-card .globe-body{background-size:var(--kokoro-globe-background-size);background-position:center}` + "\n")
+	}
+	if hasThemeToken(m, "--kokoro-usage-bar-height") {
+		b.WriteString(`body[data-k-theme] .card .bar{height:var(--kokoro-usage-bar-height)}` + "\n")
+	}
+	if hasThemeToken(m, "--kokoro-usage-bar-radius") {
+		b.WriteString(`body[data-k-theme] .card .bar,body[data-k-theme] .card .bar i{border-radius:var(--kokoro-usage-bar-radius)}` + "\n")
+	}
+	if hasThemeToken(m, "--kokoro-usage-bar-track") {
+		b.WriteString(`body[data-k-theme] .card .bar{background:var(--kokoro-usage-bar-track)}` + "\n")
+	}
+	if hasThemeToken(m, "--kokoro-usage-bar-fill") {
+		b.WriteString(`body[data-k-theme] .card .gauges .bar i:is(.cpu,.mem,.disk){background:var(--kokoro-usage-bar-fill)}` + "\n")
+	}
+	if hasThemeToken(m, "--kokoro-usage-bar-glow") {
+		b.WriteString(`body[data-k-theme] .card .gauges .bar i:is(.cpu,.mem,.disk){box-shadow:var(--kokoro-usage-bar-glow)}` + "\n")
+	}
+	if hasThemeToken(m, "--kokoro-chart-filter") {
+		b.WriteString(`body[data-k-theme] :is(.dash-line-up,.dash-line-down,.res-line-cpu,.res-line-mem,.card .sp-line){filter:var(--kokoro-chart-filter)}` + "\n")
+	}
 
 	// 顶栏形态 / Hero 变体：样式都由 style.css 提供
 	//（`body[data-k-header=…] .top`、`body[data-k-hero=…] .hero`，含 gradient
@@ -917,7 +995,14 @@ func RenderLayoutCSS(m *Manifest) string {
 		b.WriteString(fmt.Sprintf(
 			`body[data-k-list-mode="card"] .grid{grid-template-columns:repeat(%d,1fr)}`+"\n", n))
 	}
+	b.WriteString(renderVisualCSS(m))
 	return b.String()
+}
+
+func hasThemeToken(m *Manifest, name string) bool {
+	_, light := m.Tokens[name]
+	_, dark := m.TokensDark[name]
+	return light || dark
 }
 
 // DetailHeaderVariant 返回详情页头部形态（layout.detail.header.variant，
@@ -931,20 +1016,22 @@ func DetailHeaderVariant(m *Manifest) string {
 func BodyAttrs(m *Manifest, mode, listMode string) map[string]string {
 	l := m.Layout
 	out := map[string]string{
-		"data-k-list-mode":    pickStr(listMode, pickStr(l.Home.List.Mode, "card")),
-		"data-k-dot":          pickStr(l.Misc.StatusDotStyle, "solid"),
-		"data-k-bar":          pickStr(l.Misc.UsageBarStyle, "solid"),
-		"data-k-uptime-bar":   pickStr(l.Misc.UptimeBarStyle, "solid"),
-		"data-k-chart-smooth": boolString(pickBool(l.Charts.Smooth, true)),
-		"data-k-tag":          pickStr(l.Misc.TagStyle, "pill"),
-		"data-k-badge":        pickStr(l.Misc.BadgeStyle, "soft"),
-		"data-k-chart-type":   pickStr(l.Charts.Type, "area"),
-		"data-k-mode":         mode,
-		"data-k-header":       pickStr(l.Shell.Header.Variant, "solid"),
-		"data-k-hero":         pickStr(l.Home.Hero.Variant, "plain"),
-		"data-k-globe-routes": boolString(pickBool(l.Globe.ShowRoutes, true)),
-		"data-k-globe-flow":   boolString(pickBool(l.Globe.ShowFlow, true)),
-		"data-k-globe-rotate": boolString(pickBool(l.Globe.AutoRotate, true)),
+		"data-k-list-mode":           pickStr(listMode, pickStr(l.Home.List.Mode, "card")),
+		"data-k-dot":                 pickStr(l.Misc.StatusDotStyle, "solid"),
+		"data-k-bar":                 pickStr(l.Misc.UsageBarStyle, "solid"),
+		"data-k-uptime-bar":          pickStr(l.Misc.UptimeBarStyle, "solid"),
+		"data-k-chart-smooth":        boolString(pickBool(l.Charts.Smooth, true)),
+		"data-k-tag":                 pickStr(l.Misc.TagStyle, "pill"),
+		"data-k-badge":               pickStr(l.Misc.BadgeStyle, "soft"),
+		"data-k-chart-type":          pickStr(l.Charts.Type, "area"),
+		"data-k-mode":                mode,
+		"data-k-header":              pickStr(l.Shell.Header.Variant, "solid"),
+		"data-k-hero":                pickStr(l.Home.Hero.Variant, "plain"),
+		"data-k-globe-routes":        boolString(pickBool(l.Globe.ShowRoutes, true)),
+		"data-k-globe-flow":          boolString(pickBool(l.Globe.ShowFlow, true)),
+		"data-k-globe-rotate":        boolString(pickBool(l.Globe.AutoRotate, true)),
+		"data-k-globe-backdrop":      pickStr(l.Globe.Backdrop, "none"),
+		"data-k-globe-matrix-glyphs": pickStr(l.Globe.MatrixGlyphs, "mixed"),
 	}
 	// Hero 的"变体"与"是否启用"是两个维度，必须分成两个属性：
 	// 拼成 "on:gradient" 这种值虽然能塞进一个属性，但 CSS 选择器没法匹配，

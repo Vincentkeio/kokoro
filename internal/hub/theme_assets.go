@@ -3,14 +3,13 @@ package hub
 // 主题资源路由：GET /_theme-assets/<themeID>/<name>
 //
 // 为什么需要它：主题的 tokens 允许写 url(/_theme-assets/...)（见 theme 包的
-// validateTokenValue），用来挂背景图与自定义字体。但包里的资源字节存在
+// validateTokenValue），用来挂背景图与纹理。但包里的资源字节存在
 // 数据库的 themes.bundle 列里，浏览器无从访问——没有这条路由，那些 url()
 // 全是 404，主题看起来就是"背景图没生效"，而且失败得毫无提示。
 //
 // 安全边界（这是本文件存在的第二个理由）：
 //   - 只吐 assets/ 下的资源，路径经 theme.SafeAssetPath 归一化，挡掉 zip-slip；
-//   - 扩展名走白名单，**明确禁止 .svg**：SVG 是唯一能在"图片"位置执行脚本的
-//     格式（<svg onload=...>、内嵌 <script>），而主题包来自第三方，不能赌它善意；
+//   - 使用与导入相同的栅格图片白名单，拒绝字体、SVG 和可执行内容；
 //   - 一律带 nosniff 与严格 CSP，杜绝浏览器"猜"出别的类型来渲染。
 //
 // 缓存：解包一次的开销不该按请求付。主题包通常只有几十 KB 资源，
@@ -18,32 +17,12 @@ package hub
 
 import (
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/Vincentkeio/kokoro/internal/theme"
 )
-
-// themeAssetMIME 是允许直接下发给浏览器的资源类型。
-//
-// 用白名单而不是黑名单：黑名单永远漏（.svgz、.xht、.html…），
-// 而主题资源本来就只有「图片」和「字体」两类，穷举得起。
-var themeAssetMIME = map[string]string{
-	".png":   "image/png",
-	".jpg":   "image/jpeg",
-	".jpeg":  "image/jpeg",
-	".webp":  "image/webp",
-	".gif":   "image/gif",
-	".avif":  "image/avif",
-	".bmp":   "image/bmp",
-	".ico":   "image/x-icon",
-	".woff2": "font/woff2",
-	".woff":  "font/woff",
-	".ttf":   "font/ttf",
-	".otf":   "font/otf",
-}
 
 // themeAssetCache 缓存「主题 ID → 条目名 → 字节」。
 type themeAssetCache struct {
@@ -126,7 +105,7 @@ func (h *Hub) handleThemeAssets(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	mime, allowed := themeAssetMIME[strings.ToLower(path.Ext(full))]
+	mime, allowed := theme.AssetMIME(full)
 	if !allowed {
 		// 未列入白名单的类型（含 .svg）一律当作不存在。
 		// 给 404 而不是 415：不必告诉对方"这个格式被特别拦了"。
