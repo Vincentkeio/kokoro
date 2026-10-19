@@ -3,9 +3,13 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,14 +50,20 @@ func (h *Hub) loadUpdateLocked() {
 	if h.updateLoaded {
 		return
 	}
-	h.updateLoaded = true
-	s, _ := h.store.GetSetting(agentUpdateKey)
+	s, err := h.store.GetSetting(agentUpdateKey)
+	if err != nil {
+		log.Printf("[update] 无法读取探针更新计划: %v", err)
+		return
+	}
 	if s != "" {
 		var p agentUpdatePlan
-		if json.Unmarshal([]byte(s), &p) == nil {
-			h.updatePlan = &p
+		if err := json.Unmarshal([]byte(s), &p); err != nil {
+			log.Printf("[update] 探针更新计划无效: %v", err)
+			return
 		}
+		h.updatePlan = &p
 	}
+	h.updateLoaded = true
 }
 func (h *Hub) saveUpdateLocked() error {
 	b, e := json.Marshal(h.updatePlan)
@@ -61,6 +71,112 @@ func (h *Hub) saveUpdateLocked() error {
 		return e
 	}
 	return h.store.SetSetting(agentUpdateKey, string(b))
+}
+
+type updateAvailability struct {
+	onlineCount    int
+	agentCount     int
+	hubNewer       bool
+	newerByVersion map[string]bool
+}
+
+func (h *Hub) evaluateUpdateAvailability(ctx context.Context, release panelupdate.Release, nodes []model.Node, nowMS int64) (updateAvailability, error) {
+	result := updateAvailability{newerByVersion: map[string]bool{release.Tag: false}}
+	for _, node := range nodes {
+		if !nodeConsideredOnline(node, nowMS) {
+			continue
+		}
+		result.onlineCount++
+		newer, ok := result.newerByVersion[node.AgentVer]
+		if !ok {
+			var err error
+			newer, err = panelupdate.IsNewerRelease(ctx, release, node.AgentVer)
+			if err != nil {
+				return result, fmt.Errorf("无法读取当前探针版本的发布时间：%w", err)
+			}
+			result.newerByVersion[node.AgentVer] = newer
+		}
+		if newer {
+			result.agentCount++
+		}
+	}
+	newer, err := panelupdate.IsNewerRelease(ctx, release, Version)
+	if err != nil {
+		return result, fmt.Errorf("无法读取当前面板版本的发布时间：%w", err)
+	}
+	result.hubNewer = newer
+	return result, nil
+}
+
+func (h *Hub) queueAgentUpdatePlan(target string, nodes []model.Node, newerByVersion map[string]bool, nowMS int64) (int, error) {
+	h.migrationMu.Lock()
+	h.loadMigrationLocked()
+	active := h.migrationPlan != nil && h.migrationPlan.Active
+	h.migrationMu.Unlock()
+	if active {
+		return 0, errors.New("请先完成或停止探针迁移")
+	}
+	h.updateMu.Lock()
+	defer h.updateMu.Unlock()
+	h.loadUpdateLocked()
+	if !h.updateLoaded {
+		return 0, errors.New("无法读取现有探针更新计划，请检查后再更新")
+	}
+	if h.updatePlan != nil {
+		for _, node := range h.updatePlan.Nodes {
+			if (node.State == "waiting" || node.State == "running") && time.Now().UnixMilli()-h.updatePlan.StartedAt < 20*60*1000 {
+				return 0, errors.New("已有探针更新正在进行")
+			}
+		}
+	}
+	plan := &agentUpdatePlan{ID: randomMigrationID(), Target: target, StartedAt: nowMS}
+	for _, node := range nodes {
+		if !nodeConsideredOnline(node, nowMS) {
+			continue
+		}
+		state, message := "waiting", "等待节点接收更新"
+		if !newerByVersion[node.AgentVer] {
+			state, message = "current", "已是最新版本"
+		}
+		plan.Nodes = append(plan.Nodes, agentUpdateNode{ID: node.ID, Name: node.Name, State: state, Message: message})
+	}
+	if len(plan.Nodes) == 0 {
+		return 0, errors.New("没有在线的探针，未下发更新")
+	}
+	newerCount := 0
+	for _, node := range plan.Nodes {
+		if node.State == "waiting" {
+			newerCount++
+		}
+	}
+	if newerCount == 0 {
+		return 0, nil
+	}
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		return 0, err
+	}
+	if err := h.store.SetSetting(agentUpdateKey, string(encoded)); err != nil {
+		return 0, err
+	}
+	h.updatePlan = plan
+	return newerCount, nil
+}
+
+func (h *Hub) launchHubUpdate(target string) error {
+	data, err := filepath.Abs(h.cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	_, port, err := net.SplitHostPort(h.cfg.Listen)
+	if err != nil {
+		return errors.New("无法确认面板监听端口")
+	}
+	launch := h.updateLauncher
+	if launch == nil {
+		launch = panelupdate.Launch
+	}
+	return launch(panelupdate.Spec{Role: "hub", Target: target, ID: randomMigrationID(), StatePath: h.hubUpdatePath(), DataDir: data, HealthURL: "http://127.0.0.1:" + port + "/"})
 }
 func (h *Hub) hubUpdatePath() string {
 	p, _ := filepath.Abs(filepath.Join(h.cfg.DataDir, "web-update-hub.json"))
@@ -82,6 +198,9 @@ func (h *Hub) agentUpdatesBusy() bool {
 	h.updateMu.Lock()
 	defer h.updateMu.Unlock()
 	h.loadUpdateLocked()
+	if !h.updateLoaded {
+		return true
+	}
 	if h.updatePlan == nil || time.Now().UnixMilli()-h.updatePlan.StartedAt > 20*60*1000 {
 		return false
 	}
@@ -96,6 +215,10 @@ func (h *Hub) updateStatus(w http.ResponseWriter, r *http.Request) {
 	h.updateMu.Lock()
 	defer h.updateMu.Unlock()
 	h.loadUpdateLocked()
+	if !h.updateLoaded {
+		writeErr(w, 500, "无法读取探针更新计划，请检查服务日志")
+		return
+	}
 	changed := false
 	if h.updatePlan != nil {
 		for i := range h.updatePlan.Nodes {
@@ -110,7 +233,12 @@ func (h *Hub) updateStatus(w http.ResponseWriter, r *http.Request) {
 	if changed {
 		_ = h.saveUpdateLocked()
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "hub": h.hubUpdateState(), "plan": h.updatePlan, "supported": panelupdate.HubSupported(h.cfg.DataDir)})
+	response := h.autoUpdateSnapshot()
+	response["ok"] = true
+	response["hub"] = h.hubUpdateState()
+	response["plan"] = h.updatePlan
+	response["supported"] = panelupdate.HubSupported(h.cfg.DataDir)
+	writeJSON(w, 200, response)
 }
 func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -128,6 +256,29 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	action := r.FormValue("action")
+	if action == "auto" {
+		value := r.FormValue("enabled")
+		if value != "0" && value != "1" {
+			writeErr(w, 400, "自动更新设置无效")
+			return
+		}
+		settings := map[string]string{autoUpdateEnabledKey: value}
+		if value == "0" {
+			settings[autoUpdatePendingHubKey] = ""
+			settings[autoUpdateNextCheckKey] = ""
+		} else if !h.autoUpdateEnabled() {
+			settings[autoUpdateNextCheckKey] = strconv.FormatInt(nextAutoUpdateCheck(time.Now()).UnixMilli(), 10)
+		}
+		if err := h.store.SetSettings(settings); err != nil {
+			writeErr(w, 500, "保存自动更新设置失败")
+			return
+		}
+		h.wakeAutoUpdateLoop()
+		response := h.autoUpdateSnapshot()
+		response["ok"] = true
+		writeJSON(w, 200, response)
+		return
+	}
 	if action != "check" && action != "hub" && action != "agents" {
 		writeErr(w, 400, "更新操作无效")
 		return
@@ -166,37 +317,14 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "无法读取节点")
 		return
 	}
-	// 只统计在线的探针。离线节点收不到指令，把它们算进来只会让"有 N 台待更新"
-	// 变成永远清不掉的假数字（迁移到新面板后旧面板还挂着全部节点时尤其明显）。
 	now := time.Now().UnixMilli()
-	online := 0
-	count := 0
-	newerByVersion := map[string]bool{tag: false}
-	for _, n := range nodes {
-		if !nodeConsideredOnline(n, now) {
-			continue
-		}
-		online++
-		newer, ok := newerByVersion[n.AgentVer]
-		if !ok {
-			newer, e = panelupdate.IsNewerRelease(ctx, release, n.AgentVer)
-			if e != nil {
-				writeErr(w, 502, "无法读取当前探针版本的发布时间，请稍后重试")
-				return
-			}
-			newerByVersion[n.AgentVer] = newer
-		}
-		if newer {
-			count++
-		}
-	}
-	hubNewer, e := panelupdate.IsNewerRelease(ctx, release, Version)
+	availability, e := h.evaluateUpdateAvailability(ctx, release, nodes, now)
 	if e != nil {
-		writeErr(w, 502, "无法读取当前面板版本的发布时间，请稍后重试")
+		writeErr(w, 502, e.Error())
 		return
 	}
 	if action == "check" {
-		writeJSON(w, 200, map[string]any{"ok": true, "target": tag, "prerelease": prerelease, "published_at": publishedAt, "hub_available": hubNewer, "agent_count": count, "online_count": online, "supported": panelupdate.HubSupported(h.cfg.DataDir)})
+		writeJSON(w, 200, map[string]any{"ok": true, "target": tag, "prerelease": prerelease, "published_at": publishedAt, "hub_available": availability.hubNewer, "agent_count": availability.agentCount, "online_count": availability.onlineCount, "supported": panelupdate.HubSupported(h.cfg.DataDir)})
 		return
 	}
 	if r.FormValue("target") != tag {
@@ -213,64 +341,32 @@ func (h *Hub) handleAdminUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if action == "hub" {
-		if !hubNewer {
+		if h.agentUpdatesBusy() {
+			writeErr(w, 409, "探针正在更新，请等待任务结束后再更新面板")
+			return
+		}
+		if !availability.hubNewer {
 			writeErr(w, 409, "当前面板没有可用更新")
 			return
 		}
-		data, _ := filepath.Abs(h.cfg.DataDir)
-		_, port, e := net.SplitHostPort(h.cfg.Listen)
-		if e != nil {
-			writeErr(w, 503, "无法确认面板监听端口")
-			return
-		}
-		e = panelupdate.Launch(panelupdate.Spec{Role: "hub", Target: tag, ID: randomMigrationID(), StatePath: h.hubUpdatePath(), DataDir: data, HealthURL: "http://127.0.0.1:" + port + "/"})
+		e = h.launchHubUpdate(tag)
 		if e != nil {
 			writeErr(w, 503, e.Error())
 			return
 		}
 	} else {
-		h.migrationMu.Lock()
-		h.loadMigrationLocked()
-		active := h.migrationPlan != nil && h.migrationPlan.Active
-		h.migrationMu.Unlock()
-		if active {
-			writeErr(w, 409, "请先完成或停止探针迁移")
+		nodes, e = h.store.ListNodes(true)
+		if e != nil {
+			writeErr(w, 500, "无法读取节点")
 			return
 		}
-		h.updateMu.Lock()
-		defer h.updateMu.Unlock()
-		h.loadUpdateLocked()
-		if h.updatePlan != nil {
-			for _, n := range h.updatePlan.Nodes {
-				if (n.State == "waiting" || n.State == "running") && time.Now().UnixMilli()-h.updatePlan.StartedAt < 20*60*1000 {
-					writeErr(w, 409, "已有探针更新正在进行")
-					return
-				}
-			}
-		}
-		p := &agentUpdatePlan{ID: randomMigrationID(), Target: tag, StartedAt: time.Now().UnixMilli()}
-		for _, n := range nodes {
-			if !nodeConsideredOnline(n, now) {
-				continue
-			}
-			state, msg := "waiting", "等待节点接收更新"
-			if !newerByVersion[n.AgentVer] {
-				state = "current"
-				msg = "已是最新版本"
-			}
-			p.Nodes = append(p.Nodes, agentUpdateNode{ID: n.ID, Name: n.Name, State: state, Message: msg})
+		count, err := h.queueAgentUpdatePlan(tag, nodes, availability.newerByVersion, time.Now().UnixMilli())
+		if err != nil {
+			writeErr(w, 409, err.Error())
+			return
 		}
 		if count == 0 {
-			if online == 0 {
-				writeErr(w, 409, "没有在线的探针，未下发更新")
-			} else {
-				writeErr(w, 409, "在线的探针都已是最新版本")
-			}
-			return
-		}
-		h.updatePlan = p
-		if e = h.saveUpdateLocked(); e != nil {
-			writeErr(w, 500, "保存更新计划失败")
+			writeErr(w, 409, "在线的探针都已是最新版本")
 			return
 		}
 	}
@@ -325,13 +421,21 @@ func (h *Hub) updateCommand(n *model.Node, m *model.Metrics) *model.Command {
 				return nil
 			}
 		}
-		if time.Now().UnixMilli()-u.LastSent < 60000 {
+		// An update command is dispatched at most once per plan, even across
+		// Hub restarts. A failed/lost attempt waits for the next daily check
+		// or an explicit manual update instead of repeatedly restarting agents.
+		if u.LastSent > 0 {
 			return nil
 		}
+		previous := *u
 		u.LastSent = time.Now().UnixMilli()
 		u.State = "running"
 		u.Message = "已下发，正在更新"
-		_ = h.saveUpdateLocked()
+		if err := h.saveUpdateLocked(); err != nil {
+			*u = previous
+			log.Printf("[update] 无法保存探针更新下发记录: %v", err)
+			return nil
+		}
 		return &model.Command{ID: p.ID, Type: "upgrade", Payload: map[string]any{"version": p.Target}}
 	}
 	return nil

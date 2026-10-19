@@ -2,8 +2,9 @@
 <section class="panel" id="updates" data-atab="sys" data-panel-update>
   <div class="update-heading"><h3>程序更新</h3><button class="btn ghost" type="button" data-update-check>检查更新</button></div>
   <p class="hint">从 GitHub 官方发布检查更新。面板更新时会短暂重启；探针更新保留原有节点和配置。</p>
+  <div class="update-row"><div><h4 class="sub">自动更新</h4><p class="hint">每天北京时间凌晨 1:00 检查并自动更新面板与在线探针。探针每次只下发一次，失败留待次日；离线节点不处理。</p><p class="hint" data-auto-update-status>正在读取自动更新设置…</p></div><button class="switch" type="button" role="switch" aria-checked="false" aria-label="自动更新" data-update-auto disabled><span class="knob" aria-hidden="true"></span><span class="switch-text">读取中</span></button></div>
   <div class="update-row"><div><h4 class="sub">面板程序</h4><p class="hint" data-hub-update-message>点击“检查更新”获取更新状态。</p></div><button class="btn" type="button" data-update-hub disabled>更新面板</button></div>
-  <div class="update-row"><div><h4 class="sub">全部探针</h4><p class="hint" data-agents-update-message>只更新有可用更新的节点；离线节点上线后继续，最多等待 20 分钟。</p></div><button class="btn" type="button" data-update-agents disabled>更新全部探针</button></div>
+  <div class="update-row"><div><h4 class="sub">全部探针</h4><p class="hint" data-agents-update-message>仅更新当前在线且有可用更新的探针；每台只下发一次，离线节点不处理。</p></div><button class="btn" type="button" data-update-agents disabled>更新全部探针</button></div>
   <p class="hint update-feedback" role="status" aria-live="polite" aria-atomic="true" data-update-message></p>
   <div class="tbl-wrap" data-update-table hidden><table class="tbl"><thead><tr><th>节点</th><th>更新状态</th><th>说明</th></tr></thead><tbody data-update-rows></tbody></table></div>
 </section>

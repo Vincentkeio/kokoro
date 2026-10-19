@@ -24,6 +24,7 @@ import (
 	"github.com/Vincentkeio/kokoro/internal/alert"
 	"github.com/Vincentkeio/kokoro/internal/flags"
 	"github.com/Vincentkeio/kokoro/internal/model"
+	"github.com/Vincentkeio/kokoro/internal/panelupdate"
 	"github.com/Vincentkeio/kokoro/internal/store"
 	"github.com/Vincentkeio/kokoro/internal/theme"
 )
@@ -35,7 +36,7 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 // Version is set from the CLI build version before serving registrations.
-var Version = "v0.2.0-beta.27"
+var Version = "v1.0.1"
 
 // Hub 是一个运行中的主控实例。
 type Hub struct {
@@ -63,6 +64,9 @@ type Hub struct {
 	migrationPlan            *panelMigrationPlan
 	migrationSyncAt          time.Time
 	updateMu                 sync.Mutex
+	autoUpdateMu             sync.Mutex
+	autoUpdateWake           chan struct{}
+	updateLauncher           func(panelupdate.Spec) error
 	updatePlan               *agentUpdatePlan
 	updateLoaded             bool
 	updateReleaseAt          time.Time
@@ -86,11 +90,12 @@ type Hub struct {
 	snapAt   time.Time
 	snapData map[string]*model.Metrics
 
-	netqHitMu       sync.Mutex
-	netqHitAt       time.Time
-	netqHitData     map[string]netqProvHitRate
-	cardSeriesMu    sync.Mutex
-	cardSeriesCache map[string]cardSeriesCacheEntry
+	netqHitMu            sync.Mutex
+	netqCatalogRefreshMu sync.Mutex
+	netqHitAt            time.Time
+	netqHitData          map[string]netqProvHitRate
+	cardSeriesMu         sync.Mutex
+	cardSeriesCache      map[string]cardSeriesCacheEntry
 
 	// done 在开始关闭时被 close，用来通知 SSE 之类的长连接主动退出。
 	//
@@ -208,8 +213,9 @@ func New(cfg *model.HubConfig, st *store.Store) (*Hub, error) {
 		themeAssets:   newThemeAssetCache(),
 		// 在这里就建好，保证 handleStream 拿到的一定不是 nil
 		// （select 里对 nil channel 会永久阻塞，那就等于没接上关闭信号）。
-		done:      make(chan struct{}),
-		restoreCh: make(chan string, 1),
+		done:           make(chan struct{}),
+		restoreCh:      make(chan string, 1),
+		autoUpdateWake: make(chan struct{}, 1),
 	}
 	hubURL := ""
 	if cfg.Domain != "" {
@@ -430,6 +436,8 @@ func (h *Hub) Run(ctx context.Context) error {
 		}
 		close(errCh)
 	}()
+	go h.autoUpdateLoop(ctx)
+	go h.netqCatalogRefreshLoop(ctx)
 
 	var stopReason error
 	select {

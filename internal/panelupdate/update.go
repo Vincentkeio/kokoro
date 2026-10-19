@@ -100,6 +100,25 @@ func Compare(a, b string) int {
 }
 
 func releaseRequest(ctx context.Context, endpoint string, out any) error {
+	if body, err, ok := cachedReleaseResponse(endpoint); ok {
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(body, out)
+	}
+	// Collapse simultaneous checks by browser tabs and the daily scheduler.
+	select {
+	case releaseRequestGate <- struct{}{}:
+		defer func() { <-releaseRequestGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if body, err, ok := cachedReleaseResponse(endpoint); ok {
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(body, out)
+	}
 	req, e := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/Vincentkeio/kokoro/"+endpoint, nil)
 	if e != nil {
 		return e
@@ -113,7 +132,7 @@ func releaseRequest(ctx context.Context, endpoint string, out any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return releaseHTTPError{status: resp.StatusCode}
+		return rememberReleaseHTTPError(resp)
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
 	if e != nil {
@@ -122,12 +141,26 @@ func releaseRequest(ctx context.Context, endpoint string, out any) error {
 	if len(b) > 4<<20 {
 		return errors.New("发布信息超过上限")
 	}
-	return json.Unmarshal(b, out)
+	if e = json.Unmarshal(b, out); e != nil {
+		return e
+	}
+	cacheReleaseResponse(endpoint, b)
+	return nil
 }
 
-type releaseHTTPError struct{ status int }
+type releaseHTTPError struct {
+	status  int
+	retryAt time.Time
+}
 
 func (e releaseHTTPError) Error() string {
+	if !e.retryAt.IsZero() {
+		minutes := int(time.Until(e.retryAt).Minutes()) + 1
+		if minutes < 1 {
+			minutes = 1
+		}
+		return fmt.Sprintf("GitHub 请求次数已达上限，约 %d 分钟后可重试", minutes)
+	}
 	return fmt.Sprintf("GitHub 返回 HTTP %d，请稍后重试", e.status)
 }
 
@@ -143,6 +176,13 @@ func Latest(ctx context.Context) (Release, error) {
 	}
 	var best Release
 	for _, r := range list {
+		if !r.Draft && ValidTag(r.Tag) {
+			// A release listing already contains installed versions' publication
+			// times. Reuse it instead of making a separate API call per version.
+			if encoded, err := json.Marshal(r); err == nil {
+				cacheReleaseResponse("releases/tags/"+url.PathEscape(r.Tag), encoded)
+			}
+		}
 		if !r.Draft && ValidTag(r.Tag) && (best.Tag == "" || releaseNewer(r, best)) {
 			best = r
 		}

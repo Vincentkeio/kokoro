@@ -5107,6 +5107,8 @@ body[data-k-theme] .home-node-grid { padding-top:0; }
 .update-row .sub{margin:0 0 .35rem}
 .update-row .hint{margin:0;overflow-wrap:anywhere}
 .update-row>.btn,.update-heading>.btn{flex-shrink:0}
+.update-row>.switch{flex-shrink:0}
+.update-row [data-auto-update-status]{margin-top:.4rem}
 .update-feedback:empty{display:none}
 [data-update-table] td:last-child{overflow-wrap:anywhere;max-width:34rem}
 @container k-page (max-width:560px) {.update-row{align-items:flex-start;flex-direction:column}.update-row>.btn{width:100%}}

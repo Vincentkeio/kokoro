@@ -48,7 +48,7 @@ func (s *Store) ValidateBackup(ctx context.Context) error {
 // PrepareBackupRestore invalidates browser sessions and queued/running work.
 // Jobs exported from the source must never run a second time on a restored Hub.
 func (s *Store) PrepareBackupRestore(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM settings WHERE key LIKE 'adm_sess:%' OR key IN ('panel_migration_plan','panel_agent_update_plan'); DELETE FROM sessions; UPDATE node_tasks SET status='failed', error='面板迁移后已取消旧任务' WHERE status IN ('queued','running')")
+	_, err := s.db.ExecContext(ctx, "DELETE FROM settings WHERE key LIKE 'adm_sess:%' OR key IN ('panel_migration_plan','panel_agent_update_plan','auto_update_pending_hub'); DELETE FROM sessions; UPDATE node_tasks SET status='failed', error='面板迁移后已取消旧任务' WHERE status IN ('queued','running')")
 	return err
 }
 

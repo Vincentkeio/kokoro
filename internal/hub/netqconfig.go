@@ -15,6 +15,7 @@ package hub
 //     不用等下一轮（agent 重启后也会被自愈纠正，见 netqTargetsCommand）。
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,6 +37,9 @@ const settingNetQProvinces = "netq_provinces"
 // settingNetQCatalog 存**覆盖用**的探测点目录（netprobe.CatalogFile 的 JSON）。
 // 没设过 = 用二进制里内置的表（构建时从社区数据 vendor 进来的那份）。
 const settingNetQCatalog = "netq_catalog"
+const settingNetQCatalogLastAttempt = "netq_catalog_last_attempt"
+
+const netqCatalogRefreshInterval = 24 * time.Hour
 
 // netqUpstreamURL 是「更新探测点列表」按钮拉取的地址。
 // 项目：https://github.com/spiritLHLS/icmp_targets
@@ -106,66 +110,110 @@ func (h *Hub) handleAdminNetQRefresh(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, netqUpstreamURL, nil)
+	file, err := h.refreshNetQCatalog(r.Context())
 	if err != nil {
-		h.netqRefreshFail(w, "构造请求失败")
+		h.netqRefreshFail(w, err.Error())
 		return
 	}
-	req.Header.Set("User-Agent", "kokoro-hub/1")
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("[hub] 拉取探测点失败: %v", err)
-		h.netqRefreshFail(w, "拉取上游失败："+err.Error())
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		h.netqRefreshFail(w, "上游返回 "+resp.Status)
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		h.netqRefreshFail(w, "读取上游数据失败")
-		return
-	}
-
-	targets, err := netprobe.ParseUpstreamNodes(body)
-	if err != nil {
-		log.Printf("[hub] 解析上游探测点失败: %v", err)
-		h.netqRefreshFail(w, "解析失败："+err.Error())
-		return
-	}
-
-	file := netprobe.CatalogFile{
-		FetchedAt: time.Now().UTC().Format(time.RFC3339),
-		Source:    netqUpstreamURL,
-		Targets:   targets,
-	}
-	buf, err := json.Marshal(file)
-	if err != nil {
-		h.netqRefreshFail(w, "序列化失败")
-		return
-	}
-	if err := h.store.SetSetting(settingNetQCatalog, string(buf)); err != nil {
-		log.Printf("[hub] 保存探测点目录失败: %v", err)
-		h.netqRefreshFail(w, "保存失败")
-		return
-	}
-	netprobe.SetCatalog(targets)
-	log.Printf("[hub] 探测点已更新：%d 个点（来源 %s）", len(targets), netqUpstreamURL)
-
 	if wantsJSON(r) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":        true,
-			"targets":   len(targets),
+			"targets":   len(file.Targets),
 			"fetchedAt": file.FetchedAt,
 			"version":   netprobe.CatalogVersion(),
 		})
 		return
 	}
 	http.Redirect(w, r, "/admin#nodes", http.StatusSeeOther)
+}
+
+// Successful and failed attempts both reserve the next 24-hour interval.
+// Automatic failures are deliberately silent and leave the current table intact.
+func (h *Hub) netqCatalogRefreshLoop(ctx context.Context) {
+	var lastAttempt int64
+	for ctx.Err() == nil {
+		raw, _ := h.store.GetSetting(settingNetQCatalogLastAttempt)
+		stored, _ := strconv.ParseInt(raw, 10, 64)
+		if stored > lastAttempt {
+			lastAttempt = stored
+		}
+		wait := time.Duration(0)
+		if lastAttempt > 0 {
+			wait = time.Until(time.UnixMilli(lastAttempt).Add(netqCatalogRefreshInterval))
+			if wait > netqCatalogRefreshInterval {
+				wait = netqCatalogRefreshInterval
+			}
+		}
+		if wait > 0 {
+			timer := time.NewTimer(wait)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+				continue
+			}
+		}
+		lastAttempt = time.Now().UnixMilli()
+		_, _ = h.refreshNetQCatalog(ctx)
+	}
+}
+
+func (h *Hub) refreshNetQCatalog(parent context.Context) (netprobe.CatalogFile, error) {
+	var file netprobe.CatalogFile
+	if !h.netqCatalogRefreshMu.TryLock() {
+		return file, fmt.Errorf("探测点列表正在更新，请稍后重试")
+	}
+	defer h.netqCatalogRefreshMu.Unlock()
+	if err := h.store.SetSetting(settingNetQCatalogLastAttempt, strconv.FormatInt(time.Now().UnixMilli(), 10)); err != nil {
+		return file, err
+	}
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+	defer cancel()
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, netqUpstreamURL, nil)
+	if err != nil {
+		return file, fmt.Errorf("构造请求失败：%w", err)
+	}
+	req.Header.Set("User-Agent", "kokoro-hub/1")
+	resp, err := client.Do(req)
+	if err != nil {
+		return file, fmt.Errorf("拉取上游失败：%w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return file, fmt.Errorf("上游返回 HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
+	if err != nil {
+		return file, fmt.Errorf("读取上游数据失败：%w", err)
+	}
+	if len(body) > 4<<20 {
+		return file, fmt.Errorf("探测点列表超过大小上限")
+	}
+
+	targets, err := netprobe.ParseUpstreamNodes(body)
+	if err != nil {
+		return file, fmt.Errorf("解析失败：%w", err)
+	}
+
+	targets = netprobe.PreserveBuiltinIPv6(targets)
+	file = netprobe.CatalogFile{
+		FetchedAt: time.Now().UTC().Format(time.RFC3339),
+		Source:    netqUpstreamURL,
+		Targets:   targets,
+	}
+	buf, err := json.Marshal(file)
+	if err != nil {
+		return file, fmt.Errorf("序列化失败：%w", err)
+	}
+	if err := h.store.SetSetting(settingNetQCatalog, string(buf)); err != nil {
+		return file, fmt.Errorf("保存失败：%w", err)
+	}
+	netprobe.SetCatalog(targets)
+	log.Printf("[hub] 探测点已更新：%d 个点（来源 %s）", len(targets), netqUpstreamURL)
+
+	return file, nil
 }
 
 func (h *Hub) netqRefreshFail(w http.ResponseWriter, msg string) {
@@ -310,7 +358,7 @@ func (h *Hub) netqTargetsCommand(reported []string, reportedInterval int, famili
 		Payload: map[string]any{
 			"provinces":    payload,
 			"interval_min": h.netqInterval(),
-			"ip_version":  desiredFamily,
+			"ip_version":   desiredFamily,
 		},
 	}
 }
