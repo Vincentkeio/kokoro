@@ -5267,11 +5267,11 @@ body[data-k-theme][data-admin] {
   min-height: 100dvh;
 }
 
-/* 手机首页：品牌与两个主操作同一行，站长名片单独占下一行。 */
+/* 手机首页：隐藏站长名片，品牌与后台/主题操作保持同一行。 */
 @container k-page (max-width: 640px) {
   body[data-home] .top .wrap {
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
+    grid-template-rows: auto;
     align-items: center;
     gap: 8px 10px;
   }
@@ -5283,12 +5283,7 @@ body[data-k-theme][data-admin] {
     min-width: 0;
   }
   body[data-home] .brand > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  body[data-home] .top-owner {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-self: start;
-    max-width: 100%;
-  }
+  body[data-home] .top-owner { display: none; }
   body[data-home] .top-tools {
     grid-column: 2;
     grid-row: 1;
