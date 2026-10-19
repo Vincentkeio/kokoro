@@ -1395,7 +1395,7 @@ function initTrafficInspector(svg, initial, options) {
   var isCard = options.kind === 'card';
   var wrapper = svg.parentElement;
   var ns = 'http://www.w3.org/2000/svg';
-  var state = { data: null, loading: null, pinned: false, ratio: .5, index: 0, timer: 0, startX: 0, startY: 0, moved: false, longPressed: false, pointerType: '' };
+  var state = { data: null, loading: null, pinned: false, ratio: .5, index: 0, pointerType: '' };
   var tip = document.createElement('div');
   tip.className = 'chart-inspector-tooltip';
   tip.setAttribute('role', 'tooltip');
@@ -1409,7 +1409,7 @@ function initTrafficInspector(svg, initial, options) {
   svg.setAttribute('tabindex', '0');
   svg.removeAttribute('aria-hidden');
   svg.setAttribute('role', 'group');
-  svg.setAttribute('title', '悬停查看详情；点击固定坐标；手机长按查看');
+  svg.setAttribute('title', '悬停或点击查看坐标；固定后移动可查看其他采样点，再次点击关闭');
   svg.setAttribute('aria-keyshortcuts', 'ArrowLeft ArrowRight Escape');
 
   function ensureCursor() {
@@ -1523,28 +1523,20 @@ function initTrafficInspector(svg, initial, options) {
   });
   svg.addEventListener('pointermove', function (event) {
     state.pointerType = event.pointerType || '';
-    if (state.timer && Math.hypot(event.clientX - state.startX, event.clientY - state.startY) > 12) { clearTimeout(state.timer); state.timer = 0; state.moved = true; }
     if (event.pointerType === 'touch' && !state.pinned) return;
     var ratio = ratioFromEvent(event);
     loadData().then(function () { showAt(ratio); }).catch(function () {});
   });
   svg.addEventListener('pointerdown', function (event) {
     state.pointerType = event.pointerType || '';
-    if (event.pointerType !== 'touch') return;
-    state.startX = event.clientX; state.startY = event.clientY; state.moved = false; state.longPressed = false;
-    clearTimeout(state.timer);
-    state.timer = setTimeout(function () {
-      state.timer = 0; state.longPressed = true; state.pinned = !state.pinned;
-      if (!state.pinned) { hide(); return; }
-      var ratio = ratioFromEvent(event);
-      loadData().then(function () { showAt(ratio); }).catch(function () {});
-    }, 500);
   });
-  ['pointerup','pointercancel'].forEach(function (name) { svg.addEventListener(name, function () { clearTimeout(state.timer); state.timer = 0; }); });
   svg.addEventListener('pointerleave', hide);
   svg.addEventListener('click', function (event) {
     if (event.pointerType === 'touch' || state.pointerType === 'touch') {
-      if (state.longPressed) { state.longPressed = false; event.preventDefault(); }
+      event.preventDefault();
+      state.pinned = !state.pinned;
+      if (state.pinned) { var touchRatio = ratioFromEvent(event); loadData().then(function () { showAt(touchRatio); }).catch(function () {}); }
+      else hide();
       return;
     }
     state.pinned = !state.pinned;
