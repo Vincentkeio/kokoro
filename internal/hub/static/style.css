@@ -3814,6 +3814,7 @@ body[data-k-theme="kokoro.blackgold"] .top .top-owner-txt b { color: var(--fg-st
 /* 黑金：对齐 Jiwo Premium 黑金的深墨绿黑、暖白文字和双层金属金。
    非语义资源条统一用深金到亮金渐变；在线/告警状态仍保留原语义色。 */
 body[data-k-theme="kokoro.blackgold"] {
+  background-size:cover;
   background-position:center center;
   background-repeat:no-repeat;
   background-attachment:fixed;

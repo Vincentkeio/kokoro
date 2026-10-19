@@ -35,7 +35,7 @@
     "--kokoro-border-width": "1px",
     "--kokoro-card-border": "#8f7136",
     "--kokoro-bg-image": "url(/_theme-assets/kokoro.blackgold/wallpaper.webp?v=1.1.2)",
-    "--kokoro-bg-size": "cover",
+    "--kokoro-bg-size": "100vw",
     "--kokoro-bg-repeat": "no-repeat",
     "--kokoro-bg-attachment": "fixed",
     "--kokoro-header-height": "76px",
