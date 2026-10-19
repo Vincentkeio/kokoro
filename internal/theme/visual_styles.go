@@ -20,6 +20,8 @@ var visualTargets = map[string]string{
 	"chart-line":  ":is(.dash-line-up,.dash-line-down,.res-line-cpu,.res-line-mem,.sp-line)",
 	"chart-area":  ":is(.dash-area-up,.dash-area-down,.res-area-cpu,.res-area-mem,.sp-area)",
 	"uptime-cell": ".uptime-bar > *", "button": ".btn", "tag": ".tag",
+	"button-hover": ".btn:hover", "button-focus": ".btn:focus-visible",
+	"card-focus": ".card:focus-within", "tag-hover": ".tag:hover",
 }
 
 var visualProperties = map[string]tokenKind{
@@ -37,9 +39,15 @@ var visualProperties = map[string]tokenKind{
 	"stroke-dasharray": kindLoose, "fill": kindColor,
 	"font-family": kindFontStack, "font-size": kindLength, "letter-spacing": kindLength,
 	"transition-duration": kindTime,
+	"outline":             kindLoose, "outline-width": kindLength, "outline-style": kindKeyword, "outline-offset": kindLength,
+	"text-decoration": kindLoose, "text-decoration-color": kindColor, "text-decoration-thickness": kindLength, "text-underline-offset": kindLength,
+	"font-weight": kindLoose, "line-height": kindLoose, "text-transform": kindKeyword,
+	"background-clip": kindKeyword, "background-origin": kindKeyword,
+	"border-image": kindLoose, "border-image-source": kindLoose, "border-image-slice": kindLoose, "border-image-width": kindLoose,
+	"stroke-dashoffset": kindLoose,
 }
 
-func ValidateVisuals(visuals map[string]map[string]string) error {
+func ValidateVisuals(visuals map[string]map[string]string, definitions ...map[string]ThemeMotion) error {
 	if len(visuals) > len(visualTargets) {
 		return fmt.Errorf("layout.visuals: 组件规则过多")
 	}
@@ -47,7 +55,7 @@ func ValidateVisuals(visuals map[string]map[string]string) error {
 		if _, ok := visualTargets[target]; !ok {
 			return fmt.Errorf("layout.visuals: 未知组件 %q", target)
 		}
-		if len(properties) > 40 {
+		if len(properties) > 56 {
 			return fmt.Errorf("layout.visuals.%s: 属性过多", target)
 		}
 		for property, value := range properties {
@@ -55,7 +63,13 @@ func ValidateVisuals(visuals map[string]map[string]string) error {
 			switch property {
 			case "motion":
 				if value != "none" && value != "breathe" && value != "float" && value != "pan" {
-					return fmt.Errorf("%s: 只支持 none / breathe / float / pan", field)
+					name := strings.TrimPrefix(value, "custom:")
+					if !strings.HasPrefix(value, "custom:") || len(definitions) == 0 {
+						return fmt.Errorf("%s: 未声明的动效", field)
+					}
+					if _, ok := definitions[0][name]; !ok {
+						return fmt.Errorf("%s: 未声明的动效 %q", field, name)
+					}
 				}
 				continue
 			case "motion-duration":
@@ -86,14 +100,27 @@ func ValidateVisuals(visuals map[string]map[string]string) error {
 }
 
 func renderVisualCSS(m *Manifest) string {
+	var out strings.Builder
+	out.WriteString(renderVisualRules(m, m.Layout.Visuals))
+	for _, breakpoint := range []string{"tablet", "mobile"} {
+		if rules := m.Layout.Responsive[breakpoint]; len(rules) > 0 {
+			out.WriteString("@container k-page " + visualBreakpoint(breakpoint) + "{" + renderVisualRules(m, rules) + "}\n")
+		}
+	}
+	out.WriteString(renderMotionCSS(m))
+	out.WriteString(renderLayerCSS(m))
+	return out.String()
+}
+
+func renderVisualRules(m *Manifest, visuals map[string]map[string]string) string {
 	var out, reduced, paused strings.Builder
-	targets := make([]string, 0, len(m.Layout.Visuals))
-	for target := range m.Layout.Visuals {
+	targets := make([]string, 0, len(visuals))
+	for target := range visuals {
 		targets = append(targets, target)
 	}
 	sort.Strings(targets)
 	for _, target := range targets {
-		properties := m.Layout.Visuals[target]
+		properties := visuals[target]
 		selector := `body[data-k-theme]:not([data-admin]) ` + visualTargets[target]
 		keys := make([]string, 0, len(properties))
 		for property := range properties {
@@ -106,19 +133,12 @@ func renderVisualCSS(m *Manifest) string {
 		for _, property := range keys {
 			fmt.Fprintf(&out, "%s:%s;", property, rewriteAssetURL(properties[property], m.ID))
 		}
+		out.WriteString(renderMotionOverrides(properties))
 		if motion := properties["motion"]; motion != "" {
 			if motion == "none" {
 				out.WriteString("animation:none;")
 			} else {
-				duration := properties["motion-duration"]
-				if duration == "" {
-					duration = "6s"
-				}
-				distance := properties["motion-distance"]
-				if distance == "" {
-					distance = "4px"
-				}
-				fmt.Fprintf(&out, "--k-visual-distance:clamp(0px,%s,12px);animation:kokoro-theme-%s %s ease-in-out infinite alternate;", distance, motion, duration)
+				out.WriteString(renderMotionDeclaration(m, properties))
 				reduced.WriteString(selector + "{animation:none!important}")
 				paused.WriteString("html.k-effects-paused " + selector + "{animation-play-state:paused}")
 			}

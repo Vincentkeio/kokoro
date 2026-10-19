@@ -22,30 +22,171 @@
     "--kokoro-globe-matrix-font-size": "11px",
     "--kokoro-usage-bar-height": "5px",
     "--kokoro-usage-bar-glow": "0 0 5px currentColor, 0 0 12px currentColor",
-    "--kokoro-chart-filter": "drop-shadow(0 0 2px rgba(184,165,255,.3))"
+    "--kokoro-chart-filter": "drop-shadow(0 0 2px rgba(184,165,255,.3))",
+    "--kokoro-color-bg-subtle": "#151321",
+    "--kokoro-color-surface-raised": "#242031",
+    "--kokoro-color-surface-sunken": "#0e0d17",
+    "--kokoro-color-border-strong": "#6b5b8b",
+    "--kokoro-color-text-faint": "#9d90ae",
+    "--kokoro-color-text-inverse": "#11101c",
+    "--kokoro-color-primary-hover": "#cbbdff",
+    "--kokoro-color-primary-active": "#a99ae9",
+    "--kokoro-color-primary-fg": "#171023",
+    "--kokoro-color-accent": "#d7a2aa",
+    "--kokoro-color-accent-fg": "#201421",
+    "--kokoro-color-success": "#8fc8b3",
+    "--kokoro-color-warning": "#e0bd85",
+    "--kokoro-color-danger": "#e0a0ab",
+    "--kokoro-color-info": "#a2b9e4",
+    "--kokoro-color-link": "#c7b7ff",
+    "--kokoro-status-online": "#8fc8b3",
+    "--kokoro-status-offline": "#746c81",
+    "--kokoro-chart-series-1": "#b8a5ff",
+    "--kokoro-chart-series-2": "#d7a2aa",
+    "--kokoro-chart-series-3": "#91c7c1",
+    "--kokoro-chart-grid": "#30263f",
+    "--kokoro-chart-axis": "#9988ad",
+    "--kokoro-chart-tooltip-bg": "#242031",
+    "--kokoro-chart-tooltip-fg": "#f1edf9"
   },
-  "mode": { "default": "dark", "allowUserSwitch": false },
+  "mode": {
+    "default": "dark",
+    "allowUserSwitch": false
+  },
   "layoutSchemaVersion": 2,
   "layout": {
-    "home": { "list": { "mode": "card" } },
-    "charts": { "type": "line", "smooth": true },
-    "misc": { "usageBarStyle": "laser", "uptimeBarStyle": "tiles" },
-    "globe": { "backdrop": "matrix", "matrixGlyphs": "hex", "showRoutes": true, "showFlow": true, "autoRotate": true },
+    "home": {
+      "list": {
+        "mode": "card"
+      }
+    },
+    "charts": {
+      "type": "line",
+      "smooth": true
+    },
+    "misc": {
+      "usageBarStyle": "laser",
+      "uptimeBarStyle": "tiles"
+    },
+    "globe": {
+      "backdrop": "matrix",
+      "matrixGlyphs": "hex",
+      "showRoutes": true,
+      "showFlow": true,
+      "autoRotate": true
+    },
     "visuals": {
       "card": {
         "background": "linear-gradient(145deg, rgba(44,34,62,.95), rgba(19,19,32,.98))",
         "border-color": "rgba(184,165,255,.25)",
         "box-shadow": "inset 0 1px 0 rgba(255,255,255,.08), 0 6px 20px rgba(0,0,0,.16)"
       },
-      "card-hover": { "transform": "translateY(-2px)", "box-shadow": "0 8px 28px rgba(130,105,200,.18)" },
+      "card-hover": {
+        "transform": "translateY(-2px)",
+        "box-shadow": "0 8px 28px rgba(130,105,200,.18)"
+      },
       "globe-background": {
         "background": "radial-gradient(ellipse at 20% 30%, rgba(135,88,180,.2), transparent 60%), linear-gradient(120deg, #11101d, #261c36, #11101d)",
         "background-size": "180% 180%",
         "motion": "pan",
         "motion-duration": "30s"
       },
-      "usage-fill": { "motion": "breathe", "motion-duration": "8s" },
-      "chart-line": { "stroke-dasharray": "6 3" }
+      "usage-fill": {
+        "motion": "breathe",
+        "motion-duration": "8s"
+      },
+      "chart-line": {
+        "stroke-dasharray": "6 3"
+      },
+      "button-focus": {
+        "outline": "2px solid var(--kokoro-color-primary)",
+        "outline-offset": "3px"
+      }
+    },
+    "motions": {
+      "sheen": {
+        "duration": "12s",
+        "easing": "linear",
+        "direction": "alternate",
+        "frames": [
+          {
+            "at": 0,
+            "style": {
+              "background-position": "0% 50%",
+              "opacity": "0.15"
+            }
+          },
+          {
+            "at": 100,
+            "style": {
+              "background-position": "100% 50%",
+              "opacity": "0.55"
+            }
+          }
+        ]
+      },
+      "grid-drift": {
+        "duration": "30s",
+        "easing": "ease-in-out",
+        "direction": "alternate",
+        "frames": [
+          {
+            "at": 0,
+            "style": {
+              "transform": "translateX(-8px)"
+            }
+          },
+          {
+            "at": 100,
+            "style": {
+              "transform": "translateX(8px)"
+            }
+          }
+        ]
+      }
+    },
+    "layers": {
+      "card": [
+        {
+          "style": {
+            "background": "linear-gradient(110deg, transparent 30%, rgba(216,205,255,.16) 48%, transparent 65%)",
+            "background-size": "250% 100%",
+            "motion": "custom:sheen"
+          },
+          "hideOnMobile": true,
+          "hideOnReducedMotion": true
+        }
+      ],
+      "globe-background": [
+        {
+          "style": {
+            "background": "repeating-linear-gradient(90deg, rgba(184,165,255,.12) 0 1px, transparent 1px 32px), repeating-linear-gradient(0deg, rgba(184,165,255,.1) 0 1px, transparent 1px 32px)",
+            "mask-image": "radial-gradient(ellipse at center, #000, transparent 70%)",
+            "opacity": "0.35",
+            "motion": "custom:grid-drift"
+          },
+          "tablet": {
+            "opacity": "0.2"
+          },
+          "hideOnMobile": true,
+          "hideOnReducedMotion": true
+        }
+      ]
+    },
+    "responsive": {
+      "mobile": {
+        "card": {
+          "box-shadow": "none"
+        },
+        "card-hover": {
+          "transform": "none"
+        }
+      },
+      "tablet": {
+        "chart-line": {
+          "stroke-width": "1.5"
+        }
+      }
     }
   }
 }

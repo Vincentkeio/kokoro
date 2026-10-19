@@ -23,9 +23,30 @@ func ValidateAssetReferences(m *Manifest, assets []Asset) error {
 		available[asset.Name] = true
 	}
 	visualValues := make(map[string]string)
-	for target, properties := range m.Layout.Visuals {
+	add := func(prefix string, properties map[string]string) {
 		for property, value := range properties {
-			visualValues["layout.visuals."+target+"."+property] = value
+			visualValues[prefix+"."+property] = value
+		}
+	}
+	for target, properties := range m.Layout.Visuals {
+		add("layout.visuals."+target, properties)
+	}
+	for breakpoint, styles := range m.Layout.Responsive {
+		for target, properties := range styles {
+			add("layout.responsive."+breakpoint+"."+target, properties)
+		}
+	}
+	for target, layers := range m.Layout.Layers {
+		for i, layer := range layers {
+			prefix := fmt.Sprintf("layout.layers.%s.%d", target, i)
+			add(prefix, layer.Style)
+			add(prefix+".mobile", layer.Mobile)
+			add(prefix+".tablet", layer.Tablet)
+		}
+	}
+	for name, motion := range m.Layout.Motions {
+		for i, frame := range motion.Frames {
+			add(fmt.Sprintf("layout.motions.%s.%d", name, i), frame.Style)
 		}
 	}
 	for _, tokens := range []map[string]string{m.Tokens, m.TokensDark, visualValues} {

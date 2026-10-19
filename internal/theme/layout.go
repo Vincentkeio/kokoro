@@ -148,5 +148,19 @@ func ValidateLayout(l *Layout) error {
 			return fmt.Errorf("layout.%s: %w", key, err)
 		}
 	}
-	return ValidateVisuals(l.Visuals)
+	if err := ValidateMotions(l.Motions); err != nil {
+		return err
+	}
+	if err := ValidateVisuals(l.Visuals, l.Motions); err != nil {
+		return err
+	}
+	for breakpoint, styles := range l.Responsive {
+		if breakpoint != "mobile" && breakpoint != "tablet" {
+			return fmt.Errorf("layout.responsive: 只支持 mobile / tablet")
+		}
+		if err := ValidateVisuals(styles, l.Motions); err != nil {
+			return fmt.Errorf("layout.responsive.%s: %w", breakpoint, err)
+		}
+	}
+	return ValidateLayers(l.Layers, l.Motions)
 }

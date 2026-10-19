@@ -299,7 +299,10 @@
 | `globe.backdrop` | `none` / `matrix` | 地球背景；`matrix` 为冰蓝字符列向上循环，需 layout v2 |
 
 | `globe.matrixGlyphs` | `numeric` / `binary` / `hex` / `katakana` / `mixed` | 字符雨字符集，默认 mixed，需 layout v2 |
-| `visuals` | 下文列出的组件规则 | 材质、裁切、光效与预设动效，需 layout v2 |
+| `visuals` | 下文列出的组件规则 | 受检 CSS 属性，需 layout v2 |
+| `motions` | 自定义动效字典 | 受检关键帧，需 layout v2 |
+| `layers` | 固定组件的装饰层 | 每组件最多 2 层，需 layout v2 |
+| `responsive` | `mobile` / `tablet` 规则字典 | 固定断点下的视觉覆盖，需 layout v2 |
 
 ### 动效随主题获取
 
@@ -370,7 +373,7 @@
 
 ## 创作与获取使用同一个能力边界
 
-当前版本支持 **tokens v3 + layout v2**。主题作者可以组合设计变量、下列组件样式、预设动效、字符雨和静态或动画 WebP / GIF。所有配置都在清单内，所有本地资源都在包内；任意名称的第三方主题都能使用，不依赖特定主题 ID。
+当前版本支持 **tokens v3 + layout v2**。主题作者可以组合设计变量、下列组件样式、自定义关键帧、独立装饰层、响应式样式、预设动效、字符雨和静态或动画 WebP / GIF。所有配置都在清单内，所有本地资源都在包内；任意名称的第三方主题都能使用，不依赖特定主题 ID。
 
 本地安装、导出、导入和一键获取使用相同的版本、属性、路径、资源和包大小校验。缺少图片、未知字段、不支持的能力版本、清单与包 ID 不一致，都应报错；不会把只有配色的残缺清单当作完整主题安装。GitHub 目录优先读取 `theme.kokoro-theme`。裸 JSON 只适合不引用本地文件的主题。
 
@@ -401,7 +404,7 @@ BAR 的高度、圆角、背景与光晕只在主题显式设置时覆盖所选�
 | 组件键 | 范围 |
 | --- | --- |
 | `header` / `hero` / `overview` | 顶栏、Hero、总览统计 |
-| `card` / `card-hover` / `card-offline` | 节点卡片、悬停、离线状态 |
+| `card` / `card-hover` / `card-offline` / `card-focus` | 节点卡片、悬停、离线和内部键盘焦点状态 |
 | `card-result` | 卡片测试结果与网络结果内层 |
 | `rate-panel` / `rate-chart` | 总览速率面板与流量趋势内层 |
 | `globe-panel` / `globe-background` | 地球外层面板与内部背景 |
@@ -409,20 +412,45 @@ BAR 的高度、圆角、背景与光晕只在主题显式设置时覆盖所选�
 | `usage-track` / `usage-fill` | CPU、内存、磁盘资源条轨道与填充 |
 | `chart-line` / `chart-area` | 历史、卡片图表折线与面积层 |
 | `uptime-cell` / `button` / `tag` | 在线率格子、按钮、标签 |
+| `button-hover` / `button-focus` / `tag-hover` | 按钮悬停、键盘焦点与标签悬停状态 |
 
 可用属性：
 
-`background`, `background-image`, `background-color`, `background-size`, `background-position`, `background-repeat`, `background-blend-mode`, `color`, `border`, `border-color`, `border-style`, `border-width`, `border-radius`, `box-shadow`, `text-shadow`, `filter`, `backdrop-filter`, `opacity`, `mix-blend-mode`, `mask-image`, `mask-size`, `mask-position`, `mask-repeat`, `clip-path`, `transform`, `transform-origin`, `outline-color`, `stroke`, `stroke-width`, `stroke-dasharray`, `fill`, `font-family`, `font-size`, `letter-spacing`, `transition-duration`。
+`background`, `background-image`, `background-color`, `background-size`, `background-position`, `background-repeat`, `background-blend-mode`, `color`, `border`, `border-color`, `border-style`, `border-width`, `border-radius`, `box-shadow`, `text-shadow`, `filter`, `backdrop-filter`, `opacity`, `mix-blend-mode`, `mask-image`, `mask-size`, `mask-position`, `mask-repeat`, `clip-path`, `transform`, `transform-origin`, `outline-color`, `stroke`, `stroke-width`, `stroke-dasharray`, `fill`, `font-family`, `font-size`, `letter-spacing`, `transition-duration`, `outline`, `outline-width`, `outline-style`, `outline-offset`, `text-decoration`, `text-decoration-color`, `text-decoration-thickness`, `text-underline-offset`, `font-weight`, `line-height`, `text-transform`, `background-clip`, `background-origin`, `border-image`, `border-image-source`, `border-image-slice`, `border-image-width`, `stroke-dashoffset`。
 
-可用多层线性 / 径向 / 锥形 / 重复渐变，阴影、金属纹理、局部磨砂、渐变或本地栅格遮罩、几何 `clip-path`、折线虚线与光晕。CSS 值仍经过注入和资源校验；不接受任意 CSS 文件、`@import`、自定义选择器、任意 keyframes、伪元素内容、HTML、脚本、SVG、远程 URL、`!important` 或页面定位属性。
+可用多层线性 / 径向 / 锥形 / 重复渐变，阴影、金属纹理、局部磨砂、渐变或本地栅格遮罩、几何 `clip-path`、折线虚线与光晕。CSS 值仍经过注入和资源校验；不接受任意 CSS 文件、`@import`、自定义选择器、原始 keyframes 文本、伪元素内容、HTML、脚本、SVG、远程 URL、`!important` 或页面定位属性。
 
 | 动效字段 | 可选值 |
 | --- | --- |
-| `motion` | `none`、`breathe`（透明度呼吸）、`float`（轻微浮动）、`pan`（背景缓移） |
+| `motion` | `none`、`breathe`（透明度呼吸）、`float`（轻微浮动）、`pan`（背景缓移）、`custom:名称`（下文定义的关键帧） |
 | `motion-duration` | `2s`–`60s`，默认 `6s`；可写等价 `ms` |
 | `motion-distance` | float 位移，默认 `4px`，渲染时限制在 0–12px |
 
 pan 配合较大的 `background-size` 使用。优先把动效用于小面积装饰，不对密集文本持续做重滤镜。减少动态效果时关闭预设动效，页面隐藏时暂停；不要把核心信息或按钮可用性依赖于动画。
+
+### 受校验的自定义关键帧 `layout.motions`
+
+可以自行设计扫光、边框流动、明暗闪烁、漂浮、位移和折线描边效果。使用 `motion: "custom:名称"` 引用，不接受原始 CSS 或 JavaScript。引擎为每个主题生成隔离的动画名称，复制到其他主题 ID 后仍可使用。
+
+每组可设置 `duration`（2s–60s，默认 6s）、`easing`（linear / ease / ease-in / ease-out / ease-in-out）、`direction`（normal / reverse / alternate / alternate-reverse，默认 alternate）、`iterations`（0 为循环，1–20 为次数）。每主题最多 8 组动效，每组 2–12 帧；每帧的 `at` 为 0–100 整数，严格递增，必须包含 0 和 100。`style` 为 1–8 个属性，允许：
+
+`transform`, `opacity`, `background-position`, `background-size`, `background-color`, `color`, `border-color`, `box-shadow`, `text-shadow`, `stroke-dashoffset`。
+
+关键帧仍使用同一套 CSS 值和资源校验。优先使用 transform、opacity；持续变化的阴影和大面积背景更耗绘制，应保持克制。页面隐藏时暂停，装饰层滚出视口时也暂停；减少动态效果时关闭动画并保留基础样式。`motion-duration` 可在引用处覆盖周期，仍受相同范围限制。
+
+### 独立装饰层 `layout.layers`
+
+支持 header、hero、card、rate-panel、globe-panel、globe-background、usage-track、usage-fill 八类组件。每组件可声明 1–2 层，最多 16 层声明。每层有必填 `style` 和可选 `mobile` / `tablet` 样式覆盖，使用与组件相同的属性白名单及动效引用。`hideOnMobile`、`hideOnReducedMotion` 可分别隐藏手机或减少动态效果下的装饰。
+
+层的容器和绘制元素由引擎创建，固定裁切在组件范围内并位于内容后面，不接收指针、焦点、选择或业务交互。作者不能改变其定位、层级或插入 HTML、文本和脚本。每页最多创建 256 个装饰容器；不支持追加不受控的 DOM。可组合纹理、几何遮罩、渐变光束与自定义关键帧，实现扫光、栅格、金属反光等效果。
+
+### 响应式与交互状态
+
+`layout.responsive.mobile` 在排版宽度 ≤640px 生效，`tablet` 在 641–1024px 生效；里面仍是组件名到样式对象的字典，与 `visuals` 使用同一白名单。触屏设备沿用窗口宽度；桌面窄窗口保留桌面排版宽度，通过页面滚动查看，不会因窗口缩小而套用手机版样式。可为手机减少阴影、关闭悬停变形或关闭动画；装饰层可直接 `hideOnMobile: true`。
+
+button-hover、button-focus、card-focus 和 tag-hover 分别作用于按钮悬停、按钮键盘焦点、卡片内部焦点与标签悬停。可用 outline、outline-offset、渐变边框、文字装饰、字距和字重塑造交互。保留可见的键盘焦点、文字对比度和按钮辨识度。
+
+配置最终会生成 CSS；JSON 承载可移植的样式、关键帧和装饰层声明。全部字段、媒体和能力版本都随完整包传递，不能依赖某台面板私有的 CSS、脚本或 DOM 修改。
 
 ### 字体边界
 
@@ -457,30 +485,171 @@ pan 配合较大的 `background-size` 使用。优先把动效用于小面积装
     "--kokoro-globe-matrix-font-size": "11px",
     "--kokoro-usage-bar-height": "5px",
     "--kokoro-usage-bar-glow": "0 0 5px currentColor, 0 0 12px currentColor",
-    "--kokoro-chart-filter": "drop-shadow(0 0 2px rgba(184,165,255,.3))"
+    "--kokoro-chart-filter": "drop-shadow(0 0 2px rgba(184,165,255,.3))",
+    "--kokoro-color-bg-subtle": "#151321",
+    "--kokoro-color-surface-raised": "#242031",
+    "--kokoro-color-surface-sunken": "#0e0d17",
+    "--kokoro-color-border-strong": "#6b5b8b",
+    "--kokoro-color-text-faint": "#9d90ae",
+    "--kokoro-color-text-inverse": "#11101c",
+    "--kokoro-color-primary-hover": "#cbbdff",
+    "--kokoro-color-primary-active": "#a99ae9",
+    "--kokoro-color-primary-fg": "#171023",
+    "--kokoro-color-accent": "#d7a2aa",
+    "--kokoro-color-accent-fg": "#201421",
+    "--kokoro-color-success": "#8fc8b3",
+    "--kokoro-color-warning": "#e0bd85",
+    "--kokoro-color-danger": "#e0a0ab",
+    "--kokoro-color-info": "#a2b9e4",
+    "--kokoro-color-link": "#c7b7ff",
+    "--kokoro-status-online": "#8fc8b3",
+    "--kokoro-status-offline": "#746c81",
+    "--kokoro-chart-series-1": "#b8a5ff",
+    "--kokoro-chart-series-2": "#d7a2aa",
+    "--kokoro-chart-series-3": "#91c7c1",
+    "--kokoro-chart-grid": "#30263f",
+    "--kokoro-chart-axis": "#9988ad",
+    "--kokoro-chart-tooltip-bg": "#242031",
+    "--kokoro-chart-tooltip-fg": "#f1edf9"
   },
-  "mode": { "default": "dark", "allowUserSwitch": false },
+  "mode": {
+    "default": "dark",
+    "allowUserSwitch": false
+  },
   "layoutSchemaVersion": 2,
   "layout": {
-    "home": { "list": { "mode": "card" } },
-    "charts": { "type": "line", "smooth": true },
-    "misc": { "usageBarStyle": "laser", "uptimeBarStyle": "tiles" },
-    "globe": { "backdrop": "matrix", "matrixGlyphs": "hex", "showRoutes": true, "showFlow": true, "autoRotate": true },
+    "home": {
+      "list": {
+        "mode": "card"
+      }
+    },
+    "charts": {
+      "type": "line",
+      "smooth": true
+    },
+    "misc": {
+      "usageBarStyle": "laser",
+      "uptimeBarStyle": "tiles"
+    },
+    "globe": {
+      "backdrop": "matrix",
+      "matrixGlyphs": "hex",
+      "showRoutes": true,
+      "showFlow": true,
+      "autoRotate": true
+    },
     "visuals": {
       "card": {
         "background": "linear-gradient(145deg, rgba(44,34,62,.95), rgba(19,19,32,.98))",
         "border-color": "rgba(184,165,255,.25)",
         "box-shadow": "inset 0 1px 0 rgba(255,255,255,.08), 0 6px 20px rgba(0,0,0,.16)"
       },
-      "card-hover": { "transform": "translateY(-2px)", "box-shadow": "0 8px 28px rgba(130,105,200,.18)" },
+      "card-hover": {
+        "transform": "translateY(-2px)",
+        "box-shadow": "0 8px 28px rgba(130,105,200,.18)"
+      },
       "globe-background": {
         "background": "radial-gradient(ellipse at 20% 30%, rgba(135,88,180,.2), transparent 60%), linear-gradient(120deg, #11101d, #261c36, #11101d)",
         "background-size": "180% 180%",
         "motion": "pan",
         "motion-duration": "30s"
       },
-      "usage-fill": { "motion": "breathe", "motion-duration": "8s" },
-      "chart-line": { "stroke-dasharray": "6 3" }
+      "usage-fill": {
+        "motion": "breathe",
+        "motion-duration": "8s"
+      },
+      "chart-line": {
+        "stroke-dasharray": "6 3"
+      },
+      "button-focus": {
+        "outline": "2px solid var(--kokoro-color-primary)",
+        "outline-offset": "3px"
+      }
+    },
+    "motions": {
+      "sheen": {
+        "duration": "12s",
+        "easing": "linear",
+        "direction": "alternate",
+        "frames": [
+          {
+            "at": 0,
+            "style": {
+              "background-position": "0% 50%",
+              "opacity": "0.15"
+            }
+          },
+          {
+            "at": 100,
+            "style": {
+              "background-position": "100% 50%",
+              "opacity": "0.55"
+            }
+          }
+        ]
+      },
+      "grid-drift": {
+        "duration": "30s",
+        "easing": "ease-in-out",
+        "direction": "alternate",
+        "frames": [
+          {
+            "at": 0,
+            "style": {
+              "transform": "translateX(-8px)"
+            }
+          },
+          {
+            "at": 100,
+            "style": {
+              "transform": "translateX(8px)"
+            }
+          }
+        ]
+      }
+    },
+    "layers": {
+      "card": [
+        {
+          "style": {
+            "background": "linear-gradient(110deg, transparent 30%, rgba(216,205,255,.16) 48%, transparent 65%)",
+            "background-size": "250% 100%",
+            "motion": "custom:sheen"
+          },
+          "hideOnMobile": true,
+          "hideOnReducedMotion": true
+        }
+      ],
+      "globe-background": [
+        {
+          "style": {
+            "background": "repeating-linear-gradient(90deg, rgba(184,165,255,.12) 0 1px, transparent 1px 32px), repeating-linear-gradient(0deg, rgba(184,165,255,.1) 0 1px, transparent 1px 32px)",
+            "mask-image": "radial-gradient(ellipse at center, #000, transparent 70%)",
+            "opacity": "0.35",
+            "motion": "custom:grid-drift"
+          },
+          "tablet": {
+            "opacity": "0.2"
+          },
+          "hideOnMobile": true,
+          "hideOnReducedMotion": true
+        }
+      ]
+    },
+    "responsive": {
+      "mobile": {
+        "card": {
+          "box-shadow": "none"
+        },
+        "card-hover": {
+          "transform": "none"
+        }
+      },
+      "tablet": {
+        "chart-line": {
+          "stroke-width": "1.5"
+        }
+      }
     }
   }
 }
@@ -505,4 +674,4 @@ theme.kokoro-theme（ZIP）
 
 ### 发给 AI 的制作要求
 
-请先确定视觉方向、信息层级、对比度、桌面和窄屏布局，再组合本文件列出的真实能力。输出完整严格 JSON；需要媒体时同时交付真实文件与完整 `.kokoro-theme`，不要用不存在的资源占位。使用 tokens v3 / layout v2 声明新增能力，保持可读、可操作和减少动态效果支持。所有效果必须通过 tokens、layout.visuals 或打包静态媒体实现；如果目标超出这些范围，应明确说明所需的引擎扩展，不要声称仅凭主题已实现。完成后验证导入、导出、另一台兼容面板重新获取后的资源和效果都完整。
+请先确定视觉方向、信息层级、对比度、桌面和窄屏布局，再组合本文件列出的真实能力。输出完整严格 JSON；需要媒体时同时交付真实文件与完整 `.kokoro-theme`，不要用不存在的资源占位。使用 tokens v3 / layout v2 声明新增能力，保持可读、可操作和减少动态效果支持。所有效果必须通过 tokens、layout.visuals、layout.motions、layout.layers、layout.responsive 或打包静态媒体实现；如果目标超出这些范围，应明确说明所需的引擎扩展，不要声称仅凭主题已实现。完成后验证导入、导出、另一台兼容面板重新获取后的资源和效果都完整。

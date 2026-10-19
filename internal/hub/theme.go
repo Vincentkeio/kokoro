@@ -167,6 +167,7 @@ type themeView struct {
 	Version     string
 	Tokens      template.CSS      // <style> 内的 CSS 变量
 	LayoutCSS   template.CSS      // 由 layout 生成的结构规则
+	LayersJSON  template.JS       // JSON contains only engine-owned selectors and counts.
 	Attrs       template.HTMLAttr // <body> 上的 data-k-* 属性
 	Mode        string            // light | dark
 	DefaultMode string
@@ -301,6 +302,7 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 		Version:      m.Version,
 		Tokens:       template.CSS(tokens),
 		LayoutCSS:    template.CSS(layoutCSS),
+		LayersJSON:   template.JS(theme.LayerBindingsJSON(m)),
 		Mode:         mode,
 		DefaultMode:  defMode,
 		Builtin:      m.Builtin,

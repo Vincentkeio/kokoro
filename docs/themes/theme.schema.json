@@ -499,7 +499,7 @@
       }
     },
     "layoutSchemaVersion": {
-      "description": "布局版本。当前支持 2，兼容 1；视觉组件、激光条、刻度条和字符雨必须声明 2。",
+      "description": "布局版本。当前支持 2，兼容 1；视觉组件、自定义关键帧、装饰层、响应式视觉配置和字符雨需声明 2。",
       "type": "integer",
       "minimum": 1,
       "maximum": 2,
@@ -979,8 +979,7 @@
         },
         "visuals": {
           "type": "object",
-          "description": "公开页面的组件视觉规则；只接受固定组件和属性，无任意选择器或脚本。值中的本地资源必须在完整包内。",
-          "maxProperties": 19,
+          "maxProperties": 23,
           "propertyNames": {
             "enum": [
               "header",
@@ -1001,12 +1000,65 @@
               "chart-area",
               "uptime-cell",
               "button",
-              "tag"
+              "tag",
+              "button-hover",
+              "button-focus",
+              "card-focus",
+              "tag-hover"
             ]
           },
           "additionalProperties": {
             "$ref": "#/$defs/visualStyle"
+          },
+          "description": "固定公开组件上的受检 CSS 属性；不执行原始 CSS 文件。"
+        },
+        "motions": {
+          "type": "object",
+          "maxProperties": 8,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]{0,31}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/motionDefinition"
           }
+        },
+        "layers": {
+          "type": "object",
+          "maxProperties": 8,
+          "propertyNames": {
+            "enum": [
+              "header",
+              "hero",
+              "card",
+              "rate-panel",
+              "globe-panel",
+              "globe-background",
+              "usage-track",
+              "usage-fill"
+            ]
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "$ref": "#/$defs/themeLayer"
+            }
+          },
+          "description": "固定组件内的独立装饰层。每组件最多 2 层，总声明最多 16 层，页面最多生成 256 个装饰容器。"
+        },
+        "responsive": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mobile": {
+              "$ref": "#/$defs/visualMap"
+            },
+            "tablet": {
+              "$ref": "#/$defs/visualMap"
+            }
+          },
+          "description": "mobile ≤640px；tablet 641–1024px。"
         }
       }
     },
@@ -1255,8 +1307,8 @@
     },
     "visualStyle": {
       "type": "object",
+      "maxProperties": 56,
       "additionalProperties": false,
-      "maxProperties": 40,
       "properties": {
         "background": {
           "type": "string",
@@ -1468,13 +1520,117 @@
           "maxLength": 512,
           "pattern": "^[^;{}<>\\\\@!]+$"
         },
+        "outline": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "outline-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "outline-style": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "outline-offset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "text-decoration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "text-decoration-color": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "text-decoration-thickness": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "text-underline-offset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "font-weight": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "line-height": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "text-transform": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "background-clip": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "background-origin": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "border-image": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "border-image-source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "border-image-slice": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "border-image-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
+        "stroke-dashoffset": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^;{}<>\\\\@!]+$"
+        },
         "motion": {
-          "enum": [
-            "none",
-            "breathe",
-            "float",
-            "pan"
-          ]
+          "type": "string",
+          "pattern": "^(?:none|breathe|float|pan|custom:[a-z][a-z0-9-]{0,31})$"
         },
         "motion-duration": {
           "type": "string",
@@ -1486,7 +1642,147 @@
           "minLength": 1,
           "maxLength": 512,
           "pattern": "^[^;{}<>\\\\@!]+$",
-          "description": "float 位移；运行时限制在 0–12px，默认 4px。"
+          "description": "float 位移限制在 0–12px。"
+        }
+      }
+    },
+    "visualMap": {
+      "type": "object",
+      "maxProperties": 23,
+      "propertyNames": {
+        "enum": [
+          "header",
+          "hero",
+          "overview",
+          "card",
+          "card-hover",
+          "card-offline",
+          "card-result",
+          "rate-panel",
+          "rate-chart",
+          "globe-panel",
+          "globe-background",
+          "clock",
+          "usage-track",
+          "usage-fill",
+          "chart-line",
+          "chart-area",
+          "uptime-cell",
+          "button",
+          "tag",
+          "button-hover",
+          "button-focus",
+          "card-focus",
+          "tag-hover"
+        ]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/visualStyle"
+      }
+    },
+    "motionDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frames"
+      ],
+      "properties": {
+        "duration": {
+          "type": "string",
+          "description": "2s–60s，默认 6s。"
+        },
+        "easing": {
+          "enum": [
+            "linear",
+            "ease",
+            "ease-in",
+            "ease-out",
+            "ease-in-out"
+          ]
+        },
+        "direction": {
+          "enum": [
+            "normal",
+            "reverse",
+            "alternate",
+            "alternate-reverse"
+          ]
+        },
+        "iterations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "0 为循环，1–20 为次数。"
+        },
+        "frames": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "at",
+              "style"
+            ],
+            "properties": {
+              "at": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": "严格递增，首帧 0、末帧 100。"
+              },
+              "style": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 8,
+                "propertyNames": {
+                  "enum": [
+                    "transform",
+                    "opacity",
+                    "background-position",
+                    "background-size",
+                    "background-color",
+                    "color",
+                    "border-color",
+                    "box-shadow",
+                    "text-shadow",
+                    "stroke-dashoffset"
+                  ]
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "pattern": "^[^;{}<>\\\\@!]+$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "themeLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "style"
+      ],
+      "properties": {
+        "style": {
+          "$ref": "#/$defs/visualStyle"
+        },
+        "mobile": {
+          "$ref": "#/$defs/visualStyle"
+        },
+        "tablet": {
+          "$ref": "#/$defs/visualStyle"
+        },
+        "hideOnMobile": {
+          "type": "boolean"
+        },
+        "hideOnReducedMotion": {
+          "type": "boolean"
         }
       }
     }

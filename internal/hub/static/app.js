@@ -54,6 +54,49 @@ function fitKokoroChartMarkers(svg) {
 }
 window.addEventListener('resize',function(){document.querySelectorAll('.rate-chart,.spark').forEach(fitKokoroChartMarkers);});
 
+// Decoration markup is owned by the engine; themes supply only checked styles.
+var kokoroThemeLayerObserver;
+function kokoroApplyThemeLayers(root) {
+  if (document.body.hasAttribute('data-admin')) return;
+  var source = document.getElementById('kokoro-theme-layers');
+  if (!source) return;
+  var bindings;
+  try { bindings = JSON.parse(source.textContent); } catch (e) { return; }
+  if (!Array.isArray(bindings)) return;
+  if (!kokoroThemeLayerObserver && window.IntersectionObserver) {
+    kokoroThemeLayerObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        entry.target.querySelectorAll(':scope > .k-theme-layer').forEach(function (layer) {
+          layer.dataset.kLayerPaused = entry.isIntersecting ? '0' : '1';
+        });
+      });
+    }, {threshold:.01});
+  }
+  var count = document.querySelectorAll('.k-theme-layer').length;
+  bindings.slice(0,8).forEach(function (binding) {
+    if (!binding || typeof binding.selector !== 'string') return;
+    var limit = Math.max(0,Math.min(2,Number(binding.count)||0));
+    (root || document).querySelectorAll(binding.selector).forEach(function (host) {
+      for (var i=0;i<limit && count<256;i++) {
+        if (host.querySelector(':scope > .k-theme-layer[data-k-layer-index="'+i+'"]')) continue;
+        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        var layer = document.createElement('span');
+        layer.className = 'k-theme-layer';
+        layer.dataset.kLayerIndex = String(i);
+        layer.setAttribute('aria-hidden','true');
+        layer.setAttribute('inert','');
+        var paint = document.createElement('span');
+        paint.className = 'k-theme-layer-paint';
+        layer.appendChild(paint);
+        host.appendChild(layer);
+        if (kokoroThemeLayerObserver) kokoroThemeLayerObserver.observe(host);
+        count++;
+      }
+    });
+  });
+}
+kokoroApplyThemeLayers(document);
+
 /* Kokoro 前端：只做两件事 —— 订阅 SSE 更新数值，画迷你曲线。
    不引任何框架，保持零 CDN 依赖，离线也能用。 */
 (function () {

@@ -91,13 +91,16 @@ type Mode struct {
 
 // Layout 是第二层布局描述。
 type Layout struct {
-	Shell   ShellLayout                  `json:"shell,omitempty"`
-	Home    HomeLayout                   `json:"home,omitempty"`
-	Detail  DetailLayout                 `json:"detail,omitempty"`
-	Charts  ChartsLayout                 `json:"charts,omitempty"`
-	Misc    MiscLayout                   `json:"misc,omitempty"`
-	Globe   GlobeLayout                  `json:"globe,omitempty"`
-	Visuals map[string]map[string]string `json:"visuals,omitempty"`
+	Shell      ShellLayout                             `json:"shell,omitempty"`
+	Home       HomeLayout                              `json:"home,omitempty"`
+	Detail     DetailLayout                            `json:"detail,omitempty"`
+	Charts     ChartsLayout                            `json:"charts,omitempty"`
+	Misc       MiscLayout                              `json:"misc,omitempty"`
+	Globe      GlobeLayout                             `json:"globe,omitempty"`
+	Visuals    map[string]map[string]string            `json:"visuals,omitempty"`
+	Motions    map[string]ThemeMotion                  `json:"motions,omitempty"`
+	Layers     map[string][]ThemeLayer                 `json:"layers,omitempty"`
+	Responsive map[string]map[string]map[string]string `json:"responsive,omitempty"`
 }
 
 // GlobeLayout 控制首页地球的动态层开关；具体样式由 --kokoro-globe-* tokens 控制。
@@ -297,7 +300,7 @@ func (m *Manifest) Validate() error {
 	if m.LayoutSchemaVersion > LayoutSchemaVersion {
 		return fmt.Errorf("主题使用了 layout v%d，当前 Hub 只认 v%d", m.LayoutSchemaVersion, LayoutSchemaVersion)
 	}
-	if m.LayoutSchemaVersion < 2 && (m.Layout.Misc.UsageBarStyle == "laser" || m.Layout.Misc.UsageBarStyle == "ruled" || m.Layout.Globe.Backdrop != "" && m.Layout.Globe.Backdrop != "none" || m.Layout.Globe.MatrixGlyphs != "" || len(m.Layout.Visuals) > 0) {
+	if m.LayoutSchemaVersion < 2 && (m.Layout.Misc.UsageBarStyle == "laser" || m.Layout.Misc.UsageBarStyle == "ruled" || m.Layout.Globe.Backdrop != "" && m.Layout.Globe.Backdrop != "none" || m.Layout.Globe.MatrixGlyphs != "" || len(m.Layout.Visuals) > 0 || len(m.Layout.Motions) > 0 || len(m.Layout.Layers) > 0 || len(m.Layout.Responsive) > 0) {
 		return fmt.Errorf("主题视觉扩展和动态背景需要 layoutSchemaVersion: 2")
 	}
 	if err := ValidateTokens(m.Tokens, "tokens"); err != nil {
