@@ -661,7 +661,7 @@
 
   <section class="panel" id="profile" data-atab="comments">
     <h3>站长名片</h3>
-    <p class="hint">开启后，头像和签名会显示在首页顶部与每台小鸡的页面底部。头像支持 png / jpg / webp / gif，不超过 2MB。</p>
+    <p class="hint">开启后，头像和签名会显示在首页顶部与每台小鸡的页面底部。头像支持 png / jpg / webp / gif，不超过 300KB；更换后不保留旧头像。</p>
     <form class="row" method="post" action="/admin/profile" enctype="multipart/form-data">
       <input name="owner_name" placeholder="昵称" value="{{.OwnerName}}" style="width:12rem">
       <input name="owner_bio" placeholder="签名档，一句话介绍自己" value="{{.OwnerBio}}" style="min-width:16rem;flex:1">
@@ -694,7 +694,7 @@
 {{/* 公共脚本：后台的**选项卡切换**在里面（和首页共用一份 app.js）。
      以前后台只有内联脚本、没引 app.js —— 加了页签之后才发现，
      表现是"点了页签没反应"，但控制台也不报错（那段代码压根没加载）。 */}}
-<script src="/static/app.js?v=161"></script>
+<script src="/static/app.js?v=162"></script>
 <script src="/static/migration.js?v=1" defer></script>
 <script src="/static/panelupdate.js?v=2" defer></script>
 <script>

@@ -1234,10 +1234,20 @@ func (h *Hub) handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 type homeCardSeriesResponse struct {
-	Line string `json:"line"`
-	Area string `json:"area"`
-	Peak string `json:"peak"`
-	Info string `json:"info"`
+	Line     string            `json:"line"`
+	Area     string            `json:"area"`
+	Peak     string            `json:"peak"`
+	Info     string            `json:"info"`
+	From     int64             `json:"from"`
+	To       int64             `json:"to"`
+	ScaleMax float64           `json:"scaleMax"`
+	Points   []cardSeriesPoint `json:"points"`
+}
+
+type cardSeriesPoint struct {
+	Ts   int64   `json:"t"`
+	Up   float64 `json:"up"`
+	Down float64 `json:"down"`
 }
 
 type cardSeriesCacheEntry struct {
@@ -1322,7 +1332,15 @@ func (h *Hub) handleHomeCardSeries(w http.ResponseWriter, r *http.Request) {
 	series, from, to := entry.series, entry.from, entry.to
 	points := series[id]
 	line, area := sparkPathsInWindow(points, from, to)
-	response := homeCardSeriesResponse{Line: line, Area: area}
+	max := sparkScaleMax(sparkWindowMax(points, from, to))
+	response := homeCardSeriesResponse{Line: line, Area: area, From: from, To: to, ScaleMax: max}
+	response.Points = make([]cardSeriesPoint, 0, len(points))
+	for _, p := range points {
+		if p.Bucket < from || p.Bucket > to {
+			continue
+		}
+		response.Points = append(response.Points, cardSeriesPoint{Ts: p.Bucket, Up: p.Up, Down: p.Down})
+	}
 	if len(points) == 0 {
 		response.Info = "暂无数据"
 	} else if len(points) < 2 {
@@ -1714,25 +1732,19 @@ func (h *Hub) handleAdminProfile(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
-	if err := r.ParseMultipartForm(4 << 20); err != nil { // 头像限 4MB
+	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarBytes+(64<<10))
+	if err := r.ParseMultipartForm(maxAvatarBytes + (64 << 10)); err != nil {
 		http.Error(w, "上传内容太大或格式不对", http.StatusRequestEntityTooLarge)
 		return
 	}
-	_ = h.store.SetSetting("owner_name", clampRunes(strings.TrimSpace(r.FormValue("owner_name")), 64))
-	_ = h.store.SetSetting("owner_bio", clampRunes(strings.TrimSpace(r.FormValue("owner_bio")), 200))
-	ownerVisible := "0"
-	if r.FormValue("owner_visible") == "1" {
-		ownerVisible = "1"
-	}
-	_ = h.store.SetSetting("owner_visible", ownerVisible)
 
 	if r.FormValue("avatar_clear") == "1" {
 		_ = h.store.SetSetting("owner_avatar", "")
 		_ = h.removeAvatar()
-	} else if _, hdr, err := r.FormFile("avatar"); err == nil && hdr != nil && hdr.Size > 0 {
-		if hdr.Size > 2<<20 {
-			http.Error(w, "头像不能超过 2MB", http.StatusRequestEntityTooLarge)
+	} else if file, hdr, err := r.FormFile("avatar"); err == nil && hdr != nil && hdr.Size > 0 {
+		_ = file.Close()
+		if hdr.Size > maxAvatarBytes {
+			http.Error(w, "头像不能超过 300KB", http.StatusRequestEntityTooLarge)
 			return
 		}
 		ext, ok := imageExt(hdr.Filename)
@@ -1744,9 +1756,31 @@ func (h *Hub) handleAdminProfile(w http.ResponseWriter, r *http.Request) {
 			_ = h.store.SetSetting("owner_avatar", dst)
 		} else {
 			log.Printf("[hub] 保存头像失败: %v", err)
+			http.Error(w, "头像保存失败", http.StatusInternalServerError)
+			return
 		}
 	}
+	_ = h.store.SetSetting("owner_name", clampRunes(strings.TrimSpace(r.FormValue("owner_name")), 64))
+	_ = h.store.SetSetting("owner_bio", clampRunes(strings.TrimSpace(r.FormValue("owner_bio")), 200))
+	ownerVisible := "0"
+	if r.FormValue("owner_visible") == "1" {
+		ownerVisible = "1"
+	}
+	_ = h.store.SetSetting("owner_visible", ownerVisible)
 	http.Redirect(w, r, "/admin#profile", http.StatusSeeOther)
+}
+
+var errUploadTooLarge = errors.New("上传文件超过限制")
+
+func copyUploadBounded(dst io.Writer, src io.Reader, limit int64) (int64, error) {
+	n, err := io.Copy(dst, io.LimitReader(src, limit+1))
+	if err != nil {
+		return n, err
+	}
+	if n > limit {
+		return n, errUploadTooLarge
+	}
+	return n, nil
 }
 
 // imageExt 按文件名后缀判定类型，只放行常见位图（不接受 svg，避免脚本注入）。
@@ -1763,7 +1797,9 @@ func imageExt(name string) (string, bool) {
 	return "", false
 }
 
-// saveAvatar 把上传的头像写到数据目录，旧文件先删掉。返回可访问的 URL。
+const maxAvatarBytes = 300 << 10
+
+// saveAvatar 把上传的头像写到数据目录，替换时清除旧格式文件，不保留历史副本。
 func (h *Hub) saveAvatar(fh *multipart.FileHeader, ext string) (string, error) {
 	if h.cfg.DataDir == "" {
 		return "", errors.New("未配置数据目录")
@@ -1776,17 +1812,24 @@ func (h *Hub) saveAvatar(fh *multipart.FileHeader, ext string) (string, error) {
 	if err := os.MkdirAll(h.cfg.DataDir, 0o755); err != nil {
 		return "", err
 	}
-	_ = h.removeAvatar()
 	dst := filepath.Join(h.cfg.DataDir, "avatar"+ext)
-	out, err := os.Create(dst)
+	out, err := os.CreateTemp(h.cfg.DataDir, ".avatar-upload-*")
 	if err != nil {
 		return "", err
 	}
-	if _, err := io.Copy(out, f); err != nil {
-		out.Close()
+	tmp := out.Name()
+	defer os.Remove(tmp)
+	if _, err := copyUploadBounded(out, f, maxAvatarBytes); err != nil {
+		_ = out.Close()
 		return "", err
 	}
 	if err := out.Close(); err != nil {
+		return "", err
+	}
+	if err := h.removeAvatar(); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
 		return "", err
 	}
 	// 版本参数绕开浏览器缓存
@@ -1798,7 +1841,7 @@ func (h *Hub) removeAvatar() error {
 		return nil
 	}
 	var last error
-	for _, ext := range []string{".png", ".jpg", ".webp", ".gif"} {
+	for _, ext := range []string{".png", ".jpg", ".jpeg", ".webp", ".gif"} {
 		if err := os.Remove(filepath.Join(h.cfg.DataDir, "avatar"+ext)); err != nil && !os.IsNotExist(err) {
 			last = err
 		}

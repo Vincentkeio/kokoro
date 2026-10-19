@@ -21,7 +21,6 @@ package hub
 
 import (
 	"errors"
-	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -55,8 +54,8 @@ var wallpaperExts = []struct{ ext, ctype string }{
 	{".gif", "image/gif"},
 }
 
-// maxWallpaperBytes 比头像宽松得多 —— 壁纸是整屏铺的，2MB 常常不够。
-const maxWallpaperBytes = 6 << 20
+// maxWallpaperBytes 限制每张本地上传壁纸的体积。
+const maxWallpaperBytes = 500 << 10
 
 // safeWallpaperURL 校验管理员填的壁纸地址。
 //
@@ -172,7 +171,7 @@ func (h *Hub) wallpaperFor(themeID, errCode string) wallpaperView {
 	case "type":
 		v.Err = "只支持 png / jpg / webp / gif。svg 不能用：它是唯一能在图片位置执行脚本的格式。"
 	case "big":
-		v.Err = "图太大了，上限 6 MB。"
+		v.Err = "图太大了，上限 500KB。"
 	case "file":
 		v.Err = "没选到文件。"
 	case "theme":
@@ -242,7 +241,7 @@ func (h *Hub) handleAdminWallpaper(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "只接受 POST", http.StatusMethodNotAllowed)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxWallpaperBytes+(1<<20))
+	r.Body = http.MaxBytesReader(w, r.Body, maxWallpaperBytes+(64<<10))
 	// ⚠️ 这个端点有两种编码：本地上传是 multipart，填地址/清除是
 	// application/x-www-form-urlencoded。以前无条件 ParseMultipartForm，
 	// urlencoded 请求会拿到 ErrNotMultipart，却被当成"图太大" ——
@@ -251,7 +250,7 @@ func (h *Hub) handleAdminWallpaper(w http.ResponseWriter, r *http.Request) {
 	// 按 Content-Type 分开走。
 	switch {
 	case strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data"):
-		if err := r.ParseMultipartForm(maxWallpaperBytes + (1 << 20)); err != nil {
+		if err := r.ParseMultipartForm(maxWallpaperBytes + (64 << 10)); err != nil {
 			http.Redirect(w, r, "/admin?wperr=big#themes", http.StatusSeeOther)
 			return
 		}
@@ -287,11 +286,12 @@ func (h *Hub) handleAdminWallpaper(w http.ResponseWriter, r *http.Request) {
 		_ = h.removeWallpaper(themeID)
 
 	case "upload":
-		_, hdr, err := r.FormFile("wallpaper")
+		file, hdr, err := r.FormFile("wallpaper")
 		if err != nil || hdr == nil || hdr.Size == 0 {
 			http.Redirect(w, r, "/admin?wperr=file#themes", http.StatusSeeOther)
 			return
 		}
+		_ = file.Close()
 		if hdr.Size > maxWallpaperBytes {
 			http.Redirect(w, r, "/admin?wperr=big#themes", http.StatusSeeOther)
 			return
@@ -333,16 +333,23 @@ func (h *Hub) saveWallpaper(fh *multipart.FileHeader, ext, themeID string) error
 	if err := os.MkdirAll(h.cfg.DataDir, 0o755); err != nil {
 		return err
 	}
-	_ = h.removeWallpaper(themeID)
-	out, err := os.Create(filepath.Join(h.cfg.DataDir, "wallpaper-"+id+ext))
+	out, err := os.CreateTemp(h.cfg.DataDir, ".wallpaper-upload-*")
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, f); err != nil {
-		out.Close()
+	tmp := out.Name()
+	defer os.Remove(tmp)
+	if _, err := copyUploadBounded(out, f, maxWallpaperBytes); err != nil {
+		_ = out.Close()
 		return err
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		return err
+	}
+	if err := h.removeWallpaper(themeID); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(h.cfg.DataDir, "wallpaper-"+id+ext))
 }
 
 func (h *Hub) removeWallpaper(themeID string) error {

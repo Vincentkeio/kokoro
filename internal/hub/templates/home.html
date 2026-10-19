@@ -6,7 +6,7 @@
 <meta name="description" content="{{.SiteName}} · 每台小鸡都有一颗心">
 {{template "head.html" .}}
 </head>
-<body {{.Theme.Attrs}} data-k-theme="{{.Theme.ID}}" data-k-list-mode="{{.Theme.ListMode}}" data-k-card-columns="3">
+<body {{.Theme.Attrs}} data-k-theme="{{.Theme.ID}}" data-home="1" data-k-list-mode="{{.Theme.ListMode}}" data-k-card-columns="3">
 {{template "topbar.html" .}}
 
 <main class="wrap">
@@ -619,7 +619,7 @@
 <script id="globe-data" type="application/json">{{.GlobeJSON}}</script>
 {{template "kglobe.html" .}}
 
-<script src="/static/app.js?v=161"></script>
+<script src="/static/app.js?v=162"></script>
 </body>
 </html>
 {{end}}

@@ -5257,3 +5257,90 @@ body[data-k-theme][data-k-list-mode="card"] .card-column .nqr .ls {
   justify-self: end;
   margin-left: 4px;
 }
+
+/* 后台内容较短时也铺满视口，主题背景不会在互动/告警页签下方突然截断。 */
+body[data-k-theme][data-admin] {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* 手机首页：品牌与两个主操作同一行，站长名片单独占下一行。 */
+@container k-page (max-width: 640px) {
+  body[data-home] .top .wrap {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 8px 10px;
+  }
+  body[data-home] .top-identity { display: contents; }
+  body[data-home] .top-identity-rule { display: none; }
+  body[data-home] .brand {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+  body[data-home] .brand > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body[data-home] .top-owner {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+    max-width: 100%;
+  }
+  body[data-home] .top-tools {
+    grid-column: 2;
+    grid-row: 1;
+    gap: 7px;
+  }
+  body[data-home] .top-tools > .btn,
+  body[data-home] .top-tools > .skin > summary.skin-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1;
+  }
+}
+
+/* 统一的流量图坐标提示，颜色继承当前主题的系列色与表面色。 */
+.rate-chart-wrap.chart-inspector-host,
+.card .net.chart-inspector-host { position: relative; }
+.rate-chart-wrap [data-rate-chart],
+.card .net .spark { cursor: crosshair; touch-action: pan-y; }
+.rate-chart-wrap [data-rate-chart]:focus-visible,
+.card .net .spark:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chart-inspector-tooltip {
+  position: absolute;
+  z-index: 8;
+  display: none;
+  min-width: min(172px, calc(100% - 16px));
+  max-width: calc(100% - 16px);
+  gap: 3px;
+  padding: 7px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  color: var(--fg);
+  box-shadow: var(--shadow-md);
+  font-size: 11px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.chart-inspector-tooltip.is-visible { display: grid; }
+.chart-inspector-tooltip b { color: var(--fg-strong); font-weight: 650; }
+.chart-inspector-tooltip span:nth-of-type(1) { color: var(--cpu); }
+.chart-inspector-tooltip span:nth-of-type(2) { color: var(--mem); }
+.traffic-crosshair { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.traffic-point-up { fill: var(--cpu); stroke: var(--panel); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.traffic-point-down { fill: var(--mem); stroke: var(--panel); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+body[data-k-theme] .card .traffic-point-up,
+body[data-k-theme] .card .traffic-point-down { fill: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .chart-inspector-tooltip { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}

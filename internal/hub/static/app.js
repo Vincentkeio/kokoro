@@ -1380,6 +1380,199 @@ function renderRateChart(svg, pts) {
   fitKokoroChartMarkers(svg);
 }
 
+/* 流量图的时间游标。仪表盘直接用页面内数据；小鸡卡片仅在第一次查看时
+   请求采样点，避免首屏给每张卡都额外塞一份 JSON。 */
+var kokoroTrafficTimeFormatter = new Intl.DateTimeFormat(undefined, { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+function initTrafficInspector(svg, initial, options) {
+  if (!svg) return null;
+  if (svg.__kokoroTrafficInspector) {
+    if (initial) svg.__kokoroTrafficInspector.setData(initial);
+    return svg.__kokoroTrafficInspector;
+  }
+  options = options || {};
+  var isOverview = options.kind === 'overview';
+  var wrapper = svg.parentElement;
+  var ns = 'http://www.w3.org/2000/svg';
+  var state = { data: null, loading: null, pinned: false, ratio: .5, index: 0, timer: 0, startX: 0, startY: 0, moved: false, longPressed: false, pointerType: '' };
+  var tip = document.createElement('div');
+  tip.className = 'chart-inspector-tooltip';
+  tip.setAttribute('role', 'tooltip');
+  tip.setAttribute('aria-hidden', 'true');
+  var timeLabel = document.createElement('b');
+  var upLabel = document.createElement('span');
+  var downLabel = document.createElement('span');
+  tip.append(timeLabel, upLabel, downLabel);
+  wrapper.appendChild(tip);
+  wrapper.classList.add('chart-inspector-host');
+  svg.setAttribute('tabindex', '0');
+  svg.removeAttribute('aria-hidden');
+  svg.setAttribute('role', 'group');
+  svg.setAttribute('title', '悬停查看详情；点击固定坐标；手机长按查看');
+  svg.setAttribute('aria-keyshortcuts', 'ArrowLeft ArrowRight Escape');
+
+  function ensureCursor() {
+    var group = svg.querySelector('.traffic-cursor');
+    if (group) return group;
+    group = document.createElementNS(ns, 'g');
+    group.setAttribute('class', 'traffic-cursor');
+    group.setAttribute('visibility', 'hidden');
+    group.setAttribute('pointer-events', 'none');
+    var line = document.createElementNS(ns, 'line');
+    line.setAttribute('class', 'traffic-crosshair');
+    line.setAttribute('y1', isOverview ? '8' : '2');
+    line.setAttribute('y2', isOverview ? '172' : '38');
+    var first = document.createElementNS(ns, 'circle');
+    first.setAttribute('class', 'traffic-point-up');
+    first.setAttribute('r', isOverview ? '4' : '2.5');
+    var second = document.createElementNS(ns, 'circle');
+    second.setAttribute('class', 'traffic-point-down');
+    second.setAttribute('r', isOverview ? '4' : '2.5');
+    group.append(line, first, second);
+    svg.appendChild(group);
+    return group;
+  }
+  function fmtRate(v) {
+    var units = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'], n = Math.max(0, Number(v) || 0), i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return (i === 0 ? Math.round(n) : (n >= 100 ? n.toFixed(0) : n.toFixed(1))) + ' ' + units[i];
+  }
+  function fmtTime(ts) {
+    var date = new Date(Number(ts));
+    if (!Number.isFinite(date.getTime())) return '时间未知';
+    return kokoroTrafficTimeFormatter.format(date);
+  }
+  function showAt(ratio) {
+    var d = state.data, pts = d && d.points;
+    if (!pts || !pts.length) return;
+    ratio = Math.max(0, Math.min(1, ratio));
+    var idx = 0, p, x, yUp, yDown, scale;
+    if (isOverview) {
+      idx = Math.round(ratio * (pts.length - 1));
+      p = pts[idx]; scale = d.scaleMax;
+      x = 8 + idx * (584 / Math.max(1, pts.length - 1));
+      yUp = 172 - Math.max(0, Number(p.up) || 0) / scale * 164;
+      yDown = 172 - Math.max(0, Number(p.down) || 0) / scale * 164;
+    } else {
+      var from = Number(d.from), to = Number(d.to), target = from + ratio * Math.max(1, to - from), best = Infinity;
+      pts.forEach(function (point, i) { var distance = Math.abs(Number(point.t) - target); if (distance < best) { best = distance; idx = i; } });
+      p = pts[idx]; scale = Number(d.scaleMax) || 1;
+      x = Math.max(0, Math.min(260, (Number(p.t) - from) / Math.max(1, to - from) * 260));
+      yUp = yDown = 37 - Math.min(1, (Math.max(0, Number(p.up) || 0) + Math.max(0, Number(p.down) || 0)) / scale) * 34;
+    }
+    if (!(scale > 0)) scale = 1;
+    var group = ensureCursor(), children = group.children;
+    children[0].setAttribute('x1', x.toFixed(1)); children[0].setAttribute('x2', x.toFixed(1));
+    children[1].setAttribute('cx', x.toFixed(1)); children[1].setAttribute('cy', yUp.toFixed(1));
+    children[2].setAttribute('cx', x.toFixed(1)); children[2].setAttribute('cy', yDown.toFixed(1));
+    group.setAttribute('visibility', 'visible');
+    state.ratio = ratio; state.index = idx;
+    timeLabel.textContent = fmtTime(p.t);
+    upLabel.textContent = '↑ ' + fmtRate(p.up);
+    downLabel.textContent = '↓ ' + fmtRate(p.down);
+    tip.classList.add('is-visible'); tip.setAttribute('aria-hidden', 'false');
+    var rect = svg.getBoundingClientRect(), host = wrapper.getBoundingClientRect();
+    var left = rect.left - host.left + ratio * rect.width;
+    var halfTip = Math.min(104, Math.max(8, host.width / 2 - 8));
+    left = Math.max(halfTip, Math.min(host.width - halfTip, left));
+    tip.style.left = left + 'px';
+    tip.style.top = isOverview ? '6px' : '22px';
+    tip.style.transform = 'translateX(-50%)';
+    wrapper.classList.add('has-chart-cursor');
+  }
+  function hide() {
+    if (state.pinned) return;
+    var group = svg.querySelector('.traffic-cursor');
+    if (group) group.setAttribute('visibility', 'hidden');
+    tip.classList.remove('is-visible'); tip.setAttribute('aria-hidden', 'true');
+    wrapper.classList.remove('has-chart-cursor');
+  }
+  function setData(data) {
+    if (isOverview) {
+      var max = 0;
+      (data || []).forEach(function (p) { max = Math.max(max, Number(p.up) || 0, Number(p.down) || 0); });
+      state.data = { points:data || [], scaleMax:max || 1 };
+    } else {
+      state.data = data || null;
+    }
+    if (state.data && state.data.points && state.data.points.length && state.pinned) showAt(state.ratio);
+  }
+  function loadData() {
+    if (state.data && state.data.points && state.data.points.length) return Promise.resolve(state.data);
+    if (!options.load) return Promise.resolve(null);
+    if (!state.loading) state.loading = options.load().then(function (data) { setData(data); return state.data; }).finally(function () { state.loading = null; });
+    return state.loading;
+  }
+  function ratioFromEvent(event) {
+    var rect = svg.getBoundingClientRect();
+    return rect.width ? Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) : .5;
+  }
+  svg.addEventListener('pointerenter', function (event) {
+    if (event.pointerType !== 'touch') loadData().then(function () { if (event.buttons === 0) showAt(ratioFromEvent(event)); }).catch(function () {});
+  });
+  svg.addEventListener('pointermove', function (event) {
+    state.pointerType = event.pointerType || '';
+    if (state.timer && Math.hypot(event.clientX - state.startX, event.clientY - state.startY) > 12) { clearTimeout(state.timer); state.timer = 0; state.moved = true; }
+    if (event.pointerType === 'touch' && !state.pinned) return;
+    var ratio = ratioFromEvent(event);
+    loadData().then(function () { showAt(ratio); }).catch(function () {});
+  });
+  svg.addEventListener('pointerdown', function (event) {
+    state.pointerType = event.pointerType || '';
+    if (event.pointerType !== 'touch') return;
+    state.startX = event.clientX; state.startY = event.clientY; state.moved = false; state.longPressed = false;
+    clearTimeout(state.timer);
+    state.timer = setTimeout(function () {
+      state.timer = 0; state.longPressed = true; state.pinned = !state.pinned;
+      if (!state.pinned) { hide(); return; }
+      var ratio = ratioFromEvent(event);
+      loadData().then(function () { showAt(ratio); }).catch(function () {});
+    }, 500);
+  });
+  ['pointerup','pointercancel'].forEach(function (name) { svg.addEventListener(name, function () { clearTimeout(state.timer); state.timer = 0; }); });
+  svg.addEventListener('pointerleave', hide);
+  svg.addEventListener('click', function (event) {
+    if (event.pointerType === 'touch' || state.pointerType === 'touch') {
+      if (state.longPressed) { state.longPressed = false; event.preventDefault(); }
+      return;
+    }
+    state.pinned = !state.pinned;
+    if (state.pinned) { var ratio = ratioFromEvent(event); loadData().then(function () { showAt(ratio); }).catch(function () {}); }
+    else hide();
+  });
+  svg.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') { state.pinned = false; hide(); return; }
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault(); state.pinned = true;
+    loadData().then(function () {
+      var count = state.data && state.data.points ? state.data.points.length : 0;
+      if (!count) return;
+      var next = Math.max(0, Math.min(count - 1, state.index + (event.key === 'ArrowRight' ? 1 : -1)));
+      showAt(count > 1 ? next / (count - 1) : 0);
+    }).catch(function () {});
+  });
+  svg.__kokoroTrafficInspector = { setData:setData, showAt:showAt };
+  if (initial) setData(initial);
+  return svg.__kokoroTrafficInspector;
+}
+
+(function () {
+  var source = document.getElementById('rate-data');
+  var points = null;
+  if (source) { try { points = JSON.parse(source.textContent); } catch (_) {} }
+  if (points) document.querySelectorAll('[data-rate-chart]').forEach(function (svg) {
+    initTrafficInspector(svg, points, { kind:'overview' });
+  });
+  document.querySelectorAll('[data-home-node-card] .card-primary .spark').forEach(function (svg) {
+    var card = svg.closest('[data-home-node-card]');
+    var select = card && card.querySelector('[data-node-range]');
+    if (!card || !select) return;
+    initTrafficInspector(svg, null, { kind:'card', load:function () {
+      return fetch('/api/v1/card-series?id=' + encodeURIComponent(card.getAttribute('data-node')) + '&range=' + encodeURIComponent(select.value), { cache:'no-store' })
+        .then(function (res) { if (!res.ok) throw new Error('series unavailable'); return res.json(); });
+    }});
+  });
+})();
+
 /* ---- 全网 CPU / 内存平均使用率 ----
    首页「全网速率」卡里的第二张图，和 renderRateChart 共用坐标系
    （viewBox 600x180、preserveAspectRatio 拉伸、HTML 覆盖层放刻度）。
@@ -2066,6 +2259,8 @@ function renderResChart(svg, pts) {
             svg.replaceChildren();
             delete svg.dataset.kRendered;
           }
+          var inspector = initTrafficInspector(svg, null, { kind:'card' });
+          if (inspector) inspector.setData(data);
         }
         var label = card.querySelector('[data-spark-label]');
         if (label) label.textContent = data.line ? '峰值 ' + data.peak : (data.info || '暂无数据');
