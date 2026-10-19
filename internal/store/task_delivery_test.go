@@ -70,7 +70,7 @@ func TestLegacyTaskHasDeadline(t *testing.T) {
 	task := &model.NodeTask{NodeID: "nd_test", Kind: "netquality", Cmd: "test:netquality"}
 	s.CreateTask(task)
 	s.ClaimQueuedTask(task.NodeID)
-	s.db.Exec(`UPDATE node_tasks SET started_at=? WHERE id=?`, nowMS()-(23*time.Minute).Milliseconds(), task.ID)
+	s.db.Exec(`UPDATE node_tasks SET started_at=? WHERE id=?`, nowMS()-(38*time.Minute).Milliseconds(), task.ID)
 	ended, err := s.ReconcileTaskHeartbeat(task.NodeID, nil)
 	if err != nil || len(ended) != 1 {
 		t.Fatal("legacy running record never expires")

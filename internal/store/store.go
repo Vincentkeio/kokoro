@@ -126,8 +126,13 @@ func (s *Store) Path() string { return s.path }
 
 // migrate 在 user_version 为 0 时执行建表，并把版本号写回。
 func (s *Store) migrate() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("开始数据库升级事务失败: %w", err)
+	}
+	defer tx.Rollback()
 	var v int
-	if err := s.db.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
+	if err := tx.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
 		return fmt.Errorf("读取 user_version 失败: %w", err)
 	}
 	if v > schemaVersion {
@@ -135,26 +140,27 @@ func (s *Store) migrate() error {
 	}
 	if v == 0 {
 		// 全新库：整份建表语句一遍跑完。
-		if _, err := s.db.Exec(schemaSQL); err != nil {
+		if _, err := tx.Exec(schemaSQL); err != nil {
 			return fmt.Errorf("执行建表语句失败: %w", err)
 		}
 		v = schemaVersion
 	} else if v < schemaVersion {
-		// 老库：按版本顺序补增量。每条迁移都写成幂等的，重复执行无害。
+		// Schema changes and their version marker commit together. Any failure
+		// or interrupted process rolls back all pending migration statements.
 		for _, m := range migrations {
 			if m.version <= v {
 				continue
 			}
-			if _, err := s.db.Exec(m.sql); err != nil {
+			if _, err := tx.Exec(m.sql); err != nil {
 				return fmt.Errorf("迁移到 schema v%d 失败: %w", m.version, err)
 			}
 			v = m.version
 		}
 	}
-	if _, err := s.db.Exec(fmt.Sprintf("PRAGMA user_version = %d", v)); err != nil {
+	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", v)); err != nil {
 		return fmt.Errorf("写入 user_version 失败: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // migrations 是增量迁移脚本，按 version 升序执行。
@@ -894,7 +900,7 @@ func (s *Store) InsertMetricsBatch(nodeID string, ms []*model.Metrics) error {
 
 // LatestMetrics 返回该节点最近一条原始指标；无数据返回 (nil, nil)。
 func (s *Store) LatestMetrics(nodeID string) (*model.Metrics, error) {
-	row := s.db.QueryRow("SELECT "+rawColsWithID+" FROM metrics_raw WHERE node_id = ? ORDER BY ts DESC LIMIT 1", nodeID)
+	row := s.db.QueryRow("SELECT "+rawColsWithID+" FROM metrics_raw WHERE node_id = ? AND ts <= ? ORDER BY ts DESC LIMIT 1", nodeID, nowMS())
 	m, err := scanMetricsWithNode(row, nil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -908,9 +914,9 @@ func (s *Store) LatestSnapshot() (map[string]*model.Metrics, error) {
 	q := `SELECT r.node_id, ` + rawCols + ` FROM (SELECT id FROM nodes) n
 CROSS JOIN metrics_raw r
 WHERE r.node_id = n.id AND r.ts = (
-    SELECT ts FROM metrics_raw WHERE node_id = n.id ORDER BY ts DESC LIMIT 1
+    SELECT ts FROM metrics_raw WHERE node_id = n.id AND ts <= ? ORDER BY ts DESC LIMIT 1
 )`
-	rows, err := s.db.Query(q)
+	rows, err := s.db.Query(q, nowMS())
 	if err != nil {
 		return nil, err
 	}
@@ -1275,7 +1281,7 @@ specs, pv, uv, updated_at FROM node_profile WHERE node_id = ?`, nodeID).
 	return &p, nil
 }
 
-// SaveProfile 新建或更新节点内容页。
+// SaveProfile 新建或更新节点内容页；已有访问计数由独立计数操作管理。
 func (s *Store) SaveProfile(p *model.NodeProfile) error {
 	if p == nil || p.NodeID == "" {
 		return errors.New("profile.NodeID 为空")
@@ -1297,13 +1303,23 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT (node_id) DO UPDATE SET
   cover = excluded.cover, summary = excluded.summary, content_md = excluded.content_md,
   album = excluded.album, price = excluded.price, expire_at = excluded.expire_at,
-  specs = excluded.specs, pv = excluded.pv, uv = excluded.uv, updated_at = excluded.updated_at`,
+  specs = excluded.specs, updated_at = excluded.updated_at`,
 		p.NodeID, p.Cover, p.Summary, p.ContentMD, album, p.Price, p.ExpireAt, specs,
 		p.PV, p.UV, p.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("保存节点内容失败: %w", err)
 	}
 	return nil
+}
+
+// IncrementProfilePV changes only the counter, preserving concurrent edits.
+func (s *Store) IncrementProfilePV(nodeID string) error {
+	if nodeID == "" {
+		return errors.New("profile.NodeID 为空")
+	}
+	_, err := s.db.Exec(`INSERT INTO node_profile (node_id, pv, updated_at) VALUES (?,1,?)
+ON CONFLICT (node_id) DO UPDATE SET pv = node_profile.pv + 1`, nodeID, nowMS())
+	return err
 }
 
 // ListComments 列出评论。nodeID 为空表示全部节点；

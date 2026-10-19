@@ -40,7 +40,7 @@ import (
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。
-var Version = "v1.0.9"
+var Version = "v1.0.10"
 
 const usage = `kokoro - 每台小鸡都有一颗心
 
@@ -55,8 +55,8 @@ const usage = `kokoro - 每台小鸡都有一颗心
 serve 选项:
   --listen   监听地址（默认 127.0.0.1:8799）
   --data     数据目录（默认 ./data，SQLite 与上传文件都放这里）
-  --domain   对外域名（用于自动申请证书与生成安装命令）
-  --tls      证书模式: proxy | selfsigned | none（默认 proxy，即由 Nginx 前置反代）
+  --domain   对外域名（用于生成安装命令与站点链接）
+  --tls      证书模式: proxy | none（默认 proxy，由前置反代提供 HTTPS）
 
 passwd 选项:
   --user     新用户名

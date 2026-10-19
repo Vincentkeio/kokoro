@@ -198,12 +198,9 @@ func (s *Store) ReconcileTaskHeartbeat(nodeID string, heartbeat *model.TaskHeart
 	now := nowMS()
 	for _, task := range tasks {
 		duration := 32 * time.Minute
-		switch task.Kind {
-		case "ipquality":
-			duration = 17 * time.Minute
-		case "netquality":
-			duration = 22 * time.Minute
-		case "swap":
+		if execution := model.BuiltinTestTimeout(task.Kind); execution > 0 {
+			duration = execution + 2*time.Minute // allow result upload after execution
+		} else if task.Kind == "swap" {
 			duration = 15 * time.Minute
 		}
 		message := ""

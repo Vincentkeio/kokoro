@@ -288,19 +288,19 @@ type Node struct {
 	TCPQdisc   string     `json:"tcp_qdisc,omitempty"`
 	// NAT 表示这台机器在 NAT 后面（公网 IP 不在自己网卡上）。
 	// 只存布尔值 —— 具体 IP 不落库、不展示。
-	NAT         bool   `json:"nat,omitempty"`
-	MemTotal    int64  `json:"mem_total"`
-	DiskTotal   int64  `json:"disk_total"`
-	AgentVer    string `json:"agent_version"`
-	IP          string `json:"ip,omitempty"`
-	Country     string `json:"country,omitempty"`
-	City        string `json:"city,omitempty"`
-	ASN         int    `json:"asn,omitempty"`
-	Online      bool   `json:"online"`
-	LastSeen    int64  `json:"last_seen"`
-	OfflineWarn bool   `json:"offline_warn"`
-	CreatedAt   int64  `json:"created_at"`
-	SortOrder   int    `json:"sort_order"`
+	NAT           bool   `json:"nat,omitempty"`
+	MemTotal      int64  `json:"mem_total"`
+	DiskTotal     int64  `json:"disk_total"`
+	AgentVer      string `json:"agent_version"`
+	IP            string `json:"ip,omitempty"`
+	Country       string `json:"country,omitempty"`
+	City          string `json:"city,omitempty"`
+	ASN           int    `json:"asn,omitempty"`
+	Online        bool   `json:"online"`
+	LastSeen      int64  `json:"last_seen"`
+	OfflineWarn   bool   `json:"offline_warn"`
+	CreatedAt     int64  `json:"created_at"`
+	SortOrder     int    `json:"sort_order"`
 	NetQIPVersion string `json:"netq_ip_version"`
 }
 
@@ -470,7 +470,7 @@ type HubConfig struct {
 	Listen      string `toml:"listen"`
 	BehindProxy bool   `toml:"behind_proxy"`
 	Domain      string `toml:"domain,omitempty"`
-	TLSMode     string `toml:"tls_mode"` // auto | proxy | selfsigned | none
+	TLSMode     string `toml:"tls_mode"` // proxy | none; TLS terminates at the reverse proxy
 	DBPath      string `toml:"db_path"`
 	DataDir     string `toml:"data_dir"`
 	SiteName    string `toml:"site_name"`

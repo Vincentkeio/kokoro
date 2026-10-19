@@ -61,19 +61,18 @@ func PrepareTestDependencies(parent context.Context, cfg *model.AgentConfig) err
 }
 
 type testRecipe struct {
-	only    string
-	timeout time.Duration
+	only string
 }
 
 // This local map is the complete test allowlist. Payloads cannot extend it.
 var testRecipes = map[string]testRecipe{
-	"bench":       {"sysinfo,disk,cpu,memory", 30 * time.Minute},
-	"ipquality4":  {"ip4", 15 * time.Minute},
-	"ipquality6":  {"ip6", 15 * time.Minute},
-	"ipquality":   {"ip", 30 * time.Minute},
-	"netquality4": {"net,route4", 20 * time.Minute},
-	"netquality6": {"net,route6", 20 * time.Minute},
-	"netquality":  {"net,route", 35 * time.Minute},
+	"bench":       {"sysinfo,disk,cpu,memory"},
+	"ipquality4":  {"ip4"},
+	"ipquality6":  {"ip6"},
+	"ipquality":   {"ip"},
+	"netquality4": {"net,route4"},
+	"netquality6": {"net,route6"},
+	"netquality":  {"net,route"},
 }
 
 func (a *Agent) runTest(cmd model.Command) model.CommandResult {
@@ -84,7 +83,8 @@ func (a *Agent) runTestContext(parent context.Context, cmd model.Command) model.
 	res := model.CommandResult{ID: cmd.ID}
 	kind, ok := cmd.Payload["kind"].(string)
 	recipe, allowed := testRecipes[kind]
-	if !ok || !allowed || len(cmd.Payload) != 1 {
+	timeout := model.BuiltinTestTimeout(kind)
+	if !ok || !allowed || timeout <= 0 || len(cmd.Payload) != 1 {
 		res.Stderr = "安全限制：仅接受内置硬件、IP 与线路测试类型，不接受自定义命令、参数或脚本地址"
 		return res
 	}
@@ -94,7 +94,7 @@ func (a *Agent) runTestContext(parent context.Context, cmd model.Command) model.
 	}
 	start := time.Now()
 	defer func() { logger.Printf("测试 %s 完成，用时 %s", kind, time.Since(start)) }()
-	ctx, cancel := context.WithTimeout(parent, recipe.timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	dir, err := os.MkdirTemp("", "kokoro-test-")
 	if err != nil {

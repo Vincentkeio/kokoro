@@ -36,7 +36,7 @@ import (
 )
 
 // Version 是 agent 版本，注册时上报给 Hub。
-var Version = "v0.2.0-beta.27"
+var Version = "v1.0.10"
 
 const logPrefix = "[kokoro-agent] "
 
@@ -133,10 +133,10 @@ type Agent struct {
 
 	// netqSel 是三网分省探测的当前范围（省份名列表，空 = 不探测）。
 	// 由 Hub 的 netq_targets 命令改写，见 netq.go。
-	netqSel   []string
+	netqSel       []string
 	netqIPVersion string
-	netqSelMu sync.Mutex
-	netqWake  chan struct{} // 范围变了就唤醒探测循环，立刻重跑
+	netqSelMu     sync.Mutex
+	netqWake      chan struct{} // 范围变了就唤醒探测循环，立刻重跑
 }
 
 // New 构造 agent。c 为采集器，传 nil 时使用内置兜底采集器。
@@ -205,7 +205,7 @@ func (a *Agent) buildClient() error {
 		if err != nil {
 			return err
 		}
-		// 自签 CA 无法走系统根证书链校验，改为自行比对 SPKI 指纹 + 主机名。
+		// 自签证书使用固定的信任锚，仍需验证签名链、用途、有效期和主机名。
 		tlsCfg.InsecureSkipVerify = true
 		want, host := pin, a.hubHost
 		tlsCfg.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
@@ -248,34 +248,45 @@ func (a *Agent) buildClient() error {
 // 同时兼容裸 base64、URL-safe base64 与十六进制写法。
 func normalizeFingerprint(fp string) (string, error) {
 	raw := strings.TrimSpace(fp)
-	if i := strings.Index(raw, "/"); i >= 0 {
-		alg := strings.ToLower(strings.TrimSpace(raw[:i]))
-		if alg != "sha256" {
-			return "", fmt.Errorf("不支持的指纹算法 %q，只支持 sha256", alg)
-		}
-		raw = strings.TrimSpace(raw[i+1:])
-	}
 	cands := [](func(string) ([]byte, error)){
 		base64.StdEncoding.DecodeString,
+		base64.RawStdEncoding.DecodeString,
+		base64.URLEncoding.DecodeString,
 		base64.RawURLEncoding.DecodeString,
 		func(s string) ([]byte, error) { return hex.DecodeString(s) },
 	}
-	for _, dec := range cands {
-		if b, err := dec(raw); err == nil && len(b) == sha256.Size {
-			return base64.StdEncoding.EncodeToString(b), nil
+	decode := func(value string) (string, bool) {
+		for _, dec := range cands {
+			if b, err := dec(value); err == nil && len(b) == sha256.Size {
+				return base64.StdEncoding.EncodeToString(b), true
+			}
+		}
+		return "", false
+	}
+	// A slash is also a valid Base64 character. Try the whole digest before
+	// interpreting an optional algorithm prefix.
+	if pin, ok := decode(raw); ok {
+		return pin, nil
+	}
+	if algorithm, digest, ok := strings.Cut(raw, "/"); ok && strings.EqualFold(strings.TrimSpace(algorithm), "sha256") {
+		if pin, ok := decode(strings.TrimSpace(digest)); ok {
+			return pin, nil
 		}
 	}
 	return "", fmt.Errorf("ca_fingerprint 格式非法：%s", fp)
 }
 
-// verifyPinned 校验服务端证书链里任意一张证书的 SPKI sha256 与指纹一致，
-// 并对叶子证书做主机名校验（因为 InsecureSkipVerify 会跳过默认校验）。
+// verifyPinned verifies the leaf against only the pinned trust anchors.
+// Merely including a public pinned certificate in an unrelated chain is insufficient.
 func verifyPinned(rawCerts [][]byte, wantFp, host string) error {
 	if len(rawCerts) == 0 {
 		return errors.New("服务端未提供证书")
 	}
+	roots := x509.NewCertPool()
+	intermediates := x509.NewCertPool()
+	var leaf *x509.Certificate
 	matched := false
-	for _, raw := range rawCerts {
+	for i, raw := range rawCerts {
 		c, err := x509.ParseCertificate(raw)
 		if err != nil {
 			return fmt.Errorf("解析服务端证书失败：%w", err)
@@ -283,20 +294,23 @@ func verifyPinned(rawCerts [][]byte, wantFp, host string) error {
 		sum := sha256.Sum256(c.RawSubjectPublicKeyInfo)
 		got := base64.StdEncoding.EncodeToString(sum[:])
 		if subtle.ConstantTimeCompare([]byte(got), []byte(wantFp)) == 1 {
+			roots.AddCert(c)
 			matched = true
+		}
+		if i == 0 {
+			leaf = c
+		} else {
+			intermediates.AddCert(c)
 		}
 	}
 	if !matched {
 		return fmt.Errorf("服务端证书链的 SPKI 指纹与 ca_fingerprint 不匹配，拒绝连接")
 	}
-	leaf, err := x509.ParseCertificate(rawCerts[0])
-	if err != nil {
-		return fmt.Errorf("解析叶子证书失败：%w", err)
-	}
-	if host != "" {
-		if err := leaf.VerifyHostname(host); err != nil {
-			return fmt.Errorf("服务端证书主机名校验失败：%w", err)
-		}
+	if _, err := leaf.Verify(x509.VerifyOptions{
+		Roots: roots, Intermediates: intermediates, DNSName: host,
+		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}); err != nil {
+		return fmt.Errorf("服务端证书链验证失败：%w", err)
 	}
 	return nil
 }

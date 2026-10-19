@@ -242,8 +242,10 @@ func (h *Hub) handleReport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "更新状态无效")
 		return
 	}
-	if m.Ts == 0 {
-		m.Ts = time.Now().UnixMilli()
+	// Replay keeps its original collection time, but a broken Agent clock
+	// must not install a future snapshot that hides subsequent healthy reports.
+	if now := time.Now().UnixMilli(); m.Ts <= 0 || m.Ts > now {
+		m.Ts = now
 	}
 	if m.Tasks != nil {
 		if len(m.Tasks.IDs) > 64 || len(m.Tasks.ResultIDs) > 64 {

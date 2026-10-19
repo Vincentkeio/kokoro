@@ -96,6 +96,7 @@ curl -fsSL https://<Hub域名>/i/<安装令牌> | sh
 - Hub 与 Agent 都使用 Go 编写；Hub 页面资源随程序一起打包，无需额外安装前端运行环境。
 - Agent 按内置白名单校验 Hub 下发的结构化指令类型及参数；测试仅允许 `bench`、`ipquality`、`netquality`，SWAP、配置和探测操作也只接受各自规定的参数。Agent 拒绝任意 Shell 文本、可执行程序、命令参数、脚本地址、工作目录和超时设置；测试由 Agent 固定流程调用版本及 SHA-256 均受校验的脚本。下载的程序和安装资源会校验 SHA-256。
 - 管理员密码使用带随机盐的 PBKDF2-HMAC-SHA256 保存。Agent 默认通过 HTTPS 通信；Hub 服务以专用系统用户运行，并由 systemd 限制可写目录。
+- Hub 的 HTTPS 由 Caddy、Nginx 等前置反向代理提供（`--tls proxy`）；`--tls none` 用于显式 HTTP。未实现的 `selfsigned`、`auto` 或未知模式会拒绝启动，避免误以为连接已经加密。Agent 的证书指纹固定同时验证证书签名链、服务端用途、有效期与主机名。
 - Agent 需要 root 权限采集主机信息及执行 SWAP 等管理操作；其 systemd 服务启用文件系统隔离，并将常驻服务的可写范围限制在配置目录。
 
 发布二进制的磁盘占用约为：Hub **15.6 MiB**；每台 Agent **15.6 MiB（amd64）**或 **14.7 MiB（arm64）**。Hub 为子机分发程序还需保存两种架构的 Agent 文件，Hub 与两份 Agent 二进制合计约 **45.9 MiB**；不含数据库、Caddy、系统依赖及运行数据。数据库本身的占用取决于保留期设置，默认约在**几十 MiB**量级。大小会随版本变化。

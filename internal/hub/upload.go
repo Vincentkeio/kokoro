@@ -72,7 +72,7 @@ func sniffImage(b []byte) (ext, ctype string) {
 		if bytes.HasPrefix(b, m.head) {
 			// WebP 还要看第 8~12 字节是不是 "WEBP"，
 			// 否则任何 RIFF 文件（比如 wav）都会被当成图片。
-			if m.ext == ".webp" && !bytes.HasPrefix(b[8:], []byte("WEBP")) {
+			if m.ext == ".webp" && (len(b) < 12 || !bytes.HasPrefix(b[8:], []byte("WEBP"))) {
 				continue
 			}
 			return m.ext, m.ctype

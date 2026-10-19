@@ -1985,8 +1985,9 @@ func (h *Hub) renderNodePage(w http.ResponseWriter, r *http.Request, slug, comme
 
 	// 访问统计（粗粒度：PV 每次 +1）
 	profile.PV++
-	profile.UpdatedAt = time.Now().UnixMilli()
-	_ = h.store.SaveProfile(profile)
+	if err := h.store.IncrementProfilePV(node.ID); err != nil {
+		log.Printf("[hub] 记录节点访问失败 %s: %v", node.ID, err)
+	}
 
 	h.render(w, "node.html", &data, r)
 }

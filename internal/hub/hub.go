@@ -3,7 +3,7 @@
 // 设计原则：
 //  1. 只用标准库 + 已经在 store 里落地的纯 Go SQLite，避免体积膨胀；
 //  2. 前端资源用 go:embed 打进二进制，部署时只有一个文件；
-//  3. Hub 可以跑在 Nginx 后面（--tls proxy），也可以自己起 TLS。
+//  3. HTTPS 由前置反向代理提供（--tls proxy）；本地调试可显式使用 none。
 package hub
 
 import (
@@ -36,7 +36,7 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 // Version is set from the CLI build version before serving registrations.
-var Version = "v1.0.5"
+var Version = "v1.0.10"
 
 // Hub 是一个运行中的主控实例。
 type Hub struct {
@@ -147,6 +147,11 @@ func New(cfg *model.HubConfig, st *store.Store) (*Hub, error) {
 	}
 	if st == nil {
 		return nil, errors.New("hub: store 为空")
+	}
+	switch cfg.TLSMode {
+	case "", "none", "proxy":
+	default:
+		return nil, fmt.Errorf("hub: 不支持证书模式 %q；HTTPS 请使用前置反向代理和 --tls proxy，本地 HTTP 使用 --tls none", cfg.TLSMode)
 	}
 	if cfg.Listen == "" {
 		cfg.Listen = "127.0.0.1:8799"
