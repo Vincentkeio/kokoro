@@ -1,0 +1,76 @@
+package hub
+
+import (
+	"bytes"
+	"encoding/binary"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestPublicSiteIconDiscovery(t *testing.T) {
+	h, _ := newTestHub(t)
+	for _, item := range []struct{ path, mime string }{
+		{"/favicon.ico", "image/x-icon"},
+		{"/favicon.png", "image/png"},
+		{"/favicon.svg", "image/svg+xml"},
+		{"/apple-touch-icon.png", "image/png"},
+		{"/logo.webp", "image/webp"},
+	} {
+		t.Run(item.path, func(t *testing.T) {
+			get := httptest.NewRecorder()
+			h.ServeHTTP(get, httptest.NewRequest(http.MethodGet, item.path, nil))
+			if get.Code != http.StatusOK || get.Header().Get("Content-Type") != item.mime || get.Body.Len() == 0 {
+				t.Fatalf("public icon not fetchable: status=%d mime=%q bytes=%d", get.Code, get.Header().Get("Content-Type"), get.Body.Len())
+			}
+			if get.Body.Len() > 8<<10 {
+				t.Fatalf("icon unexpectedly large: %d bytes", get.Body.Len())
+			}
+			head := httptest.NewRecorder()
+			h.ServeHTTP(head, httptest.NewRequest(http.MethodHead, item.path, nil))
+			if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("Content-Length") != get.Header().Get("Content-Length") {
+				t.Fatalf("HEAD cannot discover icon metadata: status=%d headers=%v", head.Code, head.Header())
+			}
+			req := httptest.NewRequest(http.MethodGet, item.path, nil)
+			req.Header.Set("If-None-Match", get.Header().Get("ETag"))
+			cached := httptest.NewRecorder()
+			h.ServeHTTP(cached, req)
+			if cached.Code != http.StatusNotModified {
+				t.Fatalf("icon revalidation status=%d", cached.Code)
+			}
+		})
+	}
+	page := httptest.NewRecorder()
+	h.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
+	for _, path := range []string{"/favicon.ico?v=69", "/favicon.png?v=69", "/favicon.svg?v=69", "/apple-touch-icon.png?v=69"} {
+		if !strings.Contains(page.Body.String(), `href="`+path+`"`) {
+			t.Errorf("HTML icon discovery missing %s", path)
+		}
+	}
+}
+
+func TestFaviconContainsSmallPNGFrames(t *testing.T) {
+	data, err := staticFS.ReadFile("static/favicon.ico")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) < 6 || binary.LittleEndian.Uint16(data[:2]) != 0 || binary.LittleEndian.Uint16(data[2:4]) != 1 {
+		t.Fatal("invalid ICO header")
+	}
+	sizes := []int{16, 32, 48, 64}
+	if int(binary.LittleEndian.Uint16(data[4:6])) != len(sizes) || len(data) < 6+16*len(sizes) {
+		t.Fatal("missing ICO sizes")
+	}
+	for i, size := range sizes {
+		entry := data[6+16*i : 6+16*(i+1)]
+		length, offset := int(binary.LittleEndian.Uint32(entry[8:12])), int(binary.LittleEndian.Uint32(entry[12:16]))
+		if int(entry[0]) != size || int(entry[1]) != size || offset < 6+16*len(sizes) || length < 24 || offset > len(data)-length {
+			t.Fatalf("invalid %dpx ICO entry", size)
+		}
+		frame := data[offset : offset+length]
+		if !bytes.HasPrefix(frame, []byte("\x89PNG\r\n\x1a\n")) || int(binary.BigEndian.Uint32(frame[16:20])) != size || int(binary.BigEndian.Uint32(frame[20:24])) != size {
+			t.Fatalf("invalid %dpx PNG frame", size)
+		}
+	}
+}
