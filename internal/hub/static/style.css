@@ -4859,19 +4859,17 @@ body[data-k-theme="kokoro.titanium"] .spark path.line {
   stroke-linejoin:round;
   animation:kokoro-titanium-chart-breathe 3.6s ease-in-out infinite;
 }
-/* Card sparklines keep a steady halo instead of animating the blur radius. */
+/* Card sparklines use the same slow glow pulse so the visual can be checked against redraws. */
 body[data-k-theme="kokoro.titanium"] .card .spark .sp-line {
   color:var(--accent);
   stroke-linecap:round;
   stroke-linejoin:round;
-  animation:none!important;
+  animation:kokoro-titanium-chart-breathe 3.6s ease-in-out infinite;
   filter:drop-shadow(0 0 2px currentColor) drop-shadow(0 0 5px currentColor);
   opacity:1;
 }
-/* 小鸡卡片只保留静态柔光。沿曲线扫过的 SVG 光点会被误认为折线呼吸，
-   而且卡片数据重绘时会让光点看起来闪烁。 */
+/* Hide the moving SVG particle while testing the card line's breathing effect. */
 body[data-k-theme="kokoro.titanium"] .card .spark .spark-flow { display:none; }
-body[data-k-theme="kokoro.titanium"] .card .spark path { animation:none!important; }
 body[data-k-theme="kokoro.titanium"] .card.off .spark .sp-line { color:var(--faint); }
 body[data-k-theme="kokoro.titanium"] .dash-line-up,
 body[data-k-theme="kokoro.titanium"] .res-line-cpu,

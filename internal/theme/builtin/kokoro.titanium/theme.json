@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "id": "kokoro.titanium",
   "name": "钛光",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "精工钛金属壁纸、向上流动的冰蓝字符矩阵、白热激光资源条与平滑冰蓝曲线。",
   "author": "Jiwo",
   "license": "MIT",
   "tags": [
     "future",
     "titanium",
-    "breathing",
+    "glow",
     "dark"
   ],
   "tokensSchemaVersion": 3,
@@ -19,7 +19,7 @@
     "allowUserSwitch": false
   },
   "tokens": {
-    "--kokoro-bg-image": "url(/_theme-assets/kokoro.titanium/breath-v2.webp), url(/_theme-assets/kokoro.titanium/titanium-v2.webp)",
+    "--kokoro-bg-image": "url(/_theme-assets/kokoro.titanium/titanium-v2.webp?v=1.6.1)",
     "--kokoro-bg-attachment": "fixed",
     "--kokoro-bg-repeat": "no-repeat",
     "--kokoro-color-primary": "#9ce5f4",
