@@ -201,19 +201,17 @@ func sparkPaths(points []store.NetPoint) (line, area string) {
 	return b.String(), a.String()
 }
 
-// sparkSeriesWindowMax gives every node chart in the same view a shared
-// vertical scale. Scaling each card against its own peak made sparse or
-// low-traffic nodes look as busy as the busiest node.
-func sparkSeriesWindowMax(series map[string][]store.NetPoint, from, to int64) float64 {
+// sparkWindowMax gives one node card a local vertical scale so its own
+// traffic changes remain visible. The peak label still communicates the
+// absolute traffic rate for comparisons between nodes.
+func sparkWindowMax(points []store.NetPoint, from, to int64) float64 {
 	maxV := 0.0
-	for _, points := range series {
-		for _, p := range points {
-			if p.Bucket < from || p.Bucket > to {
-				continue
-			}
-			if v := p.Up + p.Down; v > maxV {
-				maxV = v
-			}
+	for _, p := range points {
+		if p.Bucket < from || p.Bucket > to {
+			continue
+		}
+		if v := p.Up + p.Down; v > maxV {
+			maxV = v
 		}
 	}
 	return maxV
@@ -223,7 +221,7 @@ func sparkSeriesWindowMax(series map[string][]store.NetPoint, from, to int64) fl
 // window. Sparse or late-starting data therefore stays sparse instead of
 // stretching the first and last sample across the whole chart.
 func sparkPathsInWindow(points []store.NetPoint, from, to int64) (line, area string) {
-	return sparkPathsInWindowScale(points, from, to, sparkSeriesWindowMax(map[string][]store.NetPoint{"node": points}, from, to))
+	return sparkPathsInWindowScale(points, from, to, sparkWindowMax(points, from, to))
 }
 
 func sparkPathsInWindowScale(points []store.NetPoint, from, to int64, maxV float64) (line, area string) {

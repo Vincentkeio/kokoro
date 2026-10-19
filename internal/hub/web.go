@@ -1321,7 +1321,7 @@ func (h *Hub) handleHomeCardSeries(w http.ResponseWriter, r *http.Request) {
 	h.cardSeriesMu.Unlock()
 	series, from, to := entry.series, entry.from, entry.to
 	points := series[id]
-	line, area := sparkPathsInWindowScale(points, from, to, sparkSeriesWindowMax(series, from, to))
+	line, area := sparkPathsInWindowScale(points, from, to, sparkWindowMax(points, from, to))
 	response := homeCardSeriesResponse{Line: line, Area: area}
 	if len(points) == 0 {
 		response.Info = "暂无数据"
@@ -1379,7 +1379,6 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 	seriesTo := now.UnixMilli()
 	seriesFrom := seriesTo - rangeWin.dur.Milliseconds()
 	series, _ := h.store.NetSeriesByNode(ids, seriesFrom, seriesTo, dashMaxPoints)
-	sparkScale := sparkSeriesWindowMax(series, seriesFrom, seriesTo)
 
 	// 卡片底部的互动数据，**一次批量取完**再按节点分发。
 	// 每张卡各查三次的话，几十台就是一二百次往返。
@@ -1412,7 +1411,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		}
 		if m != nil {
 			points := series[n.ID]
-			c.SparkLine, c.SparkArea = sparkPathsInWindowScale(points, seriesFrom, seriesTo, sparkScale)
+			c.SparkLine, c.SparkArea = sparkPathsInWindowScale(points, seriesFrom, seriesTo, sparkWindowMax(points, seriesFrom, seriesTo))
 			switch {
 			case len(points) == 0:
 				c.SparkInfo = "暂无数据"
