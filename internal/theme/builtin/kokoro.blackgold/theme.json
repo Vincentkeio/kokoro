@@ -99,7 +99,7 @@
     "--kokoro-clock-muted": "#b3a98f",
     "--kokoro-node-card-radius": "8px",
     "--kokoro-globe-flow-core": "#fff3d1",
-    "--kokoro-globe-rotation-speed": "0.4",
+    "--kokoro-globe-rotation-speed": "0.75",
     "--kokoro-node-card-title": "#eee7d5",
     "--kokoro-globe-route-width": "1",
     "--kokoro-globe-flow-period": "7600",

@@ -122,7 +122,7 @@
     "--kokoro-globe-flow-glow": "4",
     "--kokoro-globe-flow-glow-width": "3",
     "--kokoro-globe-route-width": "1",
-    "--kokoro-globe-rotation-speed": ".4",
+    "--kokoro-globe-rotation-speed": "0.75",
     "--kokoro-content-max-width": "2080px",
     "--kokoro-bg-size": "max(100vw, 160vh)",
     "--kokoro-hero-gradient": "radial-gradient(ellipse at center,rgba(25,115,157,.23),#060f1a 75%)",
