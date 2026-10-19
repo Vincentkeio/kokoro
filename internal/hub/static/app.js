@@ -1391,6 +1391,8 @@ function initTrafficInspector(svg, initial, options) {
   }
   options = options || {};
   var isOverview = options.kind === 'overview';
+  var isResource = options.kind === 'resource';
+  var isCard = options.kind === 'card';
   var wrapper = svg.parentElement;
   var ns = 'http://www.w3.org/2000/svg';
   var state = { data: null, loading: null, pinned: false, ratio: .5, index: 0, timer: 0, startX: 0, startY: 0, moved: false, longPressed: false, pointerType: '' };
@@ -1419,14 +1421,14 @@ function initTrafficInspector(svg, initial, options) {
     group.setAttribute('pointer-events', 'none');
     var line = document.createElementNS(ns, 'line');
     line.setAttribute('class', 'traffic-crosshair');
-    line.setAttribute('y1', isOverview ? '8' : '2');
-    line.setAttribute('y2', isOverview ? '172' : '38');
+    line.setAttribute('y1', isCard ? '2' : '8');
+    line.setAttribute('y2', isCard ? '38' : '172');
     var first = document.createElementNS(ns, 'circle');
     first.setAttribute('class', 'traffic-point-up');
-    first.setAttribute('r', isOverview ? '4' : '2.5');
+    first.setAttribute('r', isCard ? '2.5' : '4');
     var second = document.createElementNS(ns, 'circle');
     second.setAttribute('class', 'traffic-point-down');
-    second.setAttribute('r', isOverview ? '4' : '2.5');
+    second.setAttribute('r', isCard ? '2.5' : '4');
     group.append(line, first, second);
     svg.appendChild(group);
     return group;
@@ -1446,12 +1448,17 @@ function initTrafficInspector(svg, initial, options) {
     if (!pts || !pts.length) return;
     ratio = Math.max(0, Math.min(1, ratio));
     var idx = 0, p, x, yUp, yDown, scale;
-    if (isOverview) {
+    if (isOverview || isResource) {
       idx = Math.round(ratio * (pts.length - 1));
-      p = pts[idx]; scale = d.scaleMax;
+      p = pts[idx]; scale = isResource ? 100 : d.scaleMax;
       x = 8 + idx * (584 / Math.max(1, pts.length - 1));
-      yUp = 172 - Math.max(0, Number(p.up) || 0) / scale * 164;
-      yDown = 172 - Math.max(0, Number(p.down) || 0) / scale * 164;
+      if (isResource) {
+        yUp = 172 - Math.max(0, Math.min(100, Number(p.cpu) || 0)) / scale * 164;
+        yDown = 172 - Math.max(0, Math.min(100, Number(p.mem) || 0)) / scale * 164;
+      } else {
+        yUp = 172 - Math.max(0, Number(p.up) || 0) / scale * 164;
+        yDown = 172 - Math.max(0, Number(p.down) || 0) / scale * 164;
+      }
     } else {
       var from = Number(d.from), to = Number(d.to), target = from + ratio * Math.max(1, to - from), best = Infinity;
       pts.forEach(function (point, i) { var distance = Math.abs(Number(point.t) - target); if (distance < best) { best = distance; idx = i; } });
@@ -1467,15 +1474,20 @@ function initTrafficInspector(svg, initial, options) {
     group.setAttribute('visibility', 'visible');
     state.ratio = ratio; state.index = idx;
     timeLabel.textContent = fmtTime(p.t);
-    upLabel.textContent = '↑ ' + fmtRate(p.up);
-    downLabel.textContent = '↓ ' + fmtRate(p.down);
+    if (isResource) {
+      upLabel.textContent = 'CPU ' + (Number(p.cpu) || 0).toFixed(1) + '%';
+      downLabel.textContent = '内存 ' + (Number(p.mem) || 0).toFixed(1) + '%';
+    } else {
+      upLabel.textContent = '↑ ' + fmtRate(p.up);
+      downLabel.textContent = '↓ ' + fmtRate(p.down);
+    }
     tip.classList.add('is-visible'); tip.setAttribute('aria-hidden', 'false');
     var rect = svg.getBoundingClientRect(), host = wrapper.getBoundingClientRect();
     var left = rect.left - host.left + ratio * rect.width;
     var halfTip = Math.min(104, Math.max(8, host.width / 2 - 8));
     left = Math.max(halfTip, Math.min(host.width - halfTip, left));
     tip.style.left = left + 'px';
-    tip.style.top = isOverview ? '6px' : '22px';
+    tip.style.top = isCard ? '22px' : '6px';
     tip.style.transform = 'translateX(-50%)';
     wrapper.classList.add('has-chart-cursor');
   }
@@ -1487,10 +1499,10 @@ function initTrafficInspector(svg, initial, options) {
     wrapper.classList.remove('has-chart-cursor');
   }
   function setData(data) {
-    if (isOverview) {
+    if (isOverview || isResource) {
       var max = 0;
-      (data || []).forEach(function (p) { max = Math.max(max, Number(p.up) || 0, Number(p.down) || 0); });
-      state.data = { points:data || [], scaleMax:max || 1 };
+      if (!isResource) (data || []).forEach(function (p) { max = Math.max(max, Number(p.up) || 0, Number(p.down) || 0); });
+      state.data = { points:data || [], scaleMax:isResource ? 100 : (max || 1) };
     } else {
       state.data = data || null;
     }
@@ -1664,6 +1676,7 @@ function renderResChart(svg, pts) {
   try { pts = JSON.parse(el.textContent); } catch (e) { return; }
   document.querySelectorAll('[data-res-chart]').forEach(function (svg) {
     renderResChart(svg, pts);
+    initTrafficInspector(svg, pts, { kind:'resource' });
   });
 })();
 

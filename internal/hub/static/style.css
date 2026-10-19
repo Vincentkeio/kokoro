@@ -110,6 +110,9 @@ html {
   -webkit-text-size-adjust: 100%;
   container: k-page / inline-size;
   overflow: auto;
+  /* Keep the themed canvas behind short/zoomed admin pages too. The body can
+     end at its viewport min-height while the document viewport is taller. */
+  background-color: var(--bg);
 }
 
 /* Keep desktop geometry when a window is narrowed. The document owns both
@@ -5306,10 +5309,13 @@ body[data-k-theme][data-admin] {
 
 /* 统一的流量图坐标提示，颜色继承当前主题的系列色与表面色。 */
 .rate-chart-wrap.chart-inspector-host,
+.res-chart-wrap.chart-inspector-host,
 .card .net.chart-inspector-host { position: relative; }
 .rate-chart-wrap [data-rate-chart],
+.res-chart-wrap [data-res-chart],
 .card .net .spark { cursor: crosshair; touch-action: pan-y; }
 .rate-chart-wrap [data-rate-chart]:focus-visible,
+.res-chart-wrap [data-res-chart]:focus-visible,
 .card .net .spark:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chart-inspector-tooltip {
   position: absolute;
