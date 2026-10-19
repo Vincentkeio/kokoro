@@ -4848,12 +4848,21 @@ body[data-k-theme="kokoro.titanium"] .dash-line-up,
 body[data-k-theme="kokoro.titanium"] .dash-line-down,
 body[data-k-theme="kokoro.titanium"] .res-line-cpu,
 body[data-k-theme="kokoro.titanium"] .res-line-mem,
-body[data-k-theme="kokoro.titanium"] .spark path.line,
-body[data-k-theme="kokoro.titanium"] .spark .sp-line {
+body[data-k-theme="kokoro.titanium"] .spark path.line {
   stroke-linecap:round;
   stroke-linejoin:round;
   animation:kokoro-titanium-chart-breathe 3.6s ease-in-out infinite;
 }
+/* Card sparklines keep a steady halo instead of animating the blur radius. */
+body[data-k-theme="kokoro.titanium"] .card .spark .sp-line {
+  color:var(--accent);
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  animation:none;
+  filter:drop-shadow(0 0 2px currentColor) drop-shadow(0 0 5px currentColor);
+  opacity:1;
+}
+body[data-k-theme="kokoro.titanium"] .card.off .spark .sp-line { color:var(--faint); }
 body[data-k-theme="kokoro.titanium"] .dash-line-up,
 body[data-k-theme="kokoro.titanium"] .res-line-cpu,
 body[data-k-theme="kokoro.titanium"] .spark.cpu path.line,
@@ -4890,8 +4899,7 @@ body[data-k-theme="kokoro.titanium"] .card .buyrow .buy:active:not(:disabled) {
   body[data-k-theme="kokoro.titanium"] .dash-line-down,
   body[data-k-theme="kokoro.titanium"] .res-line-cpu,
   body[data-k-theme="kokoro.titanium"] .res-line-mem,
-  body[data-k-theme="kokoro.titanium"] .spark path.line,
-  body[data-k-theme="kokoro.titanium"] .spark .sp-line { animation:none; filter:drop-shadow(0 0 4px currentColor); opacity:1; }
+  body[data-k-theme="kokoro.titanium"] .spark path.line { animation:none; filter:drop-shadow(0 0 4px currentColor); opacity:1; }
 }
 
 /* 详情页内容入口：与面板卡片一致，左右等宽并通过已有弹窗浏览。 */

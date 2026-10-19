@@ -217,11 +217,36 @@ func sparkWindowMax(points []store.NetPoint, from, to int64) float64 {
 	return maxV
 }
 
+// sparkScaleMax rounds a node's peak to a readable, zero-based axis boundary.
+// Aim for about five ticks, as an automatic numeric chart axis does. No other
+// node's traffic participates in this scale.
+func sparkScaleMax(peak float64) float64 {
+	if !(peak > 0) || math.IsInf(peak, 0) {
+		return 0
+	}
+	roughStep := peak / 4
+	base := math.Pow(10, math.Floor(math.Log10(roughStep)))
+	if base == 0 {
+		return peak
+	}
+	for _, multiple := range [...]float64{1, 2, 2.5, 5, 10} {
+		step := multiple * base
+		if step >= roughStep {
+			upper := math.Ceil(peak/step) * step
+			if math.IsInf(upper, 0) {
+				return peak
+			}
+			return upper
+		}
+	}
+	return peak
+}
+
 // sparkPathsInWindow maps samples to their real position inside a fixed time
 // window. Sparse or late-starting data therefore stays sparse instead of
 // stretching the first and last sample across the whole chart.
 func sparkPathsInWindow(points []store.NetPoint, from, to int64) (line, area string) {
-	return sparkPathsInWindowScale(points, from, to, sparkWindowMax(points, from, to))
+	return sparkPathsInWindowScale(points, from, to, sparkScaleMax(sparkWindowMax(points, from, to)))
 }
 
 func sparkPathsInWindowScale(points []store.NetPoint, from, to int64, maxV float64) (line, area string) {

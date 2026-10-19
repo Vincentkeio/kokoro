@@ -1321,7 +1321,7 @@ func (h *Hub) handleHomeCardSeries(w http.ResponseWriter, r *http.Request) {
 	h.cardSeriesMu.Unlock()
 	series, from, to := entry.series, entry.from, entry.to
 	points := series[id]
-	line, area := sparkPathsInWindowScale(points, from, to, sparkWindowMax(points, from, to))
+	line, area := sparkPathsInWindow(points, from, to)
 	response := homeCardSeriesResponse{Line: line, Area: area}
 	if len(points) == 0 {
 		response.Info = "暂无数据"
@@ -1411,7 +1411,7 @@ func (h *Hub) renderHome(w http.ResponseWriter, r *http.Request, query string) {
 		}
 		if m != nil {
 			points := series[n.ID]
-			c.SparkLine, c.SparkArea = sparkPathsInWindowScale(points, seriesFrom, seriesTo, sparkWindowMax(points, seriesFrom, seriesTo))
+			c.SparkLine, c.SparkArea = sparkPathsInWindow(points, seriesFrom, seriesTo)
 			switch {
 			case len(points) == 0:
 				c.SparkInfo = "暂无数据"

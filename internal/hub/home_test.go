@@ -266,6 +266,35 @@ func TestSparkPaths(t *testing.T) {
 	}
 }
 
+func TestSparkScaleMax(t *testing.T) {
+	for _, tc := range []struct{ peak, want float64 }{
+		{0, 0}, {1.8, 2}, {59.5, 60}, {63, 80}, {100, 100}, {101, 150},
+	} {
+		if got := sparkScaleMax(tc.peak); math.Abs(got-tc.want) > 1e-9 {
+			t.Errorf("peak %g: axis upper bound = %g, want %g", tc.peak, got, tc.want)
+		}
+	}
+}
+
+func TestSparkWindowExcludesOldPeak(t *testing.T) {
+	points := []store.NetPoint{
+		{Bucket: -60_000, Up: 1e9},
+		{Bucket: 0}, {Bucket: 30_000, Up: 59.5}, {Bucket: 60_000},
+	}
+	line, _ := sparkPathsInWindow(points, 0, 60_000)
+	parts := strings.Split(strings.TrimPrefix(line, "M"), "L")
+	if len(parts) != 3 {
+		t.Fatalf("expected only the three in-window points: %q", line)
+	}
+	var x, y float64
+	if _, err := fmt.Sscanf(parts[1], "%f %f", &x, &y); err != nil {
+		t.Fatal(err)
+	}
+	if y <= 3 || y >= 10 {
+		t.Fatalf("local peak should sit just below its rounded upper bound, y=%g", y)
+	}
+}
+
 func TestNetQWavePaths(t *testing.T) {
 	// 单点 / 空 / 全平：不出图。全平画一条中线会被误读成"接口在抖"，
 	// 而"只有一轮数据"用空白表达更诚实。

@@ -3,6 +3,7 @@ package hub
 // 卡片上的延迟与流量。
 
 import (
+	"encoding/json"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -119,6 +120,40 @@ func TestCardShowsThreeISPLatency(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("卡片缺少三网延迟波动的 %s", want)
 		}
+	}
+}
+
+func TestCardRangeRefreshUsesIndependentAxes(t *testing.T) {
+	h, st := newTestHub(t)
+	a := mkNode(t, st, "Low traffic", "JP", "", "")
+	b := mkNode(t, st, "High traffic", "HK", "", "")
+	base := time.Now().Add(-50 * time.Minute).UnixMilli()
+	for i, rate := range []float64{60, 90, 60} {
+		for id, multiplier := range map[string]float64{a.ID: 1, b.ID: 10_000} {
+			if _, err := st.DB().Exec(`INSERT INTO metrics_5m(node_id,bucket,net_up_avg,net_down_avg,samples) VALUES(?,?,?,0,1)`,
+				id, base+int64(i)*(20*time.Minute).Milliseconds(), rate*multiplier); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var responses []homeCardSeriesResponse
+	for _, id := range []string{a.ID, b.ID} {
+		w := httptest.NewRecorder()
+		h.handleHomeCardSeries(w, httptest.NewRequest(http.MethodGet, "/api/v1/card-series?id="+id+"&range=1d", nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("card refresh returned %d: %s", w.Code, w.Body.String())
+		}
+		var response homeCardSeriesResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		responses = append(responses, response)
+	}
+	if responses[0].Line == "" || responses[0].Line != responses[1].Line {
+		t.Fatalf("proportional node traffic should retain the same visible variation:\n%s\n%s", responses[0].Line, responses[1].Line)
+	}
+	if responses[0].Peak == responses[1].Peak {
+		t.Fatal("independent axes must preserve each node's actual peak label")
 	}
 }
 
