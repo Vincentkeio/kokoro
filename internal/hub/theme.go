@@ -234,6 +234,8 @@ type themeView struct {
 	// safeWallpaperURL（只放行 http(s)、且不含引号括号分号反斜杠空白），
 	// 所以这里标成"安全"是有依据的，不是图省事。
 	WallpaperCSS template.CSS
+	// WallpaperPreload lets the browser request a bundled image early.
+	WallpaperPreload string
 }
 
 // resolvePickable 返回访客可自选的主题列表。
@@ -357,7 +359,41 @@ func (h *Hub) buildThemeView(r *http.Request, m *theme.Manifest) themeView {
 		v.Tokens = template.CSS(theme.RenderTokens(m))
 		v.LayoutCSS = template.CSS(theme.RenderLayoutCSS(m))
 	}
+	v.WallpaperPreload = themeImagePreload(string(v.Tokens) + string(v.WallpaperCSS))
 	return v
+}
+
+// themeImagePreload 提前请求主题自带的同源图片，避免背景图等到首屏样式
+// 计算后才开始下载。只接受主题资源路由，不会预加载主题作者的外链。
+func themeImagePreload(css string) string {
+	for rest := css; ; {
+		start := strings.Index(rest, "url(")
+		if start < 0 {
+			return ""
+		}
+		rest = rest[start+4:]
+		end := strings.IndexByte(rest, ')')
+		if end < 0 {
+			return ""
+		}
+		src := strings.Trim(strings.TrimSpace(rest[:end]), "\"'")
+		rest = rest[end+1:]
+		u, err := url.Parse(src)
+		if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(u.Path, "/_theme-assets/") {
+			continue
+		}
+		id, name, ok := strings.Cut(strings.TrimPrefix(u.Path, "/_theme-assets/"), "/")
+		if !ok || !theme.ValidID(id) {
+			continue
+		}
+		asset, err := theme.SafeAssetPath(name)
+		if err != nil {
+			continue
+		}
+		if _, ok := theme.AssetMIME(asset); ok {
+			return src
+		}
+	}
 }
 
 // requestManifest 返回本次请求真正该用的主题：站点默认 + 访客覆盖。

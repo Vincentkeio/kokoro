@@ -3813,6 +3813,11 @@ body[data-k-theme="kokoro.blackgold"] .top .top-owner-txt b { color: var(--fg-st
 
 /* 黑金：对齐 Jiwo Premium 黑金的深墨绿黑、暖白文字和双层金属金。
    非语义资源条统一用深金到亮金渐变；在线/告警状态仍保留原语义色。 */
+body[data-k-theme="kokoro.blackgold"] {
+  background-position:center center;
+  background-repeat:no-repeat;
+  background-attachment:fixed;
+}
 body[data-k-theme="kokoro.blackgold"] .top {
   background: linear-gradient(180deg, #10170f 0%, #080d09 100%);
   box-shadow: inset 0 1px rgba(255, 235, 183, .14), 0 1px 0 rgba(229, 195, 103, .34);
@@ -4858,10 +4863,14 @@ body[data-k-theme="kokoro.titanium"] .card .spark .sp-line {
   color:var(--accent);
   stroke-linecap:round;
   stroke-linejoin:round;
-  animation:none;
+  animation:none!important;
   filter:drop-shadow(0 0 2px currentColor) drop-shadow(0 0 5px currentColor);
   opacity:1;
 }
+/* 小鸡卡片只保留静态柔光。沿曲线扫过的 SVG 光点会被误认为折线呼吸，
+   而且卡片数据重绘时会让光点看起来闪烁。 */
+body[data-k-theme="kokoro.titanium"] .card .spark .spark-flow { display:none; }
+body[data-k-theme="kokoro.titanium"] .card .spark path { animation:none!important; }
 body[data-k-theme="kokoro.titanium"] .card.off .spark .sp-line { color:var(--faint); }
 body[data-k-theme="kokoro.titanium"] .dash-line-up,
 body[data-k-theme="kokoro.titanium"] .res-line-cpu,

@@ -215,12 +215,8 @@ func (h *Hub) updateStatus(w http.ResponseWriter, r *http.Request) {
 	h.updateMu.Lock()
 	defer h.updateMu.Unlock()
 	h.loadUpdateLocked()
-	if !h.updateLoaded {
-		writeErr(w, 500, "无法读取探针更新计划，请检查服务日志")
-		return
-	}
 	changed := false
-	if h.updatePlan != nil {
+	if h.updateLoaded && h.updatePlan != nil {
 		for i := range h.updatePlan.Nodes {
 			n := &h.updatePlan.Nodes[i]
 			if (n.State == "waiting" || n.State == "running") && time.Now().UnixMilli()-h.updatePlan.StartedAt > 20*60*1000 {
@@ -237,6 +233,11 @@ func (h *Hub) updateStatus(w http.ResponseWriter, r *http.Request) {
 	response["ok"] = true
 	response["hub"] = h.hubUpdateState()
 	response["plan"] = h.updatePlan
+	if !h.updateLoaded {
+		// 探针更新计划损坏时，仍向前端提供自动更新设置，避免开关
+		// 永远停留在“读取中”。真正启动更新仍由写操作 fail closed。
+		response["plan_error"] = "无法读取探针更新计划，请检查服务日志"
+	}
 	response["supported"] = panelupdate.HubSupported(h.cfg.DataDir)
 	writeJSON(w, 200, response)
 }
