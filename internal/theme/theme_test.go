@@ -22,6 +22,7 @@ var want = []string{
 	"kokoro.mist",
 	"kokoro.paper",
 	"kokoro.simple",
+	"kokoro.titanium",
 }
 
 func TestBuiltinThemesParse(t *testing.T) {
