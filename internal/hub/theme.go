@@ -110,6 +110,15 @@ func (h *Hub) loadTheme() {
 	if s, err := h.store.GetSetting(settingTheme); err == nil {
 		active = strings.TrimSpace(s)
 	}
+	// 黑金从旧的导入主题 ID 升级为内置 ID。保留站点原来的主题选择。
+	if active == "jiwo.blackgold" && h.themes.Get("kokoro.blackgold") != nil {
+		active = "kokoro.blackgold"
+		if h.store != nil {
+			if err := h.store.SetSetting(settingTheme, active); err != nil {
+				log.Printf("[theme] 迁移黑金主题设置失败: %v", err)
+			}
+		}
+	}
 	// 已移除的旧主题和存档主题统一迁移到「简洁」。
 	if active == "" || h.themes.Get(active) == nil {
 		active = theme.DefaultID

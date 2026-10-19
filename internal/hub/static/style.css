@@ -3772,78 +3772,78 @@ body[data-k-theme="kokoro.tech"] .console-summary b { text-shadow: 0 0 22px colo
    改前是一条纯黑横条 + 无框按钮，和总览卡/节点卡的金框语言不一致。
    现在：顶栏底部一条金色收边，品牌块、站长名片、右侧工具都套金框小板，
    与卡片同族。只作用于黑金主题，其他主题不受影响。 */
-body[data-k-theme="jiwo.blackgold"] .top {
+body[data-k-theme="kokoro.blackgold"] .top {
   background: linear-gradient(180deg,
     color-mix(in srgb, var(--bg) 97%, transparent),
     color-mix(in srgb, var(--bg) 84%, transparent));
   border-bottom: 1px solid var(--kokoro-card-border, var(--line));
 }
-body[data-k-theme="jiwo.blackgold"] .top .wrap { min-height: 66px; gap: 14px; }
-body[data-k-theme="jiwo.blackgold"] .top .btn,
-body[data-k-theme="jiwo.blackgold"] .top .skin-btn {
+body[data-k-theme="kokoro.blackgold"] .top .wrap { min-height: 66px; gap: 14px; }
+body[data-k-theme="kokoro.blackgold"] .top .btn,
+body[data-k-theme="kokoro.blackgold"] .top .skin-btn {
   border: 1px solid var(--kokoro-card-border, var(--line));
   border-radius: var(--kokoro-radius-md, 7px);
   background: color-mix(in srgb, var(--raised) 55%, transparent);
   color: var(--fg);
 }
-body[data-k-theme="jiwo.blackgold"] .top .btn:hover,
-body[data-k-theme="jiwo.blackgold"] .top .skin-btn:hover {
+body[data-k-theme="kokoro.blackgold"] .top .btn:hover,
+body[data-k-theme="kokoro.blackgold"] .top .skin-btn:hover {
   border-color: var(--kokoro-color-border-strong, var(--line-strong));
   color: var(--accent);
 }
 /* 品牌区保持"裸"的：LOGO + 站名，不加边框/底色盒子——
    boss 2026-10-17：金框盒子去掉，品牌与名片区之间用分隔线（top-identity-rule）
    区分即可。分隔线别再对黑金隐藏。 */
-body[data-k-theme="jiwo.blackgold"] .top .brand {
+body[data-k-theme="kokoro.blackgold"] .top .brand {
   display: inline-flex; align-items: center; gap: 10px;
   font-size: 16px; letter-spacing: .01em;
 }
-body[data-k-theme="jiwo.blackgold"] .top .brand .top-mark { color: #fff; }
-body[data-k-theme="jiwo.blackgold"] .top .top-owner {
+body[data-k-theme="kokoro.blackgold"] .top .brand .top-mark { color: #fff; }
+body[data-k-theme="kokoro.blackgold"] .top .top-owner {
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
-body[data-k-theme="jiwo.blackgold"] .top .top-owner .avatar { width: 26px; height: 26px; }
-body[data-k-theme="jiwo.blackgold"] .top .top-owner-txt b { color: var(--fg-strong); }
+body[data-k-theme="kokoro.blackgold"] .top .top-owner .avatar { width: 26px; height: 26px; }
+body[data-k-theme="kokoro.blackgold"] .top .top-owner-txt b { color: var(--fg-strong); }
 @container k-page (max-width: 720px) {
-  body[data-k-theme="jiwo.blackgold"] .top .top-owner { padding: 0; }
+  body[data-k-theme="kokoro.blackgold"] .top .top-owner { padding: 0; }
 }
 
 /* 黑金：对齐 Jiwo Premium 黑金的深墨绿黑、暖白文字和双层金属金。
    非语义资源条统一用深金到亮金渐变；在线/告警状态仍保留原语义色。 */
-body[data-k-theme="jiwo.blackgold"] .top {
+body[data-k-theme="kokoro.blackgold"] .top {
   background: linear-gradient(180deg, #10170f 0%, #080d09 100%);
   box-shadow: inset 0 1px rgba(255, 235, 183, .14), 0 1px 0 rgba(229, 195, 103, .34);
 }
-body[data-k-theme="jiwo.blackgold"] .panel,
-body[data-k-theme="jiwo.blackgold"] .map-card,
-body[data-k-theme="jiwo.blackgold"] .card {
+body[data-k-theme="kokoro.blackgold"] .panel,
+body[data-k-theme="kokoro.blackgold"] .map-card,
+body[data-k-theme="kokoro.blackgold"] .card {
   background: linear-gradient(155deg, rgba(26, 31, 23, .98), rgba(14, 19, 14, .98));
   border-color: color-mix(in srgb, var(--kokoro-card-border, #8f7136) 66%, #111);
   box-shadow: inset 0 1px rgba(255, 239, 190, .055), 0 8px 24px rgba(0, 0, 0, .24);
 }
-body[data-k-theme="jiwo.blackgold"] .card:hover {
+body[data-k-theme="kokoro.blackgold"] .card:hover {
   border-color: #c39d4c;
   box-shadow: inset 0 1px rgba(255, 239, 190, .1), 0 10px 28px rgba(0, 0, 0, .32), 0 0 16px rgba(190, 145, 54, .08);
 }
-body[data-k-theme="jiwo.blackgold"] .group-head,
-body[data-k-theme="jiwo.blackgold"] .console-summary > .sum-tile {
+body[data-k-theme="kokoro.blackgold"] .group-head,
+body[data-k-theme="kokoro.blackgold"] .console-summary > .sum-tile {
   background: linear-gradient(180deg, rgba(35, 39, 28, .92), rgba(18, 23, 17, .96));
   border-color: rgba(193, 153, 68, .34);
   box-shadow: inset 0 1px rgba(255, 240, 197, .07);
 }
-body[data-k-theme="jiwo.blackgold"] .card .bar {
+body[data-k-theme="kokoro.blackgold"] .card .bar {
   height: 8px;
   border: 1px solid rgba(183, 145, 58, .28);
   border-radius: 4px;
   background: linear-gradient(180deg, #0a0e09, #13180f);
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, .75), 0 1px rgba(255, 238, 185, .035);
 }
-body[data-k-theme="jiwo.blackgold"] .card .bar i.cpu,
-body[data-k-theme="jiwo.blackgold"] .card .bar i.mem,
-body[data-k-theme="jiwo.blackgold"] .card .bar i.disk {
+body[data-k-theme="kokoro.blackgold"] .card .bar i.cpu,
+body[data-k-theme="kokoro.blackgold"] .card .bar i.mem,
+body[data-k-theme="kokoro.blackgold"] .card .bar i.disk {
   background-color: #b88932;
   background-image:
     linear-gradient(180deg, rgba(255, 247, 213, .78) 0%, rgba(255, 242, 188, .34) 18%, rgba(255, 255, 255, .035) 46%, rgba(49, 32, 7, .48) 100%),
@@ -3851,16 +3851,16 @@ body[data-k-theme="jiwo.blackgold"] .card .bar i.disk {
   border-radius: 3px;
   box-shadow: inset 0 1px rgba(255, 249, 225, .72), inset 0 -1px rgba(71, 45, 8, .58), 0 0 7px rgba(211, 168, 75, .14);
 }
-body[data-k-theme="jiwo.blackgold"] .uptime-bar .cell.lv-ok {
+body[data-k-theme="kokoro.blackgold"] .uptime-bar .cell.lv-ok {
   background-image: linear-gradient(180deg, rgba(255,255,255,.25), transparent 45%, rgba(0,0,0,.16));
 }
-body[data-k-theme="jiwo.blackgold"] .uptime-bar .cell.lv-warn,
-body[data-k-theme="jiwo.blackgold"] .uptime-bar .cell.lv-bad {
+body[data-k-theme="kokoro.blackgold"] .uptime-bar .cell.lv-warn,
+body[data-k-theme="kokoro.blackgold"] .uptime-bar .cell.lv-bad {
   box-shadow: inset 0 1px rgba(255,255,255,.3), inset 0 -2px rgba(0,0,0,.16);
 }
-body[data-k-theme="jiwo.blackgold"] .top .btn,
-body[data-k-theme="jiwo.blackgold"] .top .skin-btn,
-body[data-k-theme="jiwo.blackgold"] .card .buyrow .buy {
+body[data-k-theme="kokoro.blackgold"] .top .btn,
+body[data-k-theme="kokoro.blackgold"] .top .skin-btn,
+body[data-k-theme="kokoro.blackgold"] .card .buyrow .buy {
   background: linear-gradient(180deg, #e5c367 0%, #c69b45 43%, #8f651d 100%);
   color: #16130b;
   border-color: #d7b359;
@@ -3868,38 +3868,38 @@ body[data-k-theme="jiwo.blackgold"] .card .buyrow .buy {
 }
 
 /* Blackgold controls use gold on dark surfaces and ink on filled surfaces. */
-body[data-k-theme="jiwo.blackgold"] .btn:not(.ghost):not(.danger):not(:disabled) {
+body[data-k-theme="kokoro.blackgold"] .btn:not(.ghost):not(.danger):not(:disabled) {
   color:var(--kokoro-color-primary-fg,#17130b);
 }
-body[data-k-theme="jiwo.blackgold"] .btn.danger:not(:disabled) {
+body[data-k-theme="kokoro.blackgold"] .btn.danger:not(:disabled) {
   color:var(--kokoro-color-text-inverse,#17130b);
 }
-body[data-k-theme="jiwo.blackgold"] .top .skin-cur { color:inherit; }
-body[data-k-theme="jiwo.blackgold"] .btn.ghost:not(:disabled) {
+body[data-k-theme="kokoro.blackgold"] .top .skin-cur { color:inherit; }
+body[data-k-theme="kokoro.blackgold"] .btn.ghost:not(:disabled) {
   color:var(--accent); background:transparent; border-color:var(--line); box-shadow:none;
   transition:color var(--t-fast) var(--ease),background var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease);
 }
-body[data-k-theme="jiwo.blackgold"] .btn.ghost:hover:not(:disabled) {
+body[data-k-theme="kokoro.blackgold"] .btn.ghost:hover:not(:disabled) {
   color:var(--kokoro-color-primary-hover,var(--accent)); border-color:var(--accent);
   background:color-mix(in srgb,var(--accent) 10%,transparent); filter:none;
 }
-body[data-k-theme="jiwo.blackgold"] .btn.ghost:active:not(:disabled) {
+body[data-k-theme="kokoro.blackgold"] .btn.ghost:active:not(:disabled) {
   color:var(--kokoro-color-primary-hover,var(--accent));
   background:color-mix(in srgb,var(--accent) 18%,transparent); border-color:var(--accent);
 }
-body[data-k-theme="jiwo.blackgold"] .card .actbar .btnlike:not(.dim):not(:disabled),
-body[data-k-theme="jiwo.blackgold"] .range-btn,
-body[data-k-theme="jiwo.blackgold"] .globe-mode-switch button {
+body[data-k-theme="kokoro.blackgold"] .card .actbar .btnlike:not(.dim):not(:disabled),
+body[data-k-theme="kokoro.blackgold"] .range-btn,
+body[data-k-theme="kokoro.blackgold"] .globe-mode-switch button {
   color:var(--accent);
 }
-body[data-k-theme="jiwo.blackgold"] .card .actbar .btnlike:hover:not(.dim):not(:disabled),
-body[data-k-theme="jiwo.blackgold"] .range-btn:hover,
-body[data-k-theme="jiwo.blackgold"] .range-btn:focus-visible,
-body[data-k-theme="jiwo.blackgold"] .globe-mode-switch button:hover,
-body[data-k-theme="jiwo.blackgold"] .globe-mode-switch button[aria-pressed="true"] {
+body[data-k-theme="kokoro.blackgold"] .card .actbar .btnlike:hover:not(.dim):not(:disabled),
+body[data-k-theme="kokoro.blackgold"] .range-btn:hover,
+body[data-k-theme="kokoro.blackgold"] .range-btn:focus-visible,
+body[data-k-theme="kokoro.blackgold"] .globe-mode-switch button:hover,
+body[data-k-theme="kokoro.blackgold"] .globe-mode-switch button[aria-pressed="true"] {
   color:var(--kokoro-color-primary-hover,var(--accent));
 }
-body[data-k-theme="jiwo.blackgold"] .btn:focus-visible {
+body[data-k-theme="kokoro.blackgold"] .btn:focus-visible {
   outline:var(--ring) solid var(--ring-c); outline-offset:3px;
 }
 
@@ -4298,10 +4298,10 @@ html[data-k-mode="dark"] .route-standard { color:#c8c8c8; border-color:#494949; 
 .globe-node-label.is-behind { border-style:dashed; color:var(--muted); }
 /* Built-in globe backdrops: paper light, drifting mist and a quiet night sky. */
 body[data-k-theme] .map-card .globe-body { border-radius:var(--r-sm); overflow:hidden; }
-body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="jiwo.blackgold"]) .map-card .globe-body { isolation:isolate; }
-body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="jiwo.blackgold"]) .globe-body::before,
-body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="jiwo.blackgold"]) .globe-body::after { content:""; position:absolute; inset:0; z-index:0; pointer-events:none; }
-body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="jiwo.blackgold"]) .globe-body > .globe { z-index:1; }
+body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="kokoro.blackgold"]) .map-card .globe-body { isolation:isolate; }
+body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="kokoro.blackgold"]) .globe-body::before,
+body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="kokoro.blackgold"]) .globe-body::after { content:""; position:absolute; inset:0; z-index:0; pointer-events:none; }
+body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="kokoro.blackgold"]) .globe-body > .globe { z-index:1; }
 body[data-k-theme="kokoro.paper"] .map-card .globe-body {
   background:linear-gradient(135deg,#f1e4cc,#fbf5e7 50%,#e8d8bb);
   box-shadow:inset 0 0 0 1px rgba(139,107,68,.18);
@@ -4348,11 +4348,11 @@ body[data-k-theme="kokoro.midnight"] .globe-body::after {
   animation:kokoro-midnight-stars 1.9s ease-in-out infinite alternate;
 }
 /* Black gold: a quiet obsidian field with champagne reflections and fine etched texture. */
-body[data-k-theme="jiwo.blackgold"] .map-card .globe-body {
+body[data-k-theme="kokoro.blackgold"] .map-card .globe-body {
   background:radial-gradient(ellipse at 50% 48%,rgba(163,125,48,.18),transparent 58%),linear-gradient(145deg,#11140e 0%,#090c08 52%,#15160e 100%);
   box-shadow:inset 0 0 0 1px rgba(216,181,109,.22),inset 0 0 72px rgba(0,0,0,.38);
 }
-body[data-k-theme="jiwo.blackgold"] .globe-body::before {
+body[data-k-theme="kokoro.blackgold"] .globe-body::before {
   background:
     radial-gradient(circle at 14% 24%,rgba(255,229,162,.72) 0 1px,transparent 1.7px),
     radial-gradient(circle at 83% 18%,rgba(216,181,109,.55) 0 1px,transparent 1.7px),
@@ -4362,7 +4362,7 @@ body[data-k-theme="jiwo.blackgold"] .globe-body::before {
     linear-gradient(90deg,rgba(216,181,109,.035) 1px,transparent 1px);
   background-size:auto,auto,auto,auto,36px 36px,36px 36px;
 }
-body[data-k-theme="jiwo.blackgold"] .globe-body::after {
+body[data-k-theme="kokoro.blackgold"] .globe-body::after {
   background:
     repeating-linear-gradient(0deg,rgba(255,224,154,.72) 0 1px,transparent 1px 36px),
     repeating-linear-gradient(90deg,rgba(255,224,154,.72) 0 1px,transparent 1px 36px);
@@ -4376,7 +4376,7 @@ body[data-k-theme="jiwo.blackgold"] .globe-body::after {
   mask-position:130% -30%;
   animation:kokoro-blackgold-grid-scan 7s linear infinite;
 }
-body[data-k-theme="jiwo.blackgold"] .globe-body > .globe { z-index:1; }
+body[data-k-theme="kokoro.blackgold"] .globe-body > .globe { z-index:1; }
 @keyframes kokoro-paper-light { from { transform:translateX(-24%); opacity:.48; } to { transform:translateX(24%); opacity:1; } }
 @keyframes kokoro-mist-field {
   0% { background-position:0% 48%,100% 52%,38% 0%; }
@@ -4390,8 +4390,8 @@ body[data-k-theme] .globe-body.is-motion-paused::before,
 body[data-k-theme] .globe-body.is-motion-paused::after,
 body[data-k-theme] .globe-body.is-motion-paused .globe-flow-streak { animation-play-state:paused; }
 @media(prefers-reduced-motion:reduce) {
-  body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="jiwo.blackgold"]) .globe-body::before,
-  body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="jiwo.blackgold"]) .globe-body::after { animation:none; }
+  body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="kokoro.blackgold"]) .globe-body::before,
+  body:is([data-k-theme="kokoro.paper"],[data-k-theme="kokoro.mist"],[data-k-theme="kokoro.midnight"],[data-k-theme="kokoro.blackgold"]) .globe-body::after { animation:none; }
 }
 body[data-k-theme][data-k-list-mode="card"] .task-result-row { grid-template-columns:30px minmax(0,1fr); align-items:center; gap:6px; }
 body[data-k-theme][data-k-list-mode="card"] .task-result-row.is-route .task-result-value { display:grid; grid-template-columns:max-content minmax(0,.95fr) max-content minmax(14px,.48fr); gap:3px; align-items:center; white-space:nowrap; }

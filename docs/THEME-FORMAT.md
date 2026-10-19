@@ -499,8 +499,10 @@ layout 决定「页面长什么样」，而不只是「什么颜色」。它是�
 | `kokoro.paper` 纸页 | card | bar | bordered | hero | 浅色 |
 | `kokoro.midnight` 极夜 | card | step | solid | compact | 深色 |
 | `kokoro.mist` 朦胧 | card | 平滑 line | blur | compact | 浅色 |
+| `kokoro.blackgold` 黑金 | card | line | bordered | compact | 深色 |
+| `kokoro.titanium` 钛光 | card | 平滑 line | bordered | compact | 深色 |
 
-这四套内置主题都使用当前支持的 tokens 与 layout 字段；新安装默认使用 `kokoro.simple`。
+这六套内置主题都使用当前支持的 tokens 与 layout 字段；新安装默认使用 `kokoro.simple`。
 “纸页”采用暖纸肌理、衬线字体、朱砂强调色与柱状图；“极夜”采用炭灰夜色、低饱和莫兰迪色系与轻量面板；“朦胧”采用淡雾壁纸、磨砂面板、平滑曲线与点阵条。
 主题系统本身的可配置范围没有变化：当前完整变量清单见 `docs/themes/theme.schema.json`，
 所有可选字段与枚举值见本规范及后台的“下载主题范例”。

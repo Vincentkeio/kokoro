@@ -37,7 +37,7 @@
 
 **目标**
 
-1. 开箱有货：内置 5 套官方皮肤，装完就有得玩。
+1. 开箱有货：内置 6 套官方皮肤，装完就有得玩。
 2. 零构建链：主题作者只需要一个文本编辑器 + 系统自带的压缩工具，不需要 Node、不需要 Go。
 3. 布局可调：列表页 4 种模式、详情页板块拖拽编排、图表类型/范围/网格/图例可配。
 4. 可分享：一键导出自己的（含已改动的）主题，别人一键套用。
@@ -1584,6 +1584,7 @@ Response 200: { "id":"neon-dream","version":"1.2.0","status":"staged","report":{
 | 形态 | 设想风格 | 关键特征（layout 层面） |
 |---|---|---|
 | 极夜（已实现） | 深蓝极夜、极光壁纸、冰青阶梯图与银蓝时间格 | `mode.default:dark`；图表 `step`；列表 `card` |
+| 黑金（内置） | 墨黑仪表盘搭配香槟金重点色，状态色保留清晰语义 | 图表 `line`；边框与重点色使用暖金 |
 | 终端 | 纯黑 + 磷光绿 + 等宽字体，零圆角 | 列表 `compact` + `inlineBars` + `density:compact`；`usageBarStyle:segmented`；`tagStyle:text`；图表 `area`、`smooth:false` |
 | 纸页（已实现） | 暖纸纹理、衬线字体、朱砂强调色与柱状图 | `mode.supportsDark:false`；图表 `bar`；列表 `card` |
 | 朦胧（已实现） | 淡雾海岸、磨砂玻璃、平滑曲线与点阵条 | `backdrop-blur:28px`；卡片白色底色透明度约 28%～30%；图表 `line`、`smooth:true`；在线率 `dots` |
@@ -1693,7 +1694,7 @@ var LayoutMigrations = []Migration{
 |---|---|---|
 | 1 | `internal/theme/schema`：变量表 + 别名表 + layout 默认值与枚举 | 一份 `schema.go`，所有枚举集中定义 |
 | 2 | `internal/theme/render`：tokens → `<style nonce>`、layout → data 属性 + `--k-*` 变量 | 内置 `base.css` 覆盖四种列表模式与两种详情头 |
-| 3 | 内置 5 套皮肤（就是 5 份 `theme.json` + 预览图） + `go:embed` | 开箱有货，先有可卖弄的东西 |
+| 3 | 内置 6 套皮肤（就是 6 份 `theme.json` + 预览图） + `go:embed` | 开箱有货，先有可卖弄的东西 |
 | 4 | `internal/theme/csssanitize`：分词 + 黑名单 + 选择器作用域前置 + url 白名单 | 有单测：§5.1 每条风险一个用例 |
 | 5 | `internal/theme/pkg`：zip 解包（§2.5 全流程） + zip-slip 防护 | CLI `kokoro theme install` 先跑通 |
 | 6 | 后台 UI：主题列表 / 应用 / 回滚 / 布局编辑（含拖拽）/ token 表单 | 第二层闭环 |

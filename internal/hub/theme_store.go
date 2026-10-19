@@ -11,7 +11,7 @@ package hub
 //
 // 为什么不用 themes 表的 enabled 列做「当前主题」：那一列的语义是
 // 「这套主题存在且被选中」，与内置主题无关（内置主题在二进制里，永远 enabled=0）。
-// 真要混用，就得让 5 套内置主题各插一行空 manifest，太脏。
+// 真要混用，就得让每套内置主题各插一行空 manifest，太脏。
 // 所以站点级选择继续放在 settings.site_theme，themes 表只管自定义主题的存档。
 
 import (
@@ -96,6 +96,12 @@ func (h *Hub) loadStoredThemes() {
 	n := 0
 	for i := range rows {
 		t := rows[i]
+		// 黑金现随 Hub 内置分发。旧版本导入的副本保留在数据库中，
+		// 但不再作为第二个可选主题登记。
+		if t.ID == "jiwo.blackgold" && h.themes.Get("kokoro.blackgold") != nil {
+			log.Printf("[theme] 忽略旧版黑金主题存档，使用内置主题")
+			continue
+		}
 		if len(t.Manifest) == 0 {
 			continue
 		}
