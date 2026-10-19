@@ -1,6 +1,6 @@
 {{define "home.html"}}
 <!doctype html>
-<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}">
+<html lang="zh-CN" data-k-mode="{{.Theme.Mode}}"{{if eq .Theme.ListMode "card"}} data-k-card-view="card" data-k-card-columns="3"{{end}}>
 <head>
 <title>{{if .Query}}搜索「{{.Query}}」 · {{.SiteName}}{{else}}{{.SiteName}} · 小鸡列表{{end}}</title>
 <meta name="description" content="{{.SiteName}} · 每台小鸡都有一颗心">
@@ -619,7 +619,7 @@
 <script id="globe-data" type="application/json">{{.GlobeJSON}}</script>
 {{template "kglobe.html" .}}
 
-<script src="/static/app.js?v=159"></script>
+<script src="/static/app.js?v=160"></script>
 </body>
 </html>
 {{end}}

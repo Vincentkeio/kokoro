@@ -724,10 +724,22 @@
     this.pulseAt[key] = performance.now();
   };
 
+  // 主题色来自 CSS 变量，而读一个变量要走"插探针元素 + getComputedStyle"，
+  // 也就是一次强制样式重算。绘制一帧要在按节点、按航线、按标签的循环里反复问
+  // 颜色（见 _drawFlow：每个地点一次），一帧能问出几十上百次重算——整页会
+  // 因此掉到个位数帧率，滚动、切主题都跟着卡。
+  //
+  // 所以一帧只算一次：_render / _step 开头清缓存，同一帧内所有调用复用同一份。
+  // 颜色本身只在切换主题（整页重载）或改 token 时才会变，一帧的粒度足够。
   KokoroGlobe.prototype._colors = function () {
-    if (this.opts.colors) return this.opts.colors();
-    return { day: '#93a4bd', night: '#3b465c', oceanDay: '#f2f6fb', oceanNight: '#d8dfea',
-             arc: '#2f6feb', hub: '#2f6feb', ok: '#1a7f37', off: '#8b949e' };
+    if (this._frameColors) return this._frameColors;
+    if (this.opts.colors) {
+      this._frameColors = this.opts.colors();
+    } else {
+      this._frameColors = { day: '#93a4bd', night: '#3b465c', oceanDay: '#f2f6fb', oceanNight: '#d8dfea',
+                            arc: '#2f6feb', hub: '#2f6feb', ok: '#1a7f37', off: '#8b949e' };
+    }
+    return this._frameColors;
   };
 
   KokoroGlobe.prototype._start = function () {
@@ -748,11 +760,13 @@
 
   KokoroGlobe.prototype._render = function () {
     if (this._destroyed || !this.w || !this.h) return;
+    this._frameColors = null;
     this._drawGL();
     this._drawOverlay(performance.now());
   };
 
   KokoroGlobe.prototype._step = function (reduce, now) {
+    this._frameColors = null;
     // 低频兜底自检：ResizeObserver 不是万能的（浏览器还跑着缓存下来的
     // 旧 JS、观察器被别的脚本断开、祖先元素高度变化都可能漏）。
     // 每秒比对一次容器高度，对不上就重设分辨率 —— 只差一度也要修，
@@ -1103,14 +1117,15 @@
       }
     }
     var head = pts[pts.length - 1];
-    var color = this._colors().flow || this._colors().hub || this._colors().arc || '#8ed8bc';
+    var palette = this._colors();
+    var color = palette.flow || palette.hub || palette.arc || '#8ed8bc';
     g.globalAlpha = (recentPulse ? 0.3 : 0.2) * this.effects.flowOpacity;
     g.fillStyle = color;
     g.beginPath();
     g.arc(head.x, head.y, recentPulse ? this.effects.flowGlowWidth * 1.5 : this.effects.flowGlowWidth * 1.25, 0, Math.PI * 2);
     g.fill();
     g.globalAlpha = 1;
-    g.fillStyle = this._colors().flowCore || '#f5fff9';
+    g.fillStyle = palette.flowCore || '#f5fff9';
     g.beginPath();
     g.arc(head.x, head.y, recentPulse ? this.effects.flowHeadSize * 1.2 : this.effects.flowHeadSize, 0, Math.PI * 2);
     g.fill();

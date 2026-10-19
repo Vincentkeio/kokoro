@@ -523,13 +523,35 @@ func safeBackURL(back string) bool {
 	return true
 }
 
+// activateImportedTheme 让刚导入的主题立刻成为站点当前主题。
+//
+// 为什么导入要顺带启用：只登记不启用的话，后台列表里只是多出一张卡片，
+// 前台一动不动 —— 管理员看到的是「导入没生效」，而不是「还差一下启用」
+// （2026-10-19 用户实际遇到：传了主题包，站点主题仍停在旧的黑金）。
+// 手动挑文件、粘贴清单这个动作本身表达的就是「我要用这套」，所以直接落地。
+//
+// 与 handleThemeSwitch 保持同一套收尾：写站点设置、重建渲染缓存，
+// 并清掉**本浏览器**的访客主题覆盖 —— 否则站长自己还挂在之前 /pick/
+// 选过的皮肤上，切完照样看不到新主题，又变成一次「导入没生效」。
+func (h *Hub) activateImportedTheme(w http.ResponseWriter, id string) {
+	if h.store != nil {
+		if err := h.store.SetSetting(settingTheme, id); err != nil {
+			log.Printf("[theme] 导入后保存站点主题失败 %s: %v", id, err)
+		}
+		_ = h.store.AddAudit("admin", "theme.enable", id, "import")
+	}
+	h.setActiveTheme(id)
+	h.clearVisitorTheme(w)
+}
+
 // handleThemeImport 处理 POST /admin/themes/import：导入一份主题。
 //
 // 两种来源：
 //   - 粘贴 theme.json 原文（最容易，也最安全——纯文本，没有包结构可攻击）；
 //   - 上传 JSON 清单或 .kokoro-theme 包文件（包能带背景图和纹理）。
 //
-// 两者都要过 theme.Parse 的同一套校验，最后都落库。
+// 两者都要过 theme.Parse 的同一套校验，最后都落库，并立刻成为站点主题
+// （见 activateImportedTheme）。
 func (h *Hub) handleThemeImport(w http.ResponseWriter, r *http.Request) {
 	if !h.adminAuthed(r) {
 		denyUnauthed(w, r)
@@ -569,7 +591,8 @@ func (h *Hub) handleThemeImport(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			_ = h.store.AddAudit("admin", "theme.import", m.ID, m.Name)
-			h.themeErr(w, "", r, fmt.Sprintf("已导入《%s》%s，共 %d 套主题", m.Name, m.Version, len(h.themes.ListIDs())))
+			h.activateImportedTheme(w, m.ID)
+			h.themeErr(w, "", r, fmt.Sprintf("已导入并启用《%s》%s，共 %d 套主题", m.Name, m.Version, len(h.themes.ListIDs())))
 			return
 		}
 		m, err := h.installBundle(raw, "")
@@ -578,7 +601,8 @@ func (h *Hub) handleThemeImport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = h.store.AddAudit("admin", "theme.import.bundle", m.ID, m.Name)
-		h.themeErr(w, "", r, fmt.Sprintf("已导入主题包《%s》%s", m.Name, m.Version))
+		h.activateImportedTheme(w, m.ID)
+		h.themeErr(w, "", r, fmt.Sprintf("已导入并启用主题包《%s》%s", m.Name, m.Version))
 		return
 	}
 
@@ -598,7 +622,8 @@ func (h *Hub) handleThemeImport(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			_ = h.store.AddAudit("admin", "theme.import.bundle", m.ID, m.Name)
-			h.themeErr(w, "", r, fmt.Sprintf("已导入主题包《%s》%s", m.Name, m.Version))
+			h.activateImportedTheme(w, m.ID)
+			h.themeErr(w, "", r, fmt.Sprintf("已导入并启用主题包《%s》%s", m.Name, m.Version))
 			return
 		}
 	}
@@ -608,7 +633,8 @@ func (h *Hub) handleThemeImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.store.AddAudit("admin", "theme.import", m.ID, m.Name)
-	h.themeErr(w, "", r, fmt.Sprintf("已导入《%s》%s，共 %d 套主题", m.Name, m.Version, len(h.themes.ListIDs())))
+	h.activateImportedTheme(w, m.ID)
+	h.themeErr(w, "", r, fmt.Sprintf("已导入并启用《%s》%s，共 %d 套主题", m.Name, m.Version, len(h.themes.ListIDs())))
 }
 
 // installBundle 校验并安装一份 .kokoro-theme 包。

@@ -235,6 +235,10 @@ kokoroApplyThemeLayers(document);
     var initialColumns = allowedColumns[savedColumns] ? savedColumns : '3';
     function applyCardColumns(value) {
       if (!allowedColumns[value]) value = '3';
+      // ⚠️ 必须同时写在 <html> 上：桌面端的最小页面宽度规则挂在根元素上
+      // （html[data-k-card-view=card][data-k-card-columns=…]，见 style.css）。
+      // 漏掉这一句，访客选 4/5 列后页面不会被撑宽，卡片会被挤成两列。
+      document.documentElement.setAttribute('data-k-card-columns', value);
       document.body.setAttribute('data-k-card-columns', value);
       document.body.style.setProperty('--k-card-columns', value);
       cardColumns.value = value;

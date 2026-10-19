@@ -113,12 +113,21 @@ html {
 }
 
 /* Keep desktop geometry when a window is narrowed. The document owns both
-   scroll directions; touch devices retain their existing responsive layout. */
+   scroll directions; touch devices retain their existing responsive layout.
+
+   ⚠️ 这里必须用 <html> 自己的属性，不能写 html:has(body[data-k-…])。
+   之前正是这么写的，代价是整个页面卡成 3 帧：:has() 挂在根元素上之后，
+   **文档里任何一次 DOM 变更**（地球每帧插拔取色探针、SSE 更新数值、
+   标签重排）都会让根元素的 :has() 规则失效，于是触发一次全文档样式重算。
+   实测同一台机器、同一页面下，仅把这三条 :has 规则换成属性选择器，
+   地球每帧的样式重算就从 249ms 降到 51ms（帧率 3.9 → 18）。
+   data-k-card-view 由模板渲染在 <html> 上，data-k-card-columns 由 app.js
+   在访客改排列时同步（见 applyCardColumns）。 */
 @media (hover: hover) and (pointer: fine) {
   html { min-width: 1440px; }
-  html:has(body[data-k-list-mode="card"]:not([data-admin]):not([data-node])) { min-width: 1800px; }
-  html:has(body[data-k-list-mode="card"][data-k-card-columns="4"]:not([data-admin]):not([data-node])) { min-width: 2400px; }
-  html:has(body[data-k-list-mode="card"][data-k-card-columns="5"]:not([data-admin]):not([data-node])) { min-width: 3000px; }
+  html[data-k-card-view="card"] { min-width: 1800px; }
+  html[data-k-card-view="card"][data-k-card-columns="4"] { min-width: 2400px; }
+  html[data-k-card-view="card"][data-k-card-columns="5"] { min-width: 3000px; }
 }
 
 body {

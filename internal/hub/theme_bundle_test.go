@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -355,6 +356,52 @@ func TestImportActiveThemeRebuildsRenderCache(t *testing.T) {
 	h.ServeHTTP(wAsset, reqAsset)
 	if wAsset.Code != http.StatusOK || wAsset.Body.String() != "PNGDATA" {
 		t.Fatalf("主题资源应立刻可用: %d", wAsset.Code)
+	}
+}
+
+// TestThemeImportActivatesImmediately 导入成功即成为站点主题。
+//
+// 早先导入只登记、不启用：后台列表里多出一张卡片，前台一动不动，
+// 管理员看到的是「导入没生效」（2026-10-19 用户实际遇到：传了主题包，
+// 站点主题仍停在旧的黑金，主题卡片上也没有「使用中」）。
+// 导入这个动作本身表达的就是「我要用这套」，所以导入即启用；
+// 同时必须清掉**本浏览器**的访客主题 cookie，否则站长自己还挂在
+// /pick/ 选过的皮肤上，切完照样看不到新主题。
+//
+// 注意边界：只对「导入」生效。「一键获取」是收集别人的皮肤，
+// 不自动启用（见 TestGrabThemePeerFormFlow 里的断言）。
+func TestThemeImportActivatesImmediately(t *testing.T) {
+	dir := t.TempDir()
+	st := newStoreOn(t, dir)
+	h := newHubOn(t, st, dir)
+	cookies := loginAsAdmin(t, h)
+	before := h.ActiveThemeID()
+
+	// 先让本站浏览器带着一个访客主题偏好，模拟"站长之前 /pick/ 选过别的皮肤"。
+	visitor := append([]*http.Cookie{{Name: theme.ThemeCookie, Value: before}}, cookies...)
+	raw := []byte(`{"schemaVersion":1,"id":"acme.on-import","name":"导入即启用","version":"1.0.0","tokens":{"--kokoro-color-primary":"#123456"}}`)
+	w := uploadThemeFile(t, h, visitor, "theme.json", raw)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("导入 = %d", w.Code)
+	}
+	if got := h.ActiveThemeID(); got != "acme.on-import" {
+		t.Fatalf("导入后站点主题 = %q，应当是刚导入的那套", got)
+	}
+	if loc := w.Header().Get("Location"); !strings.Contains(loc, url.QueryEscape("已导入并启用")) {
+		t.Errorf("提示没有说明已启用: %s", loc)
+	}
+	cleared := false
+	for _, c := range w.Result().Cookies() {
+		if c.Name == theme.ThemeCookie && (c.MaxAge < 0 || c.Value == "") {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Error("导入即启用时要清掉访客主题 cookie，否则站长自己看到的还是旧皮肤")
+	}
+	// 落库：重启后仍然是它。
+	if restarted := newHubOn(t, st, dir); restarted.ActiveThemeID() != "acme.on-import" {
+		t.Errorf("重启后站点主题 = %q，导入的启用没有落库", restarted.ActiveThemeID())
 	}
 }
 
