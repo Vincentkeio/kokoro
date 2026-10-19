@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "id": "kokoro.titanium",
+  "name": "钛光",
+  "version": "1.6.0",
+  "description": "精工钛金属壁纸、向上流动的冰蓝字符矩阵、白热激光资源条与平滑冰蓝曲线。",
+  "author": "Jiwo",
+  "license": "MIT",
+  "tags": [
+    "future",
+    "titanium",
+    "breathing",
+    "dark"
+  ],
+  "tokensSchemaVersion": 3,
+  "mode": {
+    "default": "dark",
+    "supportsDark": true,
+    "allowUserSwitch": false
+  },
+  "tokens": {
+    "--kokoro-bg-image": "url(/_theme-assets/kokoro.titanium/breath-v2.webp), url(/_theme-assets/kokoro.titanium/titanium-v2.webp)",
+    "--kokoro-bg-attachment": "fixed",
+    "--kokoro-bg-repeat": "no-repeat",
+    "--kokoro-color-primary": "#9ce5f4",
+    "--kokoro-color-primary-hover": "#c4f5ff",
+    "--kokoro-color-primary-active": "#72c9dc",
+    "--kokoro-color-primary-fg": "#08131d",
+    "--kokoro-color-accent": "#b8c8d9",
+    "--kokoro-color-accent-fg": "#101923",
+    "--kokoro-color-success": "#82dfbf",
+    "--kokoro-color-warning": "#e6bd79",
+    "--kokoro-color-danger": "#ef9caa",
+    "--kokoro-color-info": "#9ebff4",
+    "--kokoro-color-bg": "#090e16",
+    "--kokoro-color-bg-subtle": "#121d2a",
+    "--kokoro-color-surface": "rgba(15,23,34,.93)",
+    "--kokoro-color-surface-raised": "#233242",
+    "--kokoro-color-surface-sunken": "rgba(6,13,23,.68)",
+    "--kokoro-color-border": "#3b5064",
+    "--kokoro-color-border-strong": "#71899f",
+    "--kokoro-color-text": "#eaf2f9",
+    "--kokoro-color-text-muted": "#b3c3d2",
+    "--kokoro-color-text-faint": "#91a6ba",
+    "--kokoro-color-text-inverse": "#07121c",
+    "--kokoro-color-link": "#9ce5f4",
+    "--kokoro-font-sans": "'Segoe UI Variable', 'Aptos', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+    "--kokoro-font-mono": "'Cascadia Code', 'SFMono-Regular', Consolas, monospace",
+    "--kokoro-font-size-md": "14px",
+    "--kokoro-font-weight-bold": "650",
+    "--kokoro-font-line-height": "1.6",
+    "--kokoro-radius-sm": "3px",
+    "--kokoro-radius-md": "7px",
+    "--kokoro-radius-lg": "10px",
+    "--kokoro-card-bg": "linear-gradient(120deg,rgba(61,78,96,.58),rgba(14,23,35,.95) 18%,rgba(20,33,47,.95) 78%,rgba(61,78,96,.42))",
+    "--kokoro-card-padding": "20px",
+    "--kokoro-card-border": "#526a80",
+    "--kokoro-node-card-bg": "rgba(14,23,35,.94)",
+    "--kokoro-node-card-border": "#526a80",
+    "--kokoro-node-card-radius": "7px",
+    "--kokoro-node-card-title": "#f2f8ff",
+    "--kokoro-node-card-value": "#eaf2f9",
+    "--kokoro-node-card-label": "#b3c3d2",
+    "--kokoro-node-card-section-gap": "14px",
+    "--kokoro-shadow-sm": "inset 0 1px 0 rgba(208,234,255,.13),0 4px 18px rgba(0,0,0,.25)",
+    "--kokoro-shadow-md": "inset 0 1px 0 rgba(208,234,255,.16),0 10px 30px rgba(0,0,0,.36)",
+    "--kokoro-shadow-lg": "0 20px 55px rgba(0,0,0,.55)",
+    "--kokoro-glow": "inset 0 1px 0 rgba(208,234,255,.14),0 0 20px rgba(90,192,225,.08),0 8px 24px rgba(0,0,0,.36)",
+    "--kokoro-ring-color": "rgba(156,229,244,.42)",
+    "--kokoro-ring-width": "2px",
+    "--kokoro-header-bg": "linear-gradient(180deg,#273748,#101a27)",
+    "--kokoro-header-fg": "#eaf2f9",
+    "--kokoro-footer-bg": "rgba(9,14,22,.86)",
+    "--kokoro-code-bg": "#101b29",
+    "--kokoro-backdrop-blur": "8px",
+    "--kokoro-chart-series-1": "#80e8ff",
+    "--kokoro-chart-series-2": "#b1bfff",
+    "--kokoro-chart-series-3": "#80e8ca",
+    "--kokoro-chart-series-4": "#e6bd79",
+    "--kokoro-chart-series-5": "#d5adca",
+    "--kokoro-chart-series-6": "#9ebff4",
+    "--kokoro-chart-series-7": "#b8c8d9",
+    "--kokoro-chart-series-8": "#ef9caa",
+    "--kokoro-chart-grid": "#31495d",
+    "--kokoro-chart-axis": "#adbfce",
+    "--kokoro-chart-tooltip-bg": "#152333",
+    "--kokoro-chart-tooltip-fg": "#eaf2f9",
+    "--kokoro-chart-area-opacity": ".18",
+    "--kokoro-chart-line-width": "2.1",
+    "--kokoro-chart-point-radius": "0",
+    "--kokoro-chart-bar-radius": "0",
+    "--kokoro-status-online": "#82dfbf",
+    "--kokoro-status-offline": "#8193a5",
+    "--kokoro-status-idle": "#e6bd79",
+    "--kokoro-status-maintenance": "#9ebff4",
+    "--kokoro-rate-bg": "rgba(8,16,27,.82)",
+    "--kokoro-rate-border": "#405c73",
+    "--kokoro-rate-up": "#80e8ff",
+    "--kokoro-rate-down": "#b1bfff",
+    "--kokoro-rate-value": "#eaf2f9",
+    "--kokoro-rate-radius": "5px",
+    "--kokoro-clock-color": "#ecf7ff",
+    "--kokoro-clock-muted": "#b3c3d2",
+    "--kokoro-clock-divider": "#526a80",
+    "--kokoro-clock-bg": "rgba(15,25,39,.7)",
+    "--kokoro-clock-size": "clamp(36px, 3vw, 48px)",
+    "--kokoro-clock-gap": "24px",
+    "--kokoro-uptime-bar-height": "20px",
+    "--kokoro-uptime-bar-gap": "3px",
+    "--kokoro-uptime-bar-radius": "2px",
+    "--kokoro-globe-day": "#aecbde",
+    "--kokoro-globe-night": "#39536c",
+    "--kokoro-globe-lit-day": "#c4f5ff",
+    "--kokoro-globe-lit-night": "#6ad2ed",
+    "--kokoro-globe-ocean-day": "#162a3b",
+    "--kokoro-globe-ocean-night": "#0b1523",
+    "--kokoro-globe-rim": "rgba(126,221,247,.35)",
+    "--kokoro-globe-route": "#70bad4",
+    "--kokoro-globe-flow": "#a8efff",
+    "--kokoro-globe-flow-core": "#f2fcff",
+    "--kokoro-globe-flow-period": "7200",
+    "--kokoro-globe-flow-glow": "4",
+    "--kokoro-globe-flow-glow-width": "3",
+    "--kokoro-globe-route-width": "1",
+    "--kokoro-globe-rotation-speed": ".4",
+    "--kokoro-content-max-width": "2080px",
+    "--kokoro-bg-size": "max(100vw, 160vh)",
+    "--kokoro-hero-gradient": "radial-gradient(ellipse at center,rgba(25,115,157,.23),#060f1a 75%)",
+    "--kokoro-globe-matrix-color": "#3c8fb7",
+    "--kokoro-globe-matrix-highlight": "#a4e8ff",
+    "--kokoro-globe-matrix-secondary": "#c5bfff",
+    "--kokoro-globe-matrix-speed": "1",
+    "--kokoro-globe-matrix-density": "24",
+    "--kokoro-globe-matrix-opacity": "1",
+    "--kokoro-usage-bar-glow": "0 0 5px currentColor, 0 0 13px currentColor"
+  },
+  "layoutSchemaVersion": 2,
+  "layout": {
+    "shell": {
+      "contentMaxWidth": "2080px",
+      "contentAlign": "center",
+      "header": {
+        "variant": "bordered",
+        "sticky": true,
+        "showSearch": false,
+        "showModeSwitch": false
+      },
+      "footer": {
+        "variant": "minimal"
+      }
+    },
+    "home": {
+      "hero": {
+        "enabled": false,
+        "variant": "plain"
+      },
+      "list": {
+        "mode": "card",
+        "allowUserSwitch": false,
+        "groupBy": "group",
+        "card": {
+          "minWidth": "300px",
+          "gap": "18px",
+          "border": true,
+          "shadow": "glow",
+          "hoverLift": true,
+          "columns": 3
+        }
+      }
+    },
+    "detail": {
+      "header": {
+        "variant": "compact",
+        "showTags": true,
+        "secondaryLine": "location"
+      },
+      "sectionGap": "28px",
+      "introFontSize": "14px"
+    },
+    "charts": {
+      "type": "line",
+      "grid": true,
+      "legend": true,
+      "axisLabel": true,
+      "smooth": true,
+      "tooltip": "axis",
+      "height": "220px",
+      "heightDetail": "300px"
+    },
+    "misc": {
+      "statusDotStyle": "glow",
+      "usageBarStyle": "laser",
+      "uptimeBarStyle": "tiles",
+      "tagStyle": "square",
+      "badgeStyle": "outline",
+      "showUptime": true,
+      "numberFormat": "si",
+      "dateFormat": "relative"
+    },
+    "globe": {
+      "showRoutes": true,
+      "showFlow": true,
+      "autoRotate": true,
+      "backdrop": "matrix"
+    },
+    "visuals": {
+      "globe-background": {
+        "border-color": "rgba(94,188,225,.18)",
+        "box-shadow": "inset 0 0 38px #030810"
+      },
+      "usage-fill": {
+        "box-shadow": "0 0 5px currentColor, 0 0 13px currentColor"
+      }
+    },
+    "motions": {
+      "laser-scan": {
+        "duration": "7s",
+        "easing": "ease-in-out",
+        "direction": "alternate",
+        "frames": [
+          {
+            "at": 0,
+            "style": {
+              "background-position": "0% 50%",
+              "opacity": "0.2"
+            }
+          },
+          {
+            "at": 100,
+            "style": {
+              "background-position": "100% 50%",
+              "opacity": "0.6"
+            }
+          }
+        ]
+      }
+    },
+    "layers": {
+      "usage-fill": [
+        {
+          "style": {
+            "background": "linear-gradient(90deg, transparent 30%, rgba(255,255,255,.7) 50%, transparent 70%)",
+            "background-size": "220% 100%",
+            "motion": "custom:laser-scan"
+          },
+          "hideOnMobile": true,
+          "hideOnReducedMotion": true
+        }
+      ]
+    },
+    "responsive": {
+      "mobile": {
+        "usage-fill": {
+          "box-shadow": "0 0 5px currentColor, 0 0 13px currentColor"
+        }
+      }
+    }
+  }
+}

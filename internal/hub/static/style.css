@@ -1918,7 +1918,12 @@ body[data-k-theme] .uptime-bar {
    ⚠️ 上边距加在 wrap 上而不是 svg 上：覆盖层是 top:0 相对 wrap 定位的，
    margin 留在 svg 上会让曲线比刻度文字低一截，三个标签全都对不齐。 */
 .rate-chart-wrap,
-.res-chart-wrap { position: relative; margin-top: var(--s3); }
+.res-chart-wrap {
+  position: relative;
+  margin-top: var(--s3);
+  border-radius: var(--r);
+  overflow: hidden;
+}
 .rate-axis {
   position: absolute; top: 0; right: 2px; bottom: 0;
   display: flex; flex-direction: column; justify-content: space-between;
