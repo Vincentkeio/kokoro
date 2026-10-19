@@ -82,6 +82,9 @@ const card = {
 };
 context.fetch = async () => ({ ok: true, json: async () => ({ line: 'M10 30 L20 20', area: '', peak: '1 KB/s' }) });
 context.localStorage = { setItem() {} };
+// The range updater attaches an inspector in production. This isolated test
+// exercises SVG replacement, so provide the small interface it consumes.
+context.initTrafficInspector = () => ({ setData() {} });
 context.window.kokoroRerenderServerSpark = element => {
   assert.equal(element.childNodes.length, 2, 'range changes must remove all previous bars, dots and segments');
   assert.deepEqual(element.childNodes.map(n => n.attrs.class), ['sp-area', 'sp-line']);
