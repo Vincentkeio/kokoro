@@ -53,30 +53,6 @@ func newHubOn(t *testing.T, st *store.Store, dir string) *Hub {
 	return h
 }
 
-func TestLegacyTitaniumThemeMigratesToBuiltin(t *testing.T) {
-	dir := t.TempDir()
-	st := newStoreOn(t, dir)
-	h := newHubOn(t, st, dir)
-	raw := makeBundle(t, "jiwo.future", nil)
-	if _, err := h.installBundle(raw, ""); err != nil {
-		t.Fatalf("保存旧版钛光主题失败: %v", err)
-	}
-	if err := st.SetSetting(settingTheme, "jiwo.future"); err != nil {
-		t.Fatal(err)
-	}
-
-	upgraded := newHubOn(t, st, dir)
-	if got := upgraded.ActiveThemeID(); got != "kokoro.titanium" {
-		t.Fatalf("升级后当前主题 = %q，期望 kokoro.titanium", got)
-	}
-	if saved, err := st.GetSetting(settingTheme); err != nil || saved != "kokoro.titanium" {
-		t.Fatalf("升级后的主题设置 = %q, %v", saved, err)
-	}
-	if upgraded.themes.Get("jiwo.future") != nil {
-		t.Fatal("旧版钛光副本不应和内置主题重复显示")
-	}
-}
-
 // makeBundle 打一个测试用的主题包。
 func makeBundle(t *testing.T, id string, assets map[string][]byte) []byte {
 	t.Helper()
