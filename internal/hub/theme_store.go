@@ -96,10 +96,14 @@ func (h *Hub) loadStoredThemes() {
 	n := 0
 	for i := range rows {
 		t := rows[i]
-		// 黑金现随 Hub 内置分发。旧版本导入的副本保留在数据库中，
+		// 黑金和钛光现随 Hub 内置分发。旧版本导入的副本保留在数据库中，
 		// 但不再作为第二个可选主题登记。
-		if t.ID == "jiwo.blackgold" && h.themes.Get("kokoro.blackgold") != nil {
-			log.Printf("[theme] 忽略旧版黑金主题存档，使用内置主题")
+		legacyBuiltins := map[string]string{
+			"jiwo.blackgold": "kokoro.blackgold",
+			"jiwo.future":   "kokoro.titanium",
+		}
+		if replacement := legacyBuiltins[t.ID]; replacement != "" && h.themes.Get(replacement) != nil {
+			log.Printf("[theme] 忽略旧版官方主题存档 %s，使用内置主题 %s", t.ID, replacement)
 			continue
 		}
 		if len(t.Manifest) == 0 {
