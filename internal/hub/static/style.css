@@ -4845,11 +4845,7 @@ body[data-k-theme="kokoro.mist"] .rate-chart-wrap,
 body[data-k-theme="kokoro.mist"] .res-chart-wrap { backdrop-filter:blur(8px); }
 body[data-k-theme="kokoro.tech"] .dash-grid-line { stroke-dasharray:1 0; stroke-opacity:.5; }
 
-/* 钛光：统一趋势图使用更新后的平滑曲线路径，并给关键折线加缓慢呼吸光晕。 */
-@keyframes kokoro-titanium-chart-breathe {
-  0%, 100% { opacity:.9; filter:drop-shadow(0 0 2px currentColor) drop-shadow(0 0 4px currentColor); }
-  50% { opacity:1; filter:drop-shadow(0 0 5px currentColor) drop-shadow(0 0 10px currentColor); }
-}
+/* 钛光：保持静态柔光，避免趋势图和小鸡卡片因动画重绘产生闪烁。 */
 body[data-k-theme="kokoro.titanium"] .dash-line-up,
 body[data-k-theme="kokoro.titanium"] .dash-line-down,
 body[data-k-theme="kokoro.titanium"] .res-line-cpu,
@@ -4857,18 +4853,18 @@ body[data-k-theme="kokoro.titanium"] .res-line-mem,
 body[data-k-theme="kokoro.titanium"] .spark path.line {
   stroke-linecap:round;
   stroke-linejoin:round;
-  animation:kokoro-titanium-chart-breathe 3.6s ease-in-out infinite;
+  animation:none;
+  filter:drop-shadow(0 0 2px currentColor) drop-shadow(0 0 5px currentColor);
+  opacity:1;
 }
-/* Card sparklines use the same slow glow pulse so the visual can be checked against redraws. */
 body[data-k-theme="kokoro.titanium"] .card .spark .sp-line {
   color:var(--accent);
   stroke-linecap:round;
   stroke-linejoin:round;
-  animation:kokoro-titanium-chart-breathe 3.6s ease-in-out infinite;
   filter:drop-shadow(0 0 2px currentColor) drop-shadow(0 0 5px currentColor);
   opacity:1;
 }
-/* Hide the moving SVG particle while testing the card line's breathing effect. */
+/* 小鸡卡片使用静态线条光晕，不叠加沿线移动的装饰光点。 */
 body[data-k-theme="kokoro.titanium"] .card .spark .spark-flow { display:none; }
 body[data-k-theme="kokoro.titanium"] .card.off .spark .sp-line { color:var(--faint); }
 body[data-k-theme="kokoro.titanium"] .dash-line-up,
@@ -4907,7 +4903,8 @@ body[data-k-theme="kokoro.titanium"] .card .buyrow .buy:active:not(:disabled) {
   body[data-k-theme="kokoro.titanium"] .dash-line-down,
   body[data-k-theme="kokoro.titanium"] .res-line-cpu,
   body[data-k-theme="kokoro.titanium"] .res-line-mem,
-  body[data-k-theme="kokoro.titanium"] .spark path.line { animation:none; filter:drop-shadow(0 0 4px currentColor); opacity:1; }
+  body[data-k-theme="kokoro.titanium"] .spark path.line,
+  body[data-k-theme="kokoro.titanium"] .card .spark .sp-line { animation:none; }
 }
 
 /* 详情页内容入口：与面板卡片一致，左右等宽并通过已有弹窗浏览。 */
