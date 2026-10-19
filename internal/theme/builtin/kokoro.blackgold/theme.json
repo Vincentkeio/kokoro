@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "kokoro.blackgold",
   "name": "黑金",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "墨黑仪表盘搭配香槟金重点色，状态色保留清晰语义，适合长时间查看探针数据。",
   "author": "Kokoro 黑金主题（参考 Jiwo Probe）",
   "sourceUrl": "https://github.com/chnnic/jiwo-probe",
@@ -99,7 +99,7 @@
     "--kokoro-clock-muted": "#b3a98f",
     "--kokoro-node-card-radius": "8px",
     "--kokoro-globe-flow-core": "#fff3d1",
-    "--kokoro-globe-rotation-speed": "0.75",
+    "--kokoro-globe-rotation-speed": "0.8",
     "--kokoro-node-card-title": "#eee7d5",
     "--kokoro-globe-route-width": "1",
     "--kokoro-globe-flow-period": "7600",
@@ -159,6 +159,6 @@
     },
     "charts": {"type": "line", "grid": true, "legend": true, "axisLabel": true, "smooth": false, "tooltip": "axis", "height": "200px", "heightDetail": "300px"},
     "misc": {"statusDotStyle": "solid", "usageBarStyle": "striped", "tagStyle": "square", "badgeStyle": "outline", "showUptime": true, "numberFormat": "si", "dateFormat": "relative", "uptimeBarStyle": "tiles"},
-    "globe": {"showRoutes": true, "showFlow": true, "autoRotate": false}
+    "globe": {"showRoutes": true, "showFlow": true, "autoRotate": true}
   }
 }

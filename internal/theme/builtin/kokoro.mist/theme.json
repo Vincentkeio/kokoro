@@ -92,7 +92,7 @@
     "--kokoro-color-accent-fg": "#ffffff",
     "--kokoro-font-letter-spacing": "0",
     "--kokoro-globe-flow-core": "#fff",
-    "--kokoro-globe-rotation-speed": "0.75",
+    "--kokoro-globe-rotation-speed": "0.8",
     "--kokoro-rate-value": "#253c46",
     "--kokoro-clock-divider": "rgba(83,117,129,.3)",
     "--kokoro-node-card-section-gap": "12px",
