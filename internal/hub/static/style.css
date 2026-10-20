@@ -4287,7 +4287,16 @@ html[data-k-mode="dark"] .route-standard { color:#c8c8c8; border-color:#494949; 
 .map-card .globe-body { display:flex; flex:1 1 auto; min-height:0; overflow:hidden; position:relative; }
 .map-card .globe-body > .globe { min-width:0; width:100%; height:auto; align-self:stretch; flex:1; min-height:0; }
 .globe-node-list { display:none; }
-.globe-body[data-globe-view="list"] .globe-node-list { display:block; flex:0 0 38%; min-width:0; min-height:0; max-height:100%; overflow-y:auto; overscroll-behavior:contain; border-left:1px solid var(--line); padding:0 8px; scrollbar-width:thin; }
+.globe-body[data-globe-view="list"] .globe-node-list { display:block; flex:0 0 38%; min-width:0; min-height:0; max-height:100%; overflow-y:auto; overscroll-behavior:contain; border-left:1px solid var(--line); padding:0 8px; scrollbar-width:thin; scrollbar-color:color-mix(in srgb,var(--muted) 58%,transparent) transparent; }
+/* 和检测结果浮窗（.task-pop）用同一套主题滚动条，别落回浏览器默认样式。 */
+.globe-node-list::-webkit-scrollbar { width:8px; }
+.globe-node-list::-webkit-scrollbar-track { background:transparent; }
+.globe-node-list::-webkit-scrollbar-thumb {
+  border:2px solid transparent; border-radius:8px;
+  background:color-mix(in srgb,var(--muted) 52%,transparent);
+  background-clip:padding-box;
+}
+.globe-node-list::-webkit-scrollbar-thumb:hover { background-color:color-mix(in srgb,var(--fg) 56%,transparent); }
 .globe-node-entry { display:flex; align-items:center; gap:6px; min-height:45px; padding:7px 0; border-bottom:1px solid var(--line); font-size:11px; }
 .globe-city { min-width:0; flex:1; overflow-wrap:anywhere; }
 .globe-city small { display:block; font-size:9px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
