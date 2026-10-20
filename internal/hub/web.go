@@ -800,8 +800,16 @@ func nodeSpecs(n model.Node, m *model.Metrics) []specItem {
 	} else if m != nil {
 		add("Swap", "无", "")
 	}
-	if n.DiskTotal > 0 {
-		add("磁盘", humanBytes(float64(n.DiskTotal)), "")
+	diskTotal := n.DiskTotal
+	if m != nil && m.Disk.Total > 0 {
+		diskTotal = m.Disk.Total
+	}
+	if diskTotal > 0 {
+		diskValue := humanBytes(float64(diskTotal))
+		if m != nil && m.Disk.Total > 0 {
+			diskValue = humanBytes(float64(m.Disk.Used)) + " / " + diskValue
+		}
+		add("磁盘", diskValue, "")
 	}
 	if n.OS != "" {
 		// 系统名前面挂个发行版图标 —— 一眼能认出是哪家，

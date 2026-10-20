@@ -338,6 +338,9 @@ kokoroApplyThemeLayers(document);
     setText(el, 'disk', disk.toFixed(0) + '%');
     setWidth(el, 'disk-bar', disk);
     setUsageLevel(el, 'disk', disk);
+    if (m.disk && Number(m.disk.total) > 0) {
+      setText(el, 'disk-spec', fmtSize(Number(m.disk.used) || 0) + ' / ' + fmtSize(Number(m.disk.total)));
+    }
     if (m.mem) {
       var swapTotal = Number(m.mem.swap_total) || 0;
       var swapUsed = Number(m.mem.swap_used) || 0;

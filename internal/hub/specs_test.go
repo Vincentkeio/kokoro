@@ -104,3 +104,19 @@ func TestCPUModelHasNoLabel(t *testing.T) {
 		t.Error("其他规格项不该被 Bare 波及")
 	}
 }
+
+func TestDiskSpecShowsUsedAndTotal(t *testing.T) {
+	items := nodeSpecs(model.Node{DiskTotal: 40 << 30}, &model.Metrics{
+		Disk: model.DiskStat{Used: 6 << 30, Total: 40 << 30},
+	})
+
+	for _, item := range items {
+		if item.Label == "磁盘" {
+			if want := "6.0 GB / 40.0 GB"; item.Value != want {
+				t.Fatalf("磁盘规格 = %q，想要 %q", item.Value, want)
+			}
+			return
+		}
+	}
+	t.Fatal("缺少磁盘规格")
+}
