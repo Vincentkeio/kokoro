@@ -280,6 +280,7 @@
             <span class="globe-node-light{{if .Online}} is-online{{else}} is-offline{{end}}" aria-hidden="true"></span><span class="flag">{{flag .Country}}</span><span class="globe-city">{{.City}}<small>{{.Name}}</small></span><span class="globe-node-status{{if .Online}} is-online{{end}}">{{if .Online}}在线{{else}}离线{{end}}</span>
           </div>{{end}}
         </div>
+        <div class="globe-scrollbar" aria-hidden="true"><i></i></div>
       </div>
       <div class="map-foot">
         <span>拖动旋转 · 滚轮缩放</span>

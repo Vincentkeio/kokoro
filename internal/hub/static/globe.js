@@ -1278,7 +1278,7 @@
     g.arc(headX, headY, recentPulse ? this.effects.flowGlowWidth * 1.5 : this.effects.flowGlowWidth * 1.25, 0, Math.PI * 2);
     g.fill();
     g.globalAlpha = 1;
-    g.fillStyle = colors.flowCore || '#f5fff9';
+    g.fillStyle = colors.flowCore || color;
     g.beginPath();
     g.arc(headX, headY, recentPulse ? this.effects.flowHeadSize * 1.2 : this.effects.flowHeadSize, 0, Math.PI * 2);
     g.fill();

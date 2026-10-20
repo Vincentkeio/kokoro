@@ -4,7 +4,7 @@
      脚本顺序有讲究：globe.js 必须**先**执行完，下面的初始化才能拿到
      window.KokoroGlobe。所以不能用 defer —— 内联脚本在解析时就跑，
      而 defer 的脚本要等解析完，反而会晚一步。 */}}
-<script src="/static/globe.js?v=87"></script>
+<script src="/static/globe.js?v=88"></script>
 <script>
 (function () {
   'use strict';
@@ -127,7 +127,9 @@
         oceanNight: colorVar(el, '--globe-ocean-night', '#c6d3e6'),
         arc:   colorVar(el, '--kokoro-globe-route', '#2f6feb'),
         flow:  colorVar(el, '--kokoro-globe-flow', '#2f6feb'),
-        flowCore: colorVar(el, '--kokoro-globe-flow-core', '#f5fff9'),
+        // 光点核心跟随主题的流光色；只有主题显式定义了
+        // --kokoro-globe-flow-core 时才使用单独的颜色，不再固定为白色。
+        flowCore: colorVar(el, '--kokoro-globe-flow-core', colorVar(el, '--kokoro-globe-flow', '#2f6feb')),
         // Area fills can be softer than moving flow particles. Existing themes
         // retain their flow color unless they explicitly provide an area palette.
         litDay:   colorVar(el, '--kokoro-globe-lit-day', colorVar(el, '--kokoro-globe-flow', '#dfbd74')),
@@ -144,12 +146,39 @@
   // 这比"自己定时假脉冲"诚实——看到的光点就是真的数据到达。
   window.kokoroGlobe = g;
   var body = host.closest('.globe-body');
+  var nodeList = body ? body.querySelector('.globe-node-list') : null;
+  var scrollbar = body ? body.querySelector('.globe-scrollbar') : null;
+  var scrollThumb = scrollbar ? scrollbar.firstElementChild : null;
+
+  // 原生滚动条在手机上不拖动会淡出；用常驻滑块同步列表位置，
+  // 只要内容可滚动就一直显示，不自动隐藏。
+  function syncNodeScrollbar() {
+    if (!nodeList || !scrollbar || !scrollThumb) return;
+    var scrollable = nodeList.scrollHeight > nodeList.clientHeight + 1;
+    scrollbar.classList.toggle('is-scrollable', scrollable);
+    if (!scrollable) return;
+    var track = scrollbar.clientHeight;
+    var thumb = Math.max(24, track * nodeList.clientHeight / nodeList.scrollHeight);
+    var maxScroll = nodeList.scrollHeight - nodeList.clientHeight;
+    var maxTop = Math.max(0, track - thumb);
+    var top = maxScroll > 0 ? (nodeList.scrollTop / maxScroll) * maxTop : 0;
+    scrollThumb.style.height = thumb + 'px';
+    scrollThumb.style.transform = 'translateY(' + top + 'px)';
+  }
+  if (nodeList) {
+    nodeList.addEventListener('scroll', syncNodeScrollbar, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(syncNodeScrollbar).observe(nodeList);
+    if (window.MutationObserver) new MutationObserver(syncNodeScrollbar).observe(nodeList, { childList: true });
+    window.addEventListener('resize', syncNodeScrollbar);
+  }
+
   var buttons = document.querySelectorAll('[data-globe-mode]');
   function setMode(mode) {
     mode = mode === 'list' ? 'list' : 'labels';
     if (body) body.dataset.globeView = mode;
     buttons.forEach(function(button) { button.setAttribute('aria-pressed',String(button.dataset.globeMode === mode)); });
     g.setLabelMode(mode);
+    syncNodeScrollbar();
     try { localStorage.setItem('kokoro-globe-mode', mode); } catch(e) {}
   }
   var savedMode = 'labels';
