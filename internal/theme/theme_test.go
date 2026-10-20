@@ -104,9 +104,9 @@ func TestThemeSwitchChangesLayout(t *testing.T) {
 	if alt.Layout.Charts.Type != "line" {
 		t.Errorf("对照主题图表类型 = %q，应为 line", alt.Layout.Charts.Type)
 	}
-	// 默认主题是浅色系（auto 或 light 都算），不该默认深色。
-	if base.Mode.Default == "dark" {
-		t.Errorf("默认主题默认模式 = %q，不该是 dark", base.Mode.Default)
+	// 新安装默认使用钛光及其深色模式。
+	if base.ID != "kokoro.titanium" || base.Mode.Default != "dark" {
+		t.Errorf("默认主题 = %q / %q，应为钛光 / dark", base.ID, base.Mode.Default)
 	}
 	if alt.Mode.Default != "dark" {
 		t.Errorf("对照主题默认模式 = %q，应为 dark", alt.Mode.Default)

@@ -40,7 +40,7 @@ func BuiltinAssets(id string) ([]Asset, error) {
 }
 
 // DefaultID 是新安装时的默认主题。
-const DefaultID = "kokoro.simple"
+const DefaultID = "kokoro.titanium"
 
 // Registry 是主题注册表。并发安全，读多写少，用 RWMutex 就够。
 type Registry struct {

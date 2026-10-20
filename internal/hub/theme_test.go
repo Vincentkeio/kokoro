@@ -813,8 +813,8 @@ func TestModeAndListModeCookies(t *testing.T) {
 	h, _ := newThemeTestHub(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.AddCookie(&http.Cookie{Name: theme.ModeCookie, Value: "dark"})
-	if got := h.themeFor(req).Mode; got != "light" {
+	req.AddCookie(&http.Cookie{Name: theme.ModeCookie, Value: "light"})
+	if got := h.themeFor(req).Mode; got != "dark" {
 		t.Errorf("旧 k_mode cookie 不应改变主题默认外观，mode = %q", got)
 	}
 

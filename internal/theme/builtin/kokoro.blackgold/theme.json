@@ -2,12 +2,16 @@
   "schemaVersion": 1,
   "id": "kokoro.blackgold",
   "name": "黑金",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "墨黑仪表盘搭配香槟金重点色，状态色保留清晰语义，适合长时间查看探针数据。",
   "author": "Kokoro 黑金主题（参考 Jiwo Probe）",
   "sourceUrl": "https://github.com/chnnic/jiwo-probe",
   "license": "MIT",
-  "tags": ["dark", "gold", "operations"],
+  "tags": [
+    "dark",
+    "gold",
+    "operations"
+  ],
   "tokensSchemaVersion": 2,
   "mode": {
     "default": "dark",
@@ -106,7 +110,7 @@
     "--kokoro-rate-bg": "rgba(17, 22, 16, .97)",
     "--kokoro-globe-route": "#d8b56d",
     "--kokoro-rate-down": "#e5c367",
-    "--kokoro-globe-flow-glow-width": "3",
+    "--kokoro-globe-flow-glow-width": "3.2",
     "--kokoro-rate-up": "#84bea0",
     "--kokoro-globe-flow-glow": "3",
     "--kokoro-clock-divider": "rgba(216, 181, 109, .3)",
@@ -119,7 +123,18 @@
     "--kokoro-uptime-bar-gap": "1px",
     "--kokoro-uptime-bar-radius": "0px",
     "--kokoro-clock-color": "#f1e7ca",
-    "--kokoro-clock-gap": "24px"
+    "--kokoro-clock-gap": "24px",
+    "--kokoro-globe-flow-head-size": "1.7",
+    "--kokoro-globe-flow-core-width": "1.4",
+    "--kokoro-globe-node-size": "1.8",
+    "--kokoro-globe-node-muted-size": "1.5",
+    "--kokoro-globe-node-ring-size": "3",
+    "--kokoro-globe-node-muted-ring-size": "2.6",
+    "--kokoro-globe-node-halo-size": "5.5",
+    "--kokoro-globe-hub-size": "2",
+    "--kokoro-globe-hub-ring-size": "4.3",
+    "--kokoro-globe-hub-ring-width": "1",
+    "--kokoro-globe-flow-length": ".28"
   },
   "layoutSchemaVersion": 1,
   "layout": {
@@ -132,10 +147,15 @@
         "showSearch": false,
         "showModeSwitch": false
       },
-      "footer": {"variant": "minimal"}
+      "footer": {
+        "variant": "minimal"
+      }
     },
     "home": {
-      "hero": {"enabled": false, "variant": "plain"},
+      "hero": {
+        "enabled": false,
+        "variant": "plain"
+      },
       "list": {
         "mode": "card",
         "allowUserSwitch": false,
@@ -148,17 +168,53 @@
           "hoverLift": true,
           "columns": 3
         },
-        "table": {"density": "comfortable", "striped": false, "rowHover": true},
-        "compact": {"rowHeight": "48px", "dividers": true, "showFlag": true, "inlineBars": true}
+        "table": {
+          "density": "comfortable",
+          "striped": false,
+          "rowHover": true
+        },
+        "compact": {
+          "rowHeight": "48px",
+          "dividers": true,
+          "showFlag": true,
+          "inlineBars": true
+        }
       }
     },
     "detail": {
-      "header": {"variant": "compact", "height": "300px", "showTags": true, "secondaryLine": "location"},
+      "header": {
+        "variant": "compact",
+        "height": "300px",
+        "showTags": true,
+        "secondaryLine": "location"
+      },
       "sectionGap": "28px",
       "introFontSize": "14px"
     },
-    "charts": {"type": "line", "grid": true, "legend": true, "axisLabel": true, "smooth": false, "tooltip": "axis", "height": "200px", "heightDetail": "300px"},
-    "misc": {"statusDotStyle": "solid", "usageBarStyle": "striped", "tagStyle": "square", "badgeStyle": "outline", "showUptime": true, "numberFormat": "si", "dateFormat": "relative", "uptimeBarStyle": "tiles"},
-    "globe": {"showRoutes": true, "showFlow": true, "autoRotate": true}
+    "charts": {
+      "type": "line",
+      "grid": true,
+      "legend": true,
+      "axisLabel": true,
+      "smooth": false,
+      "tooltip": "axis",
+      "height": "200px",
+      "heightDetail": "300px"
+    },
+    "misc": {
+      "statusDotStyle": "solid",
+      "usageBarStyle": "striped",
+      "tagStyle": "square",
+      "badgeStyle": "outline",
+      "showUptime": true,
+      "numberFormat": "si",
+      "dateFormat": "relative",
+      "uptimeBarStyle": "tiles"
+    },
+    "globe": {
+      "showRoutes": true,
+      "showFlow": true,
+      "autoRotate": true
+    }
   }
 }

@@ -1170,9 +1170,9 @@ html[data-k-mode="dark"], body[data-k-mode="dark"] {
 .map-legend { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); }
 .map-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
   margin-right: 5px; vertical-align: middle; }
-.map-legend .i-on { background: var(--ok); }
-.map-legend .i-cur { background: var(--kokoro-globe-hub, var(--accent)); }
-.map-legend .i-off { background: var(--faint); }
+.map-legend .i-on { background: var(--kokoro-globe-node-online, var(--ok)); }
+.map-legend .i-cur { background: var(--kokoro-globe-hub, var(--kokoro-globe-route, var(--accent))); }
+.map-legend .i-off { background: var(--kokoro-globe-node-offline, var(--faint)); }
 .map-legend .hint-drag { color: var(--faint); }
 .globe {
   position: relative; width: 100%; height: min(64vh, 560px);
@@ -4286,7 +4286,8 @@ html[data-k-mode="dark"] .route-standard { color:#c8c8c8; border-color:#494949; 
 .globe-mode-switch button:focus-visible, .globe-node-list:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .map-card .globe-body { display:flex; flex:1 1 auto; min-height:0; overflow:hidden; position:relative; }
 .map-card .globe-body > .globe { min-width:0; width:100%; height:auto; align-self:stretch; flex:1; min-height:0; }
-.globe-node-list { display:none; }
+/* List content stays above animated backdrops while retaining transparency. */
+.globe-node-list { display:none; position:relative; z-index:1; }
 .globe-body[data-globe-view="list"] .globe-node-list { display:block; flex:0 0 38%; min-width:0; min-height:0; max-height:100%; overflow-y:auto; overscroll-behavior:contain; border-left:1px solid var(--line); padding:0 8px; }
 /* 手机上的原生滚动条不拖动就会淡出。这里隐藏原生条，改用常驻滑块同步位置；
    颜色沿用检测结果浮窗（.task-pop）的 --muted/--fg 半透明色。 */
@@ -4300,7 +4301,7 @@ html[data-k-mode="dark"] .route-standard { color:#c8c8c8; border-color:#494949; 
 .globe-city { min-width:0; flex:1; overflow-wrap:anywhere; }
 .globe-city small { display:block; font-size:9px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .globe-node-light { display:inline-block; flex:0 0 6px; width:6px; height:6px; border-radius:50%; background:var(--muted); box-shadow:0 0 0 2px color-mix(in srgb,var(--muted) 14%,transparent); }
-.globe-node-light.is-online { background:var(--ok); box-shadow:0 0 0 2px color-mix(in srgb,var(--ok) 16%,transparent); }
+.globe-node-light.is-online { background:var(--kokoro-globe-node-online,var(--ok)); box-shadow:0 0 0 2px color-mix(in srgb,var(--kokoro-globe-node-online,var(--ok)) 16%,transparent); }
 .globe-node-light.is-offline { background:var(--muted); }
 .globe-node-status { font-size:9px; color:var(--muted); }
 .globe-node-status.is-online { color:var(--ok); }
@@ -4308,7 +4309,7 @@ html[data-k-mode="dark"] .route-standard { color:#c8c8c8; border-color:#494949; 
 .globe-node-label { position:absolute; top:0; left:0; display:flex; align-items:center; gap:4px; height:21px; padding:2px 4px; box-sizing:border-box; color:var(--fg); background:color-mix(in srgb,var(--panel) 90%,transparent); border:1px solid var(--line); border-radius:3px; font-size:10px; }
 .globe-node-label > span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .globe-node-label .globe-node-light { flex:0 0 5px; width:5px; height:5px; margin-inline:1px; box-shadow:0 0 0 1.5px color-mix(in srgb,var(--muted) 14%,transparent); }
-.globe-node-label.is-online .globe-node-light { background:var(--ok); box-shadow:0 0 0 1.5px color-mix(in srgb,var(--ok) 18%,transparent); }
+.globe-node-label.is-online .globe-node-light { background:var(--kokoro-globe-node-online,var(--ok)); box-shadow:0 0 0 1.5px color-mix(in srgb,var(--kokoro-globe-node-online,var(--ok)) 18%,transparent); }
 .globe-node-label.is-offline .globe-node-light { background:var(--muted); }
 .globe-node-label .flag {
   display:inline-flex; flex:0 0 14px; width:14px; height:14px; margin:0;
@@ -4336,16 +4337,16 @@ body[data-k-theme="kokoro.paper"] .globe-body::after {
 }
 body[data-k-theme="kokoro.mist"] .map-card .globe-body {
   background:
-    radial-gradient(ellipse at 50% 42%,rgba(247,250,250,.98) 0%,rgba(230,239,241,.82) 36%,transparent 72%),
-    linear-gradient(145deg,#d9e6e9 0%,#e8f0f1 42%,#d7e4e7 100%);
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.76),inset 0 0 70px rgba(86,119,130,.13);
+    radial-gradient(ellipse at 50% 42%,rgba(250,252,248,.98) 0%,rgba(234,243,238,.82) 36%,transparent 72%),
+    linear-gradient(145deg,#dfeae6 0%,#f0f5ef 42%,#dae7e3 100%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.76),inset 0 0 70px rgba(104,140,131,.11);
 }
 body[data-k-theme="kokoro.mist"] .globe-body::before {
   inset:0;
   background:
-    radial-gradient(ellipse 78% 104% at 20% 38%,rgba(111,149,160,.34) 0%,rgba(144,174,181,.24) 42%,transparent 78%),
-    radial-gradient(ellipse 82% 96% at 82% 72%,rgba(255,255,255,.74) 0%,rgba(243,248,249,.42) 48%,transparent 82%),
-    radial-gradient(ellipse 66% 88% at 52% 8%,rgba(177,201,206,.24) 0%,rgba(205,220,223,.12) 52%,transparent 86%);
+    radial-gradient(ellipse 78% 104% at 20% 38%,rgba(137,169,160,.22) 0%,rgba(171,197,184,.16) 42%,transparent 78%),
+    radial-gradient(ellipse 82% 96% at 82% 72%,rgba(255,255,255,.74) 0%,rgba(248,251,245,.42) 48%,transparent 82%),
+    radial-gradient(ellipse 66% 88% at 52% 8%,rgba(190,211,199,.22) 0%,rgba(217,231,221,.12) 52%,transparent 86%);
   background-size:160% 160%,170% 170%,155% 165%;
   background-position:0% 48%,100% 52%,38% 0%;
   opacity:.94;
@@ -4353,7 +4354,7 @@ body[data-k-theme="kokoro.mist"] .globe-body::before {
 }
 body[data-k-theme="kokoro.mist"] .globe-body::after {
   inset:0;
-  background:radial-gradient(ellipse at 50% 46%,transparent 28%,rgba(244,248,249,.18) 68%,rgba(87,122,134,.11) 100%);
+  background:radial-gradient(ellipse at 50% 46%,transparent 28%,rgba(247,251,246,.18) 68%,rgba(111,146,136,.09) 100%);
   opacity:.8;
 }
 body[data-k-theme="kokoro.midnight"] .map-card .globe-body {

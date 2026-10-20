@@ -314,8 +314,8 @@ func TestWallpaperPanelOnThemePage(t *testing.T) {
 	if n := strings.Count(body, `name="theme"`); n < 2 {
 		t.Errorf("壁纸表单都应带上主题字段，实际只有 %d 处", n)
 	}
-	if !strings.Contains(body, `value="`+wpThemeA+`"`) {
-		t.Errorf("主题字段应填当前启用主题 %s", wpThemeA)
+	if !strings.Contains(body, `value="`+h.ActiveThemeID()+`"`) {
+		t.Errorf("主题字段应填当前启用主题 %s", h.ActiveThemeID())
 	}
 }
 

@@ -119,7 +119,7 @@ func (h *Hub) loadTheme() {
 			}
 		}
 	}
-	// 已移除的旧主题和存档主题统一迁移到「简洁」。
+	// 已移除的旧主题和存档主题统一迁移到当前默认主题。
 	if active == "" || h.themes.Get(active) == nil {
 		active = theme.DefaultID
 		if h.store != nil {

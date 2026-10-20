@@ -1092,7 +1092,7 @@
       }
     }
 
-    // 节点使用固定大小的实心标记，辅以极淡的静态晕圈提高识别度。
+    // A feathered halo and fine outline keep markers crisp without opaque discs.
     for (var j = 0; j < this.places.length; j++) {
       var q = this.places[j];
       if (q.lat == null || q.lon == null) continue;
@@ -1100,16 +1100,20 @@
       if (sp.z <= 0) continue;
       var online = q.online !== false;
       var dotCol = online ? (c.ok || '#1a7f37') : (c.off || '#8b949e');
+      var haloRadius = online ? this.effects.nodeHaloSize : this.effects.nodeHaloSize * .84;
+      var halo = g.createRadialGradient(sp.x, sp.y, 0, sp.x, sp.y, haloRadius);
+      halo.addColorStop(0, withAlpha(dotCol, online ? .24 : .12));
+      halo.addColorStop(.4, withAlpha(dotCol, online ? .1 : .05));
+      halo.addColorStop(1, withAlpha(dotCol, 0));
       g.beginPath();
-      g.arc(sp.x, sp.y, online ? this.effects.nodeHaloSize : this.effects.nodeHaloSize * .84, 0, Math.PI * 2);
-      g.fillStyle = dotCol;
-      g.globalAlpha = online ? 0.09 : 0.055;
+      g.arc(sp.x, sp.y, haloRadius, 0, Math.PI * 2);
+      g.fillStyle = halo;
       g.fill();
-      g.globalAlpha = 1;
       g.beginPath();
       g.arc(sp.x, sp.y, online ? this.effects.nodeRingSize : this.effects.nodeMutedRingSize, 0, Math.PI * 2);
-      g.fillStyle = c.oceanDay || '#fff';
-      g.fill();
+      g.strokeStyle = withAlpha(dotCol, online ? .42 : .32);
+      g.lineWidth = .7;
+      g.stroke();
       g.beginPath();
       g.fillStyle = dotCol;
       g.arc(sp.x, sp.y, online ? this.effects.nodeSize : this.effects.nodeMutedSize, 0, Math.PI * 2);
@@ -1210,11 +1214,12 @@
   KokoroGlobe.prototype._drawRouteFlow = function (g, place, route, now, index) {
     if (!this.hub || !this.effects.showFlow) return;
     var phase = ((now / this.effects.flowPeriod) + index * 0.307) % 1;
-    var headT = 0.07 + phase * 0.86;
-    // A longer tapered flow reads as data moving through a route, rather than
-    // a short dot blinking along the line.
-    var tailT = Math.max(0.012, headT - this.effects.flowLength);
-    var steps = 14;
+    // Let the entire tail reach the hub before restarting at the node.
+    var travel = phase * (1 + this.effects.flowLength);
+    var headT = Math.min(1, travel);
+    var tailT = Math.max(0, travel - this.effects.flowLength);
+    var envelope = Math.min(1, travel / .06, (1 + this.effects.flowLength - travel) / .12);
+    var steps = 32;
     if (!this._fx || this._fx.length < steps + 1) {
       this._fx = new Float32Array(steps + 1);
       this._fy = new Float32Array(steps + 1);
@@ -1224,6 +1229,7 @@
     var cosYaw = this._cosYaw, sinYaw = this._sinYaw;
     var cosPitch = this._cosPitch, sinPitch = this._sinPitch;
     var R = this.R, cx = this.cx, cy = this.cy;
+    var headVisible = false, headDepth = 0;
     for (var i = 0; i <= steps; i++) {
       // buildRoute 的 t=0 在主机、t=1 在节点；流光要反着走（节点 → 主机）。
       var t = 1 - (tailT + (headT - tailT) * i / steps);
@@ -1238,6 +1244,7 @@
       var z1 = -vx * sinYaw + vz * cosYaw;
       var y1 = vy * cosPitch - z1 * sinPitch;
       var z2 = vy * sinPitch + z1 * cosPitch;
+      if (i === steps) { headVisible = z2 >= .015; headDepth = z2; }
       if (z2 < 0.015) continue;
       fx[count] = cx + x1 * R;
       fy[count] = cy - y1 * R;
@@ -1249,10 +1256,11 @@
     var color = colors.flow || colors.hub || colors.arc || '#8ed8bc';
     var headX = fx[count - 1], headY = fy[count - 1];
     var trail = g.createLinearGradient(fx[0], fy[0], headX, headY);
-    trail.addColorStop(0, withAlpha(color, 0.015));
-    trail.addColorStop(0.42, withAlpha(color, recentPulse ? 0.16 : 0.1));
-    trail.addColorStop(0.82, withAlpha(color, recentPulse ? 0.58 : 0.42));
-    trail.addColorStop(1, withAlpha(color, recentPulse ? 0.98 : 0.82));
+    trail.addColorStop(0, withAlpha(color, 0));
+    trail.addColorStop(.18, withAlpha(color, .015));
+    trail.addColorStop(.42, withAlpha(color, recentPulse ? .13 : .09));
+    trail.addColorStop(.72, withAlpha(color, recentPulse ? .46 : .36));
+    trail.addColorStop(1, withAlpha(color, recentPulse ? .95 : .85));
 
     g.save();
     g.lineCap = 'round';
@@ -1263,25 +1271,32 @@
     // 原来这里用 shadowBlur 做外发光。手机上每帧给几十条路径做阴影会
     // 持续压着 GPU/CPU，时间一长就降频——改成更宽的半透明描边，观感接近，
     // 但走普通路径，不再每帧重新光栅化阴影。
-    g.globalAlpha = 0.3 * this.effects.flowOpacity;
-    g.lineWidth = this.effects.flowGlowWidth * 1.5;
-    g.strokeStyle = withAlpha(color, recentPulse ? 0.24 : 0.16);
+    g.globalAlpha = .16 * envelope * this.effects.flowOpacity * clamp(this.effects.flowGlow / 4, 0, 1);
+    g.lineWidth = this.effects.flowGlowWidth;
+    g.strokeStyle = trail;
     g.stroke();
-    g.globalAlpha = this.effects.flowOpacity;
+    g.globalAlpha = envelope * this.effects.flowOpacity;
     g.lineWidth = recentPulse ? this.effects.flowCoreWidth * 1.3 : this.effects.flowCoreWidth;
     g.strokeStyle = trail;
     g.stroke();
 
-    g.globalAlpha = (recentPulse ? 0.3 : 0.2) * this.effects.flowOpacity;
-    g.fillStyle = color;
-    g.beginPath();
-    g.arc(headX, headY, recentPulse ? this.effects.flowGlowWidth * 1.5 : this.effects.flowGlowWidth * 1.25, 0, Math.PI * 2);
-    g.fill();
-    g.globalAlpha = 1;
-    g.fillStyle = colors.flowCore || color;
-    g.beginPath();
-    g.arc(headX, headY, recentPulse ? this.effects.flowHeadSize * 1.2 : this.effects.flowHeadSize, 0, Math.PI * 2);
-    g.fill();
+    if (headVisible) {
+      g.globalAlpha = envelope * this.effects.flowOpacity * clamp(headDepth / .08, 0, 1);
+      var headSize = this.effects.flowHeadSize * (recentPulse ? 1.12 : 1);
+      var glowSize = Math.max(headSize * 2.8, this.effects.flowGlowWidth);
+      var glow = g.createRadialGradient(headX, headY, 0, headX, headY, glowSize);
+      glow.addColorStop(0, withAlpha(color, .32));
+      glow.addColorStop(.35, withAlpha(color, .12));
+      glow.addColorStop(1, withAlpha(color, 0));
+      g.fillStyle = glow;
+      g.beginPath();
+      g.arc(headX, headY, glowSize, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = colors.flowCore || color;
+      g.beginPath();
+      g.arc(headX, headY, headSize, 0, Math.PI * 2);
+      g.fill();
+    }
     g.restore();
   };
 
