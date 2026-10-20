@@ -1064,7 +1064,7 @@
         var end = this._project(place.lat, place.lon);
         if (!isFinite(hp.x) || !isFinite(hp.y) || !isFinite(end.x) || !isFinite(end.y)) continue;
         this._projectRoute(route);
-        if (this._pvisible < 2) continue;
+        if (!this._pvisible) continue;
         var onlineRoute = place.online !== false;
         g.save();
         g.lineCap = 'round';
