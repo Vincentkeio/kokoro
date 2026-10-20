@@ -4140,6 +4140,10 @@ body[data-k-theme] .home-band:has(>.map-card) > #speed {
 body[data-k-theme] .home-band:has(>.map-card) > .map-card {
   box-sizing:border-box; width:100%; height:auto; min-height:0;
   aspect-ratio:1; align-self:start; overflow:hidden;
+  /* 卡片高度只由网格行决定，节点列表再长也不能反过来把行撑高。
+     没有 size containment 时，自动行会把这堆列表项算进 max-content，
+     #speed 也会跟着被拉伸。 */
+  contain:size;
 }
 body[data-k-theme] .home-band:has(>.map-card) > .map-card > .globe {
   flex:1 1 auto; min-height:0; height:auto;
@@ -4283,7 +4287,7 @@ html[data-k-mode="dark"] .route-standard { color:#c8c8c8; border-color:#494949; 
 .map-card .globe-body { display:flex; flex:1 1 auto; min-height:0; overflow:hidden; position:relative; }
 .map-card .globe-body > .globe { min-width:0; width:100%; height:auto; align-self:stretch; flex:1; min-height:0; }
 .globe-node-list { display:none; }
-.globe-body[data-globe-view="list"] .globe-node-list { display:block; flex:0 0 38%; min-width:0; overflow-y:auto; overscroll-behavior:contain; border-left:1px solid var(--line); padding:0 8px; scrollbar-width:thin; }
+.globe-body[data-globe-view="list"] .globe-node-list { display:block; flex:0 0 38%; min-width:0; min-height:0; max-height:100%; overflow-y:auto; overscroll-behavior:contain; border-left:1px solid var(--line); padding:0 8px; scrollbar-width:thin; }
 .globe-node-entry { display:flex; align-items:center; gap:6px; min-height:45px; padding:7px 0; border-bottom:1px solid var(--line); font-size:11px; }
 .globe-city { min-width:0; flex:1; overflow-wrap:anywhere; }
 .globe-city small { display:block; font-size:9px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -4595,8 +4599,15 @@ body[data-k-theme] #speed .range-btn:focus-visible { outline:2px solid var(--acc
   body[data-k-theme] #speed .speed-metrics .rate-row.traf { border-left:0; border-top:1px solid var(--line); padding:8px 0 0; }
 }
 @container k-page (max-width:1024px) {
-  body[data-k-theme] .home-band:has(>.map-card) > .map-card { aspect-ratio:auto; min-height:300px; }
-  .map-card .globe-body { min-height:200px; }
+  /* 窄屏没有同桌的 #speed 可以借高度，给地球卡片一个确定的高度：
+     列表再长也只在内部滚动，卡片不会被节点数量顶高。 */
+  body[data-k-theme] .home-band:has(>.map-card) > .map-card {
+    aspect-ratio:auto;
+    height:clamp(300px,56vh,480px);
+    min-height:0;
+    max-height:480px;
+  }
+  .map-card .globe-body { min-height:0; }
 }
 @container k-page (max-width:480px) { .map-region-count { display:block; margin:4px 0 0; } .speed-clock { gap:5px; font-size:10px; } .globe-node-status { display:none; } }
 

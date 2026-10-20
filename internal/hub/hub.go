@@ -36,7 +36,7 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 // Version is set from the CLI build version before serving registrations.
-var Version = "v1.0.11"
+var Version = "v1.0.12"
 
 // Hub 是一个运行中的主控实例。
 type Hub struct {
@@ -255,8 +255,9 @@ func (h *Hub) routes() {
 		fileSrv := http.StripPrefix("/static/", http.FileServer(http.FS(staticSub)))
 		h.mux.Handle("/static/", staticCacheWrap(fileSrv))
 	}
-	// Many bookmark clients request /favicon.ico directly without parsing HTML.
-	for _, path := range []string{"/favicon.ico", "/favicon.png", "/favicon.svg", "/apple-touch-icon.png", "/logo.webp"} {
+	// Many bookmark clients request /favicon.ico or /logo.png directly without
+	// parsing HTML, so every conventional discovery path is registered here.
+	for path := range siteIconAssets {
 		h.mux.HandleFunc(path, h.handleSiteIcon)
 	}
 

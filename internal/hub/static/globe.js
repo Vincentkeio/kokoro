@@ -331,11 +331,55 @@
   }
 
 
+  // 航线的大圆采样点只跟两端经纬度有关，和镜头角度无关。
+  // 预计算一次，每帧只做旋转 + 投影；否则动画循环里每条航线都要重算
+  // acos/sin，节点一多就会把手机拖到掉帧。
+  var ROUTE_SAMPLES = 48;
+
+  function buildRoute(a, b, n) {
+    var v1 = toVec(a.lat, a.lon, [0, 0, 0]);
+    var v2 = toVec(b.lat, b.lon, [0, 0, 0]);
+    var d = clamp(v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2], -1, 1);
+    var ang = Math.acos(d);
+    var sd = Math.sin(ang);
+    var vs = new Float32Array((n + 1) * 3);
+    for (var i = 0; i <= n; i++) {
+      var t = i / n, x, y, z;
+      if (ang < 1e-6 || sd < 1e-6) {
+        // 对跖点附近大圆不唯一，退化成线性插值再归一化。
+        x = v1[0] + (v2[0] - v1[0]) * t;
+        y = v1[1] + (v2[1] - v1[1]) * t;
+        z = v1[2] + (v2[2] - v1[2]) * t;
+        var len = Math.sqrt(x * x + y * y + z * z) || 1;
+        x /= len; y /= len; z /= len;
+      } else {
+        var A = Math.sin((1 - t) * ang) / sd, B = Math.sin(t * ang) / sd;
+        x = A * v1[0] + B * v2[0];
+        y = A * v1[1] + B * v2[1];
+        z = A * v1[2] + B * v2[2];
+      }
+      vs[i * 3] = x; vs[i * 3 + 1] = y; vs[i * 3 + 2] = z;
+    }
+    return { vs: vs, n: n };
+  }
+
+  var DEFAULT_COLORS = {
+    day: '#93a4bd', night: '#3b465c', oceanDay: '#f2f6fb', oceanNight: '#d8dfea',
+    arc: '#2f6feb', hub: '#2f6feb', ok: '#1a7f37', off: '#8b949e'
+  };
+
+
   // withAlpha 把 "#2f6feb" 这类颜色转成 "rgba(47,111,235,0.5)"。
   // 渐变渐隐要用：Canvas2D 的渐变色标只认 CSS 颜色字符串，不能直接给透明度参数。
+  // 同一主题下颜色和透明度组合是有限的，缓存起来避免每帧重复解析颜色。
+  var alphaCache = Object.create(null);
+
   function withAlpha(hex, a) {
+    var key = (hex || '') + '|' + a;
+    var hit = alphaCache[key];
+    if (hit) return hit;
     var c = parseColor(hex, '#2f6feb');
-    return 'rgba(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' +
+    return alphaCache[key] = 'rgba(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' +
            Math.round(c[2] * 255) + ',' + a + ')';
   }
 
@@ -377,6 +421,13 @@
     // "点亮区域"：服务端算好的格子 run（纹理序）。为空就是纯陆地配色。
     this.litRuns = opts.litRuns || '';
     this.hub = opts.hub || null;
+    // 航线几何只随节点/主机变化，预计算后每帧复用。
+    this.routes = [];
+    this._buildRoutes();
+    this._cachedColors = null;
+    this._colorsAt = 0;
+    this._rgbCache = Object.create(null);
+    this._reducedMotion = !!(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
     // 初始视角对准**所有节点的重心**。
     //
     // 为什么不是"对准主机"：主机在洛杉矶、小鸡在东京时，两者相距 79°，
@@ -702,8 +753,22 @@
     this._render();
   };
 
+  KokoroGlobe.prototype._buildRoutes = function () {
+    this.routes = [];
+    if (!this.hub) return;
+    for (var i = 0; i < this.places.length; i++) {
+      var p = this.places[i];
+      if (!p || p.lat == null || p.lon == null) { this.routes.push(null); continue; }
+      this.routes.push(buildRoute(this.hub, p, ROUTE_SAMPLES));
+    }
+  };
+
   KokoroGlobe.prototype.setPlaces = function (cfg) {
-    if (cfg && cfg.places) this.places = cfg.places.slice();
+    var routesDirty = false;
+    if (cfg && cfg.places) {
+      this.places = cfg.places.slice();
+      routesDirty = true;
+    }
     // 点亮区域只在"哪些国家有节点"变化时才重传纹理。
     if (cfg && cfg.litRuns !== undefined && cfg.litRuns !== this.litRuns) {
       this.litRuns = cfg.litRuns || '';
@@ -711,11 +776,13 @@
     }
     if (cfg && cfg.hub) {
       this.hub = cfg.hub;
+      routesDirty = true;
       if (cfg.focus) {
         var a = hubAngles(cfg.hub.lat, cfg.hub.lon);
         this.yaw = a.yaw; this.pitch = a.pitch;
       }
     }
+    if (routesDirty) this._buildRoutes();
     this._render();
   };
 
@@ -734,18 +801,58 @@
   KokoroGlobe.prototype._colors = function () {
     if (this._frameColors) return this._frameColors;
     if (this.opts.colors) {
-      this._frameColors = this.opts.colors();
+      // 颜色读取要走 getComputedStyle，代价不低；一帧问一次还嫌多。
+      // 缓存一秒足够跟上主题切换，又不会把样式重算压在每一帧上。
+      var now = global.performance && global.performance.now ? global.performance.now() : Date.now();
+      if (!this._cachedColors || now - this._colorsAt > 1000) {
+        this._cachedColors = this.opts.colors();
+        this._colorsAt = now;
+        this._rgbCache = Object.create(null);
+      }
+      this._frameColors = this._cachedColors;
     } else {
-      this._frameColors = { day: '#93a4bd', night: '#3b465c', oceanDay: '#f2f6fb', oceanNight: '#d8dfea',
-                            arc: '#2f6feb', hub: '#2f6feb', ok: '#1a7f37', off: '#8b949e' };
+      this._frameColors = DEFAULT_COLORS;
     }
     return this._frameColors;
+  };
+
+  // 主题面板改 token 后可以主动清缓存，不用等下一秒。
+  KokoroGlobe.prototype.refreshColors = function () {
+    this._cachedColors = null;
+    this._render();
+  };
+
+  KokoroGlobe.prototype._rgb = function (hex, fallback) {
+    var key = hex || fallback || '';
+    var v = this._rgbCache[key];
+    if (!v) {
+      v = parseColor(hex, fallback);
+      this._rgbCache[key] = v;
+    }
+    return v;
+  };
+
+  // 一帧只算一次 sin/cos。之前每个投影点都调 rotate()，那里面又有 4 次
+  // 三角函数——节点一多，光算角度就能吃掉大半帧。
+  KokoroGlobe.prototype._setView = function () {
+    this._cosYaw = Math.cos(this.yaw); this._sinYaw = Math.sin(this.yaw);
+    this._cosPitch = Math.cos(this.pitch); this._sinPitch = Math.sin(this.pitch);
+  };
+
+  KokoroGlobe.prototype._rotateVec = function (v, out) {
+    var x1 = v[0] * this._cosYaw + v[2] * this._sinYaw;
+    var z1 = -v[0] * this._sinYaw + v[2] * this._cosYaw;
+    out[0] = x1;
+    out[1] = v[1] * this._cosPitch - z1 * this._sinPitch;
+    out[2] = v[1] * this._sinPitch + z1 * this._cosPitch;
+    return out;
   };
 
   KokoroGlobe.prototype._start = function () {
     if (this._destroyed || !this.visible || document.hidden) return;
     this._render();
     var reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this._reducedMotion = !!reduced;
     var animate = this.effects.autoRotate || (this.effects.showRoutes && this.effects.showFlow && !!this.hub);
     if (this._raf || reduced || !animate) return;
     var self = this;
@@ -811,24 +918,25 @@
   KokoroGlobe.prototype._drawGL = function () {
     var gl = this.gl;
     if (!gl || !this.dprog) return;
+    this._setView();
     var c = this._colors();
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     var sun = this.opts.sun || subsolar(new Date());
-    var sv = toVec(sun.lat, sun.lon, [0, 0, 0]);
-    var svv = rotate(sv, this.yaw, this.pitch, [0, 0, 0]);
+    var sv = toVec(sun.lat, sun.lon, this._sv || (this._sv = [0, 0, 0]));
+    var svv = this._rotateVec(sv, this._svv || (this._svv = [0, 0, 0]));
     gl.useProgram(this.dprog);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuf);
     gl.enableVertexAttribArray(this.dloc.quad);
     gl.vertexAttribPointer(this.dloc.quad, 2, gl.FLOAT, false, 0, 0);
     gl.uniform2f(this.dloc.scale, 2 * this.R / this.w, 2 * this.R / this.h);
     gl.uniform3f(this.dloc.sunView, svv[0], svv[1], svv[2]);
-    gl.uniform3fv(this.dloc.oceanDay, parseColor(c.oceanDay, '#f2f6fb'));
-    gl.uniform3fv(this.dloc.oceanNight, parseColor(c.oceanNight, '#d8dfea'));
-    gl.uniform3fv(this.dloc.landDay, parseColor(c.day, '#c9d4e2'));
-    gl.uniform3fv(this.dloc.landNight, parseColor(c.night, '#39435a'));
-    gl.uniform3fv(this.dloc.litDay, parseColor(c.litDay || c.flow, '#e8c880'));
-    gl.uniform3fv(this.dloc.litNight, parseColor(c.litNight || c.flow, '#c39a45'));
+    gl.uniform3fv(this.dloc.oceanDay, this._rgb(c.oceanDay, '#f2f6fb'));
+    gl.uniform3fv(this.dloc.oceanNight, this._rgb(c.oceanNight, '#d8dfea'));
+    gl.uniform3fv(this.dloc.landDay, this._rgb(c.day, '#c9d4e2'));
+    gl.uniform3fv(this.dloc.landNight, this._rgb(c.night, '#39435a'));
+    gl.uniform3fv(this.dloc.litDay, this._rgb(c.litDay || c.flow, '#e8c880'));
+    gl.uniform3fv(this.dloc.litNight, this._rgb(c.litNight || c.flow, '#c39a45'));
     gl.uniform1f(this.dloc.yaw, this.yaw);
     gl.uniform1f(this.dloc.pitch, this.pitch);
     gl.uniform1f(this.dloc.latMin, this.mask.latMin * DEG);
@@ -851,8 +959,13 @@
       gl.LUMINANCE, gl.UNSIGNED_BYTE, landTextureData(this.mask, lit));
   };
 
-  KokoroGlobe.prototype._project = function (lat, lon) {    var v = rotate(toVec(lat, lon, [0, 0, 0]), this.yaw, this.pitch, [0, 0, 0]);
-    return { x: this.cx + v[0] * this.R, y: this.cy - v[1] * this.R, z: v[2] };
+  KokoroGlobe.prototype._project = function (lat, lon) {
+    var v = toVec(lat, lon, this._v3 || (this._v3 = [0, 0, 0]));
+    var x1 = v[0] * this._cosYaw + v[2] * this._sinYaw;
+    var z1 = -v[0] * this._sinYaw + v[2] * this._cosYaw;
+    var y1 = v[1] * this._cosPitch - z1 * this._sinPitch;
+    var z2 = v[1] * this._sinPitch + z1 * this._cosPitch;
+    return { x: this.cx + x1 * this.R, y: this.cy - y1 * this.R, z: z2 };
   };
 
   // 两点之间的大圆，采样后逐点旋转投影。返回若干段（跨到背面时断开）。
@@ -889,47 +1002,92 @@
     return { segs: segs, ang: ang };
   };
 
+  // 把预计算的大圆采样点旋转、投影到可复用的 Float32Array。
+  // 返回值只用于 "能不能画" 的快速判断，不再为每个点新建对象。
+  KokoroGlobe.prototype._projectRoute = function (route) {
+    var n = route.n, vs = route.vs;
+    if (!this._px || this._px.length < n + 1) {
+      this._px = new Float32Array(n + 1);
+      this._py = new Float32Array(n + 1);
+      this._pz = new Float32Array(n + 1);
+    }
+    var cosYaw = this._cosYaw, sinYaw = this._sinYaw;
+    var cosPitch = this._cosPitch, sinPitch = this._sinPitch;
+    var R = this.R, cx = this.cx, cy = this.cy;
+    var visible = 0, run = 0;
+    for (var i = 0; i <= n; i++) {
+      var a = i * 3, x = vs[a], y = vs[a + 1], z = vs[a + 2];
+      var x1 = x * cosYaw + z * sinYaw;
+      var z1 = -x * sinYaw + z * cosYaw;
+      var y1 = y * cosPitch - z1 * sinPitch;
+      var z2 = y * sinPitch + z1 * cosPitch;
+      this._px[i] = cx + x1 * R;
+      this._py[i] = cy - y1 * R;
+      this._pz[i] = z2;
+      if (z2 >= -0.02) { run++; if (run === 2) visible++; }
+      else run = 0;
+    }
+    this._pcount = n;
+    this._pvisible = visible;
+  };
+
+  KokoroGlobe.prototype._strokeProjected = function (g) {
+    var px = this._px, py = this._py, pz = this._pz, n = this._pcount;
+    var open = false;
+    for (var i = 0; i <= n; i++) {
+      if (pz[i] < -0.02) { open = false; continue; }
+      if (!open) { g.moveTo(px[i], py[i]); open = true; }
+      else g.lineTo(px[i], py[i]);
+    }
+  };
+
   KokoroGlobe.prototype._drawOverlay = function (now) {
     var g = this.ctx2d;
     if (!g) return;
     now = now || performance.now();
+    this._setView();
     var c = this._colors();
     g.clearRect(0, 0, this.w, this.h);
     if (this.fallback) this._drawFallbackMap(g, c);
 
     // 航线贴着球面的大圆走，先画底线，再沿方向绘制细小的信号流光。
+    // 大圆采样点已在 _buildRoutes 里按经纬度预计算，这里只做旋转和投影。
     if (this.hub && this.effects.showRoutes) {
+      if (this.routes.length !== this.places.length) this._buildRoutes();
       var hp = this._project(this.hub.lat, this.hub.lon);
-      // _arc clips each segment to the visible hemisphere. The origin may be
-      // behind the globe while part of its route remains visible in front.
-      {
-        for (var r = 0; r < this.places.length; r++) {
-          var place = this.places[r];
-          if (place.lat == null || place.lon == null) continue;
-          var route = this._arc(this.hub, place, 72);
-          if (!route.segs.length) continue;
-          var end = this._project(place.lat, place.lon);
-          if (!isFinite(hp.x) || !isFinite(hp.y) || !isFinite(end.x) || !isFinite(end.y)) continue;
-          var onlineRoute = place.online !== false;
-          g.save();
-          g.lineCap = 'round';
-          g.lineJoin = 'round';
-          g.strokeStyle = c.arc || c.hub || '#2f6feb';
-          g.globalAlpha = onlineRoute ? this.effects.routeUnderlayOpacity : this.effects.routeUnderlayOpacity * .45;
-          g.lineWidth = this.effects.routeUnderlayWidth;
-          this._strokeSegs(g, route.segs);
-          g.globalAlpha = onlineRoute ? this.effects.routeOpacity : this.effects.routeMutedOpacity;
-          g.lineWidth = this.effects.routeWidth;
-          // 主机端稍亮，沿途平缓淡出，形成制图式的方向感。
-          var trace = g.createLinearGradient(hp.x, hp.y, end.x, end.y);
-          trace.addColorStop(0, c.hub || c.arc || '#2f6feb');
-          trace.addColorStop(1, c.arc || c.hub || '#2f6feb');
-          g.strokeStyle = trace;
-          this._strokeSegs(g, route.segs);
-          g.restore();
-          if (onlineRoute && this.effects.showFlow && !(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
-            this._drawRouteFlow(g, place, now, r);
-          }
+      // The origin may be behind the globe while part of its route remains
+      // visible in front; _projectRoute clips per sample.
+      for (var r = 0; r < this.places.length; r++) {
+        var place = this.places[r];
+        var route = this.routes[r];
+        if (!place || place.lat == null || place.lon == null || !route) continue;
+        var end = this._project(place.lat, place.lon);
+        if (!isFinite(hp.x) || !isFinite(hp.y) || !isFinite(end.x) || !isFinite(end.y)) continue;
+        this._projectRoute(route);
+        if (this._pvisible < 2) continue;
+        var onlineRoute = place.online !== false;
+        g.save();
+        g.lineCap = 'round';
+        g.lineJoin = 'round';
+        g.strokeStyle = c.arc || c.hub || '#2f6feb';
+        g.globalAlpha = onlineRoute ? this.effects.routeUnderlayOpacity : this.effects.routeUnderlayOpacity * .45;
+        g.lineWidth = this.effects.routeUnderlayWidth;
+        g.beginPath();
+        this._strokeProjected(g);
+        g.stroke();
+        g.globalAlpha = onlineRoute ? this.effects.routeOpacity : this.effects.routeMutedOpacity;
+        g.lineWidth = this.effects.routeWidth;
+        // 主机端稍亮，沿途平缓淡出，形成制图式的方向感。
+        var trace = g.createLinearGradient(hp.x, hp.y, end.x, end.y);
+        trace.addColorStop(0, c.hub || c.arc || '#2f6feb');
+        trace.addColorStop(1, c.arc || c.hub || '#2f6feb');
+        g.strokeStyle = trace;
+        g.beginPath();
+        this._strokeProjected(g);
+        g.stroke();
+        g.restore();
+        if (onlineRoute && this.effects.showFlow && !this._reducedMotion) {
+          this._drawRouteFlow(g, place, route, now, r);
         }
       }
     }
@@ -1026,9 +1184,15 @@
         entry.y=y;
         var width=Math.min(104,Math.max(72,self.w*.25));
         var x=side ? self.w-width-5 : 5;
-        label.style.width=width+'px';
-        label.style.transform='translate('+x+'px,'+y+'px)';
-        label.classList.toggle('is-behind',p.z<=0);
+        // 慢速自转时标签每帧只挪零点几像素，逐帧写 style 会白白触发
+        // 样式重算。超过半像素再写，视觉上看不出差别，DOM 写入量小一个量级。
+        if (label._w !== width) { label.style.width=width+'px'; label._w=width; }
+        if (label._x == null || Math.abs(label._x-x) > .5 || Math.abs(label._y-y) > .5) {
+          label.style.transform='translate('+x+'px,'+y+'px)';
+          label._x=x; label._y=y;
+        }
+        var behind=p.z<=0;
+        if (label._behind !== behind) { label.classList.toggle('is-behind',behind); label._behind=behind; }
         g.save(); g.strokeStyle=colors.arc; g.lineWidth=.7;
         g.globalAlpha=p.z<=0 ? .35 : .7;
         if (p.z<=0) g.setLineDash([2,3]);
@@ -1043,91 +1207,90 @@
   };
 
   // 把流光限制在球面正面：不会穿过地球，也不画轨道或整圈脉冲。
-  KokoroGlobe.prototype._arcPoint = function (a, b, t) {
-    var v1 = toVec(a.lat, a.lon, [0, 0, 0]);
-    var v2 = toVec(b.lat, b.lon, [0, 0, 0]);
-    var d = clamp(v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2], -1, 1);
-    var ang = Math.acos(d), s = Math.sin(ang), v;
-    if (ang < 1e-6) v = v1;
-    else v = [
-      Math.sin((1 - t) * ang) / s * v1[0] + Math.sin(t * ang) / s * v2[0],
-      Math.sin((1 - t) * ang) / s * v1[1] + Math.sin(t * ang) / s * v2[1],
-      Math.sin((1 - t) * ang) / s * v1[2] + Math.sin(t * ang) / s * v2[2]
-    ];
-    var p = rotate(v, this.yaw, this.pitch, [0, 0, 0]);
-    return { x: this.cx + p[0] * this.R, y: this.cy - p[1] * this.R, z: p[2] };
-  };
-
-  KokoroGlobe.prototype._drawRouteFlow = function (g, place, now, index) {
+  KokoroGlobe.prototype._drawRouteFlow = function (g, place, route, now, index) {
     if (!this.hub || !this.effects.showFlow) return;
     var phase = ((now / this.effects.flowPeriod) + index * 0.307) % 1;
     var headT = 0.07 + phase * 0.86;
     // A longer tapered flow reads as data moving through a route, rather than
-    // a short dot blinking along the line. Sample densely to keep the gradient
-    // smooth on curved arcs and high-DPI displays.
+    // a short dot blinking along the line.
     var tailT = Math.max(0.012, headT - this.effects.flowLength);
-    var pts = [];
-    for (var i = 0; i <= 24; i++) {
-      var t = tailT + (headT - tailT) * i / 24;
-      // Flow originates at the node and travels back to the Hub.
-      var p = this._arcPoint(place, this.hub, t);
-      if (p.z < 0.015) continue;
-      pts.push(p);
+    var steps = 14;
+    if (!this._fx || this._fx.length < steps + 1) {
+      this._fx = new Float32Array(steps + 1);
+      this._fy = new Float32Array(steps + 1);
     }
-    if (!pts.length) return;
+    var fx = this._fx, fy = this._fy, count = 0;
+    var vs = route.vs, n = route.n;
+    var cosYaw = this._cosYaw, sinYaw = this._sinYaw;
+    var cosPitch = this._cosPitch, sinPitch = this._sinPitch;
+    var R = this.R, cx = this.cx, cy = this.cy;
+    for (var i = 0; i <= steps; i++) {
+      // buildRoute 的 t=0 在主机、t=1 在节点；流光要反着走（节点 → 主机）。
+      var t = 1 - (tailT + (headT - tailT) * i / steps);
+      var x = t * n, j = Math.floor(x);
+      if (j >= n) j = n - 1;
+      if (j < 0) j = 0;
+      var f = x - j, a = j * 3, b = a + 3;
+      var vx = vs[a] + (vs[b] - vs[a]) * f;
+      var vy = vs[a + 1] + (vs[b + 1] - vs[a + 1]) * f;
+      var vz = vs[a + 2] + (vs[b + 2] - vs[a + 2]) * f;
+      var x1 = vx * cosYaw + vz * sinYaw;
+      var z1 = -vx * sinYaw + vz * cosYaw;
+      var y1 = vy * cosPitch - z1 * sinPitch;
+      var z2 = vy * sinPitch + z1 * cosPitch;
+      if (z2 < 0.015) continue;
+      fx[count] = cx + x1 * R;
+      fy[count] = cy - y1 * R;
+      count++;
+    }
+    if (count < 2) return;
     var recentPulse = place.key && this.pulseAt[place.key] && now - this.pulseAt[place.key] < this.effects.flowPulseWindow;
+    var colors = this._colors();
+    var color = colors.flow || colors.hub || colors.arc || '#8ed8bc';
+    var headX = fx[count - 1], headY = fy[count - 1];
+    var trail = g.createLinearGradient(fx[0], fy[0], headX, headY);
+    trail.addColorStop(0, withAlpha(color, 0.015));
+    trail.addColorStop(0.42, withAlpha(color, recentPulse ? 0.16 : 0.1));
+    trail.addColorStop(0.82, withAlpha(color, recentPulse ? 0.58 : 0.42));
+    trail.addColorStop(1, withAlpha(color, recentPulse ? 0.98 : 0.82));
+
     g.save();
     g.lineCap = 'round';
     g.lineJoin = 'round';
-    if (pts.length > 1) {
-      var head = pts[pts.length - 1];
-      var colors = this._colors();
-      var color = colors.flow || colors.hub || colors.arc || '#8ed8bc';
-      var trail = g.createLinearGradient(pts[0].x, pts[0].y, head.x, head.y);
-      trail.addColorStop(0, withAlpha(color, 0.015));
-      trail.addColorStop(0.42, withAlpha(color, recentPulse ? 0.16 : 0.1));
-      trail.addColorStop(0.82, withAlpha(color, recentPulse ? 0.58 : 0.42));
-      trail.addColorStop(1, withAlpha(color, recentPulse ? 0.98 : 0.82));
+    g.beginPath();
+    g.moveTo(fx[0], fy[0]);
+    for (var k = 1; k < count; k++) g.lineTo(fx[k], fy[k]);
+    // 原来这里用 shadowBlur 做外发光。手机上每帧给几十条路径做阴影会
+    // 持续压着 GPU/CPU，时间一长就降频——改成更宽的半透明描边，观感接近，
+    // 但走普通路径，不再每帧重新光栅化阴影。
+    g.globalAlpha = 0.3 * this.effects.flowOpacity;
+    g.lineWidth = this.effects.flowGlowWidth * 1.5;
+    g.strokeStyle = withAlpha(color, recentPulse ? 0.24 : 0.16);
+    g.stroke();
+    g.globalAlpha = this.effects.flowOpacity;
+    g.lineWidth = recentPulse ? this.effects.flowCoreWidth * 1.3 : this.effects.flowCoreWidth;
+    g.strokeStyle = trail;
+    g.stroke();
 
-      // Soft underglow gives the stream depth while the crisp stroke keeps it
-      // legible over both the globe and dark route background.
+    // A smaller secondary glint trails the head, suggesting a flowing
+    // pipeline instead of a uniformly illuminated solid line.
+    if (count > 7) {
+      var gi = count - 7;
+      g.globalAlpha = (recentPulse ? 0.62 : 0.42) * this.effects.flowOpacity;
+      g.fillStyle = withAlpha(color, 0.9);
       g.beginPath();
-      g.moveTo(pts[0].x, pts[0].y);
-      for (var j = 1; j < pts.length; j++) g.lineTo(pts[j].x, pts[j].y);
-      g.strokeStyle = trail;
-      g.globalAlpha = 0.7 * this.effects.flowOpacity;
-      g.shadowColor = withAlpha(color, recentPulse ? 0.65 : 0.42);
-      g.shadowBlur = recentPulse ? this.effects.flowGlow * 1.4 : this.effects.flowGlow;
-      g.lineWidth = recentPulse ? this.effects.flowGlowWidth * 1.25 : this.effects.flowGlowWidth;
-      g.stroke();
-      g.shadowBlur = 0;
-      g.globalAlpha = this.effects.flowOpacity;
-      g.lineWidth = recentPulse ? this.effects.flowCoreWidth * 1.3 : this.effects.flowCoreWidth;
-      g.stroke();
-
-      // A smaller secondary glint trails the head, suggesting a flowing
-      // pipeline instead of a uniformly illuminated solid line.
-      if (pts.length > 7) {
-        var glint = pts[Math.max(0, pts.length - 7)];
-        g.globalAlpha = (recentPulse ? 0.62 : 0.42) * this.effects.flowOpacity;
-        g.fillStyle = withAlpha(color, 0.9);
-        g.beginPath();
-        g.arc(glint.x, glint.y, recentPulse ? this.effects.flowGlintSize * 1.25 : this.effects.flowGlintSize, 0, Math.PI * 2);
-        g.fill();
-      }
+      g.arc(fx[gi], fy[gi], recentPulse ? this.effects.flowGlintSize * 1.25 : this.effects.flowGlintSize, 0, Math.PI * 2);
+      g.fill();
     }
-    var head = pts[pts.length - 1];
-    var palette = this._colors();
-    var color = palette.flow || palette.hub || palette.arc || '#8ed8bc';
     g.globalAlpha = (recentPulse ? 0.3 : 0.2) * this.effects.flowOpacity;
     g.fillStyle = color;
     g.beginPath();
-    g.arc(head.x, head.y, recentPulse ? this.effects.flowGlowWidth * 1.5 : this.effects.flowGlowWidth * 1.25, 0, Math.PI * 2);
+    g.arc(headX, headY, recentPulse ? this.effects.flowGlowWidth * 1.5 : this.effects.flowGlowWidth * 1.25, 0, Math.PI * 2);
     g.fill();
     g.globalAlpha = 1;
-    g.fillStyle = palette.flowCore || '#f5fff9';
+    g.fillStyle = colors.flowCore || '#f5fff9';
     g.beginPath();
-    g.arc(head.x, head.y, recentPulse ? this.effects.flowHeadSize * 1.2 : this.effects.flowHeadSize, 0, Math.PI * 2);
+    g.arc(headX, headY, recentPulse ? this.effects.flowHeadSize * 1.2 : this.effects.flowHeadSize, 0, Math.PI * 2);
     g.fill();
     g.restore();
   };

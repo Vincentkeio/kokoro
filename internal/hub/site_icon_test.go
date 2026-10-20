@@ -3,6 +3,7 @@ package hub
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,12 @@ func TestPublicSiteIconDiscovery(t *testing.T) {
 		{"/favicon.svg", "image/svg+xml"},
 		{"/apple-touch-icon.png", "image/png"},
 		{"/logo.webp", "image/webp"},
+		{"/logo.png", "image/png"},
+		{"/icon-192.png", "image/png"},
+		{"/icon-512.png", "image/png"},
+		{"/icon-maskable-512.png", "image/png"},
+		{"/manifest.webmanifest", "application/manifest+json"},
+		{"/site.webmanifest", "application/manifest+json"},
 	} {
 		t.Run(item.path, func(t *testing.T) {
 			get := httptest.NewRecorder()
@@ -43,9 +50,52 @@ func TestPublicSiteIconDiscovery(t *testing.T) {
 	}
 	page := httptest.NewRecorder()
 	h.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
-	for _, path := range []string{"/favicon.ico?v=69", "/favicon.png?v=69", "/favicon.svg?v=69", "/apple-touch-icon.png?v=69"} {
-		if !strings.Contains(page.Body.String(), `href="`+path+`"`) {
-			t.Errorf("HTML icon discovery missing %s", path)
+	for _, html := range []string{
+		`href="/favicon.ico?v=70"`,
+		`href="/favicon.png?v=70"`,
+		`href="/icon-192.png?v=70"`,
+		`href="/icon-512.png?v=70"`,
+		`href="/favicon.svg?v=70"`,
+		`href="/apple-touch-icon.png?v=70"`,
+		`href="/manifest.webmanifest?v=70"`,
+		`property="og:image" content="https://example.com/icon-512.png?v=70"`,
+		`name="twitter:image" content="https://example.com/icon-512.png?v=70"`,
+	} {
+		if !strings.Contains(page.Body.String(), html) {
+			t.Errorf("HTML icon discovery missing %s", html)
+		}
+	}
+}
+
+func TestWebManifestDeclaresSizedIcons(t *testing.T) {
+	h, _ := newTestHub(t)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil))
+	var m struct {
+		Name  string `json:"name"`
+		Icons []struct {
+			Src     string `json:"src"`
+			Sizes   string `json:"sizes"`
+			Type    string `json:"type"`
+			Purpose string `json:"purpose"`
+		} `json:"icons"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatalf("manifest is not JSON: %v", err)
+	}
+	if m.Name == "" || len(m.Icons) != 3 {
+		t.Fatalf("unexpected manifest: %+v", m)
+	}
+	got := map[string]string{}
+	for _, icon := range m.Icons {
+		got[icon.Src] = icon.Sizes
+	}
+	if got["/icon-192.png"] != "192x192" || got["/icon-512.png"] != "512x512" || got["/icon-maskable-512.png"] != "512x512" {
+		t.Fatalf("manifest icons missing sizes: %+v", m.Icons)
+	}
+	for _, icon := range m.Icons {
+		if icon.Type != "image/png" {
+			t.Errorf("manifest icon %s has type %q", icon.Src, icon.Type)
 		}
 	}
 }

@@ -40,7 +40,7 @@ import (
 )
 
 // Version 会被构建脚本用 -ldflags "-X main.Version=..." 覆盖。
-var Version = "v1.0.11"
+var Version = "v1.0.12"
 
 const usage = `kokoro - 每台小鸡都有一颗心
 
