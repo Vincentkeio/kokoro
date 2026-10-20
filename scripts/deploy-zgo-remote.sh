@@ -109,7 +109,7 @@ if [ "$healthy" -ne 1 ]; then
   exit 1
 fi
 
-if ! grep -q 'style.css?v=251' /tmp/kokoro-preview-home.html; then
+if ! grep -q 'style.css?v=262' /tmp/kokoro-preview-home.html; then
   echo 'ERROR: home page did not serve the expected CSS version; no backups were retained.' >&2
   exit 1
 fi
