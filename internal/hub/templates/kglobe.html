@@ -127,9 +127,8 @@
         oceanNight: colorVar(el, '--globe-ocean-night', '#c6d3e6'),
         arc:   colorVar(el, '--kokoro-globe-route', '#2f6feb'),
         flow:  colorVar(el, '--kokoro-globe-flow', '#2f6feb'),
-        // 光点核心跟随主题的流光色；只有主题显式定义了
-        // --kokoro-globe-flow-core 时才使用单独的颜色，不再固定为白色。
-        flowCore: colorVar(el, '--kokoro-globe-flow-core', colorVar(el, '--kokoro-globe-flow', '#2f6feb')),
+        // 光头直接用主题的流光色；不再读取偏白的 flow-core 变量。
+        flowCore: colorVar(el, '--kokoro-globe-flow', '#2f6feb'),
         // Area fills can be softer than moving flow particles. Existing themes
         // retain their flow color unless they explicitly provide an area palette.
         litDay:   colorVar(el, '--kokoro-globe-lit-day', colorVar(el, '--kokoro-globe-flow', '#dfbd74')),
