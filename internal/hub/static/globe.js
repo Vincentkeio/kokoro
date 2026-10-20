@@ -1272,16 +1272,6 @@
     g.strokeStyle = trail;
     g.stroke();
 
-    // A smaller secondary glint trails the head, suggesting a flowing
-    // pipeline instead of a uniformly illuminated solid line.
-    if (count > 7) {
-      var gi = count - 7;
-      g.globalAlpha = (recentPulse ? 0.62 : 0.42) * this.effects.flowOpacity;
-      g.fillStyle = withAlpha(color, 0.9);
-      g.beginPath();
-      g.arc(fx[gi], fy[gi], recentPulse ? this.effects.flowGlintSize * 1.25 : this.effects.flowGlintSize, 0, Math.PI * 2);
-      g.fill();
-    }
     g.globalAlpha = (recentPulse ? 0.3 : 0.2) * this.effects.flowOpacity;
     g.fillStyle = color;
     g.beginPath();
