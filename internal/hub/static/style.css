@@ -1714,6 +1714,7 @@ body[data-k-theme] .uptime-bar {
      CPU 型号那条 .full 独占整行（见下）。 */
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+.card .specs:has(> div.full) { border-top: 0; }
 
 /* 每一项：标签贴着自己内容走，值拿满剩下的空间。
    ⚠️ 标签**不要**给 min-width：以前 3.6rem 是为了两列的值对齐成一列，
@@ -1733,16 +1734,16 @@ body[data-k-theme] .uptime-bar {
   overflow-wrap: anywhere; word-break: break-word;
 }
 
-/* CPU 型号独占整行：加一层浅底 + 下分隔线，让它像"小标题"。
-   访客第一眼看的就是 CPU 型号。 */
+/* CPU 型号独占整行：上下分隔线由同一元素绘制，避免父级顶线与
+   子级圆角底线混用，产生线宽、颜色和两端弯角不一致。 */
 .card .specs > div.full {
   grid-column: 1 / -1;
   flex-direction: column; gap: 1px;
   padding: var(--s2) var(--s3);
   margin-bottom: var(--s1);
   background: var(--sunken);
-  border-radius: var(--r-sm);
-  border-bottom: var(--kokoro-border-width, 1px) solid var(--line);
+  border-radius: 0;
+  border-block: var(--kokoro-border-width, 1px) solid var(--line);
 }
 
 /* bare（无标签，CPU 型号用）：只剩一行值，留白收紧一点 ——
