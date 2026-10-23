@@ -95,6 +95,7 @@ curl -fsSL https://<Hub域名>/i/<安装令牌> | sh
 
 - Hub 与 Agent 都使用 Go 编写；Hub 页面资源随程序一起打包，无需额外安装前端运行环境。
 - Agent 按内置白名单校验 Hub 下发的结构化指令类型及参数；测试仅允许 `bench`、`ipquality`、`netquality`，SWAP、配置和探测操作也只接受各自规定的参数。Agent 拒绝任意 Shell 文本、可执行程序、命令参数、脚本地址、工作目录和超时设置；测试由 Agent 固定流程调用版本及 SHA-256 均受校验的脚本。下载的程序和安装资源会校验 SHA-256。
+- 即使 Hub 被攻陷，Agent 也会拒绝白名单外的指令和越界参数；但白名单内的测试、配置、增加 SWAP 和重启 Agent 服务仍可能被滥用。重启只重启 Agent 进程，不会重启 VPS。
 - 管理员密码使用带随机盐的 PBKDF2-HMAC-SHA256 保存。Agent 默认通过 HTTPS 通信；Hub 服务以专用系统用户运行，并由 systemd 限制可写目录。
 - Hub 的 HTTPS 由 Caddy、Nginx 等前置反向代理提供（`--tls proxy`）；`--tls none` 用于显式 HTTP。未实现的 `selfsigned`、`auto` 或未知模式会拒绝启动，避免误以为连接已经加密。Agent 的证书指纹固定同时验证证书签名链、服务端用途、有效期与主机名。
 - Agent 需要 root 权限采集主机信息及执行 SWAP 等管理操作；其 systemd 服务启用文件系统隔离，并将常驻服务的可写范围限制在配置目录。
